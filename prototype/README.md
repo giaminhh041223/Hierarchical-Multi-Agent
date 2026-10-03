@@ -100,6 +100,7 @@ Mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn 
 | `cancel <task \| all>` | Huỷ một task (kéo theo các task phụ thuộc nó) hoặc huỷ cả run. |
 | `log [-n 40]` | Xem các sự kiện gần nhất. Đây là kênh chung của cả đội. |
 | `kg search <từ khoá> [-k 8]` · `kg links <node>` · `kg add <entity> <fact>` | Knowledge graph dùng chung. |
+| `mcp` | MCP server qua stdio: board và knowledge graph thành tool chỉ đọc. Xem [MCP server](#mcp-server). |
 | `ui [--port 8765] [--no-browser]` | Web UI. Cổng bận thì tự chọn cổng khác. |
 
 Mã thoát của `run` và `resume`:
@@ -234,6 +235,33 @@ Mở Claude Code hoặc Codex trong dự án của bạn và bảo nó điều k
 
 Bên trong run, worker đã có sẵn `ORCH_WS` và `PYTHONPATH`, nên tự tra knowledge graph được bằng `python -m orch kg search …`.
 
+## MCP server
+
+`python -m orch --ws <dự án> mcp` chạy một MCP server qua stdio. Server có ba tool, đều chỉ đọc:
+
+| Tool | Trả về |
+|---|---|
+| `board` | Mục tiêu và trạng thái run; từng task với trạng thái, worker, số lần thử, phụ thuộc. |
+| `kg_search` | Các fact mà task đã tích hợp công bố, tìm theo từ khoá. |
+| `kg_links` | Quan hệ của một node. Task: file nó đã sửa, task nó chạy sau. File: các task đã sửa file đó. |
+
+**Cho agent trong run.** Đặt `"mcp": true` trong `team.json`. Engine truyền server cho từng lời gọi agent bằng cờ hoặc biến môi trường của chính lời gọi đó, không ghi file cấu hình nào của CLI:
+- codex: `-c mcp_servers.orch={…}`;
+- claude: `--mcp-config` và thêm `mcp__orch` vào `--allowedTools`;
+- opencode và các profile của nó: `OPENCODE_CONFIG_CONTENT`.
+
+agy, gemini và cursor-agent chưa có cách truyền theo từng lời gọi, nên vẫn tra bằng lệnh CLI.
+
+**Cho phiên Claude Code hoặc Codex của bạn.** Bạn tự đăng ký, Orchestra không ghi cấu hình của bạn. `PYTHONPATH` là thư mục `prototype/`:
+
+```bash
+claude mcp add orch -e PYTHONPATH=D:/Hierarchical-Multi-Agent/prototype -- python -m orch --ws D:/du-an mcp
+```
+
+```bash
+codex mcp add orch --env PYTHONPATH=D:/Hierarchical-Multi-Agent/prototype -- python -m orch --ws D:/du-an mcp
+```
+
 ## Workspace
 
 Engine đặt `<dự án>/.orch/` vào `.git/info/exclude`, nên thư mục này không lọt vào commit. Nội dung:
@@ -277,6 +305,7 @@ Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi b
   "auto_approve": false,
   "account_max": {},
   "verify_allow": null,
+  "mcp": false,
   "notify_url": null
 }
 ```
@@ -299,6 +328,7 @@ Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi b
 | `auto_approve` | Bỏ qua bước bạn duyệt plan. |
 | `account_max` | Số task chạy song song tối đa trên một tài khoản, ví dụ `{"codex": 1}` khi hai worker dùng chung một subscription. Mặc định không giới hạn. |
 | `verify_allow` | Danh sách tiền tố lệnh verify được chạy không cần hỏi, ví dụ `[["python", "-m", "unittest"]]`. Lệnh khác dừng task trước khi gọi worker và hỏi bạn, kể cả khi `auto_approve`; duyệt plan bằng tay cũng là duyệt lệnh trong plan. `null` (mặc định) = không dùng danh sách. |
+| `mcp` | `true`: mỗi lời gọi codex, claude và opencode được nối với [MCP server](#mcp-server) của workspace. Mặc định `false`. |
 | `notify_url` | Webhook kiểu ntfy/Slack/Discord, gửi khi cần bạn và khi xong. Có thể thay bằng biến `ORCH_NOTIFY_URL`. |
 
 ## Biến môi trường
@@ -329,7 +359,7 @@ Chi tiết ở [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
 python tests/test_e2e.py
 ```
 
-- 22 test end-to-end: Linux khoảng 40 giây, Windows khoảng 2–3 phút.
+- 23 test end-to-end: Linux khoảng 40 giây, Windows khoảng 2–3 phút.
 - Dùng mock agent theo kịch bản, không tốn token.
 - Riêng test 9router dựng một router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router giả đó.
 - Lọc theo tên: `python tests/test_e2e.py crash`.

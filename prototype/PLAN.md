@@ -11,8 +11,8 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 
 | Hạng mục | Trạng thái |
 |---|---|
-| Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+, không cần `pip install`. |
-| Test end-to-end | 22/22 PASS với mock agent (không tốn token). Đã chạy trên Windows (Python 3.13) và Linux/WSL (Python 3.14). |
+| Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+, không cần `pip install`. |
+| Test end-to-end | 23/23 PASS với mock agent (không tốn token). Đã chạy trên Windows (Python 3.13) và Linux/WSL (Python 3.14). |
 | Adapter đã kiểm chứng cờ dòng lệnh trên máy này | <ul><li>`codex` 0.153.4.</li><li>`agy` 1.2.15.</li><li>`opencode` 1.18.34, profile `opencode@free`:<ul><li>8/10 model free trả lời được;</li><li>`big-pickle` và `fledge-alpha-free` qua pre-test code.</li></ul></li></ul> |
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
 | Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả. 9router đã có trên máy nhưng chưa nối (§16 P0).</li></ul> |
@@ -77,6 +77,7 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | [orch/models.py](orch/models.py) | DB model: refresh, thẻ model, gợi ý đội hình |
 | [orch/skills.py](orch/skills.py) | Chỉ mục skill, cài đặt, skill architect, đặt skill vào worktree, duyệt repo |
 | [orch/server.py](orch/server.py), [orch/ui.html](orch/ui.html) | Web UI local |
+| [orch/mcp.py](orch/mcp.py) | MCP server qua stdio: board và knowledge graph thành tool chỉ đọc |
 | [orch/\_\_main\_\_.py](orch/__main__.py) | CLI |
 | [orch/mock.py](orch/mock.py) | Agent giả theo kịch bản, để test không tốn token |
 | [catalog/](catalog/) | `agents.json` (adapter), `skills.json` (nguồn curated), `schemas/*.json` (contract), `models.json` (có sau `models refresh`) |
@@ -290,7 +291,8 @@ Adapter là dữ liệu, không phải class. Mỗi mục trong [catalog/agents.
 - file và biến môi trường chứng thực;
 - lệnh đăng nhập;
 - nguồn danh sách model;
-- parser đầu ra.
+- parser đầu ra;
+- cách truyền MCP server theo từng lời gọi (`mcp`, §10).
 
 Thêm một CLI mới = thêm một mục JSON, cộng một parser nhỏ nếu định dạng đầu ra lạ.
 
@@ -352,9 +354,19 @@ Xếp theo mức tác động (thống nhất với Codex ở vòng 1):
 **Knowledge graph tối thiểu.** Codex khuyên chưa dùng Graphiti hay LightRAG ở giai đoạn này.
 - `facts` (FTS5/BM25) chỉ nhận facts từ task **đã tích hợp**, và gắn với commit.
 - `links` nối task với file đã sửa, và task với dependency.
-- Agent tra cứu: `python -m orch kg search "<từ khoá>"` và `kg links <node>`.
+- Agent tra cứu: `python -m orch kg search "<từ khoá>"` và `kg links <node>`, hoặc qua MCP server (dưới đây).
 - Bạn thêm fact: `orch kg add <entity> <fact>`.
 - Engine tự chèn top-k facts vào packet.
+
+**MCP server** (`python -m orch mcp`, [orch/mcp.py](orch/mcp.py)).
+- Ba tool chỉ đọc: `board`, `kg_search`, `kg_links`. Mỗi lần gọi tool mở một kết nối `mode=ro` mới, nên luôn thấy board mới nhất.
+- JSON-RPC 2.0 qua stdio, mỗi dòng một thông điệp; stdout chỉ chứa thông điệp giao thức.
+- Bật cho agent trong run bằng `"mcp": true` trong `team.json`. Engine truyền server theo từng lời gọi, không ghi file cấu hình nào của CLI:
+  - codex: `-c mcp_servers.orch={…}` (TOML inline). `codex mcp get` đọc đúng cấu hình này. Chưa chạy lời gọi thật vì tốn quota.
+  - claude: `--mcp-config <json>`, thêm `mcp__orch` vào `--allowedTools`. Chưa kiểm chứng vì chưa đăng nhập.
+  - opencode và các profile của nó: khoá `mcp` trong `OPENCODE_CONFIG_CONTENT`, gộp với cấu hình router. `opencode mcp list` báo `connected`, kể cả với `--pure`.
+  - agy, gemini, cursor-agent: chưa có cách truyền theo lời gọi.
+- Lệnh khởi động server ghi rõ `PYTHONPATH` và `ORCH_HOME`. Lý do: CLI chỉ đưa cho MCP server một môi trường tối thiểu, và trên Windows thiếu thư mục home thì `orch` không import được.
 
 **Rule.**
 - File chung: `.orch/rules/common.md`, `lead.md`, `reviewer.md`, `worker.md`, `skill_architect.md`.
@@ -566,6 +578,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `opt_in_gates_verify_allowlist_and_skill_proposals` | <ul><li>`skills: propose`: skill chờ bạn duyệt, task work chờ theo.</li><li>`verify_allow`: lệnh ngoài danh sách dừng task trước lời gọi worker, kể cả trong run auto-approve. Một `yes` thả mọi task chờ cùng lệnh.</li></ul> |
 | `skills_index_offline` | <ul><li>Lập chỉ mục từ cây GitHub (giả lập mạng).</li><li>Cài đặt dùng lại cache theo commit.</li></ul> |
 | `ui_server_security` | Token, Host, Origin, CSP; vault được che; kiểm tra input. |
+| `mcp_server_read_only_tools` | <ul><li>Với `"mcp": true`, agent của T2 tự khởi động server từ cấu hình được truyền, trong môi trường tối thiểu, và tìm thấy fact mà T1 công bố.</li><li>Giao thức: echo phiên bản, notification không được trả lời, chỉ có tool chỉ đọc, các mã lỗi JSON-RPC.</li><li>Lệnh gọi codex, claude, opencode khi bật và khi tắt MCP.</li></ul> |
 | `scope_and_plan_checks` | Các kiểm tra plan, scope, allowlist lệnh verify và repo map ở dạng hàm thuần. |
 
 ## 16. Lộ trình
@@ -590,7 +603,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
   - đã có sơ đồ chỉ để xem trong tab Run: mỗi cột một độ sâu phụ thuộc, màu theo trạng thái, nét đứt là thứ tự ngầm (work chạy sau PLAN và SKILLS);
   - còn lại: sửa plan bằng kéo-thả.
 - Embeddings cho knowledge graph, khi đo được FTS bỏ sót.
-- Mở knowledge graph và board cho agent qua MCP server.
+- MCP server cho board và knowledge graph: đã có (§10).
 - Worker chạy từ xa; khi đó mới cần lease/heartbeat.
 - Thiết kế lại giao diện web UI: kế hoạch, token màu đã kiểm tra tương phản, lộ trình 4 pha và plugin hỗ trợ ở [docs/UIUX.md](docs/UIUX.md).
 

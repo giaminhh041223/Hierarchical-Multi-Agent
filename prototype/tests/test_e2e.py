@@ -283,7 +283,7 @@ def test_router_profile_lists_models_and_routes_opencode():
         a = agents.catalog()["opencode@9router"]
         assert agents.list_models(a, None) == ["kr/claude-sonnet-4.5", "glm/glm-4.6"]
         assert seen[-1][0] == "/v1/models" and seen[-1][1]["authorization"] == f"Bearer {key}", seen
-        cfg = json.loads(agents.router_config(a, "kr/claude-sonnet-4.5"))["provider"]["router"]
+        cfg = agents.router_config(a, "kr/claude-sonnet-4.5")["provider"]["router"]
         assert cfg["options"]["baseURL"] == url and cfg["options"]["headers"] == {"X-9Router-Token-Saver": "off"}
         assert key not in json.dumps(cfg) and list(cfg["models"]) == ["kr/claude-sonnet-4.5"]
         if agents.resolve_bin("opencode"):
@@ -546,6 +546,53 @@ def test_ui_server_security():
         srv.server_close()
         srv.ws.db.close()  # an open handle would keep orch.db (and the temp dir) undeletable on Windows
         core.VAULT = saved
+
+
+def test_mcp_server_read_only_tools():
+    """`python -m orch mcp`: the board and the knowledge graph as read-only MCP tools. With "mcp": true each agent call gets the
+    server through its CLI's per-call config; here T2's agent starts it from that config and finds the fact T1 published."""
+    import io, tomllib
+    from orch import mcp
+    sc = two_tasks()
+    sc["steps"]["worker:T2"][0]["mcp"] = ["kg_search", {"query": "add"}]
+    r = Repo(sc, mcp=True)
+    assert r.run() == 0, r.out
+    summary = json.loads(r.q("SELECT handoff FROM tasks WHERE id='T2'")[0][0])["summary"]
+    assert "returns a + b  [T1]" in summary, summary
+    # protocol edges, in process: version echo, a notification gets no reply, read-only tools only, JSON-RPC errors
+    msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05"}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "board", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "kg_links", "arguments": {"node": "T2"}}},
+            {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "write_file", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 6, "method": "resources/list"}]
+    out = io.BytesIO()
+    mcp.serve(r.repo, io.BytesIO(b"".join(json.dumps(m).encode() + b"\n" for m in msgs) + b"{not json\n"), out)
+    rep = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert [x["id"] for x in rep] == [1, 2, 3, 4, 5, 6, None], rep
+    tools = rep[1]["result"]["tools"]
+    assert rep[0]["result"]["protocolVersion"] == "2024-11-05" and all(t["annotations"]["readOnlyHint"] for t in tools)
+    assert sorted(t["name"] for t in tools) == ["board", "kg_links", "kg_search"], tools
+    text = [x["result"]["content"][0]["text"] for x in rep[2:4]]
+    assert "goal: demo goal" in text[0] and "T2" in text[0] and "T2 -after-> T1" in text[1] and "test_app.py" in text[1], text
+    assert [x["error"]["code"] for x in rep[4:]] == [-32602, -32601, -32700], rep
+    # per CLI: codex -c TOML, claude --mcp-config JSON plus its allow-list, opencode config env; without mcp nothing changes
+    srv, seen, real = agents.mcp_server(r.repo), [], (agents.spawn, agents.resolve_bin)
+    agents.spawn, agents.resolve_bin = lambda cmd, cwd, env, *a: seen.append((cmd, env)), lambda b: [b]
+    try:
+        for aid in ("codex", "claude", "opencode"):
+            for on in (None, r.repo):
+                agents.run_agent(aid, "m", "hi", r.tmp, r.tmp / "out", schema="handoff", mcp=on)
+    finally:
+        agents.spawn, agents.resolve_bin = real
+    (codex, codex_on), (claude, claude_on), (oc, oc_on) = [(seen[i][0], seen[i + 1][0]) for i in (0, 2)] + [(seen[4][1], seen[5][1])]
+    assert codex_on[:3] == ["codex", "-c", f"mcp_servers.orch={agents.toml(srv)}"] and codex_on[3:] == codex[1:], codex_on
+    assert tomllib.loads("s = " + agents.toml(srv))["s"] == srv
+    assert claude[claude.index("--allowedTools") + 1] == "Bash,Read,Edit,Write,Glob,Grep", claude
+    assert claude_on[1] == "--mcp-config" and json.loads(claude_on[2]) == {"mcpServers": {"orch": srv}}
+    assert claude_on[claude_on.index("--allowedTools") + 1] == "Bash,Read,Edit,Write,Glob,Grep,mcp__orch"
+    assert "OPENCODE_CONFIG_CONTENT" not in oc
+    assert json.loads(oc_on["OPENCODE_CONFIG_CONTENT"])["mcp"]["orch"]["command"] == [srv["command"], *srv["args"]]
 
 
 def test_scope_and_plan_checks():

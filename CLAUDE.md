@@ -19,7 +19,7 @@ Bối cảnh cho Claude Code (local hoặc cloud) khi làm việc trong repo nà
 cd prototype && PYTHONIOENCODING=utf-8 PYTHONPATH=. python tests/test_e2e.py
 ```
 
-- 22 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 40 giây, Windows khoảng 2–3 phút.
+- 23 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 40 giây, Windows khoảng 2–3 phút.
 - Lọc theo tên: thêm một phần tên test vào cuối lệnh, ví dụ `pool`.
 - Cần Python 3.11+ và git. Test tự truyền danh tính git, không cần `git config`.
 - Test 9router dựng router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router đó.
@@ -49,6 +49,7 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 | `models.py` | Cơ sở dữ liệu model: benchmark Epoch AI, giá OpenRouter, lịch sử run; gợi ý đội hình (`suggest`). |
 | `skills.py` | Skill catalog (repo GitHub ghim commit, skill đã cài) và skill architect. |
 | `server.py`, `ui.html` | Web UI local (`python -m orch ui`): chỉ 127.0.0.1, có token. Tab Run có sơ đồ DAG chỉ để xem (`dag()`). |
+| `mcp.py` | MCP server qua stdio (`python -m orch mcp`): board và knowledge graph thành tool chỉ đọc. Team bật `"mcp": true` thì engine truyền server cho từng lời gọi agent (`agents.mcp_server`). |
 | `mock.py` | Agent giả theo kịch bản, dùng cho test. |
 | `__main__.py` | CLI `python -m orch <lệnh>`. |
 

@@ -128,6 +128,13 @@ class Workspace:
             return self.x(f"UPDATE tasks SET cancel=1 WHERE run=? AND {live}", self.run)
         return self.x(f"UPDATE tasks SET cancel=1 WHERE run=? AND id=? AND {live}", self.run, task)
 
+    def board(self):
+        """The run's status line and one line per task (CLI `board`, MCP tool `board`)."""
+        run = self.run
+        return "\n".join([f"run {run}: {self.meta(f'{run}:status') or 'open'} | goal: {self.meta(f'{run}:goal')}"] + [
+            f"  {t['id']:<8} {t['status']:<12} {t['assignee'] or '':<14} a{t['attempts']} deps={','.join(t['deps']) or '-':<10} {t['title'][:70]}"
+            for t in self.tasks()])
+
     # --- knowledge graph -------------------------------------------------------------------------------
     def kg_add(self, entity, fact, task="", actor="", sha=""):
         self.q("INSERT INTO facts VALUES(?,?,?,?,?,?)", entity, fact, task, actor, sha, self.run or "")

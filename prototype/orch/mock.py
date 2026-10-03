@@ -1,8 +1,9 @@
 """Scripted stand-in for an agent CLI (zero-cost tests). Speaks agy's JSON; behaviour comes from the ORCH_MOCK scenario file:
 {"plan": [tasks], "amend": [tasks], "steps": {"<role>:<task>[@<model>]": [step, ...]}} - call n of a role/task uses step n, the last
 repeats; a key with @model wins for that model.
-step: {"write": {path: text}, "delete": [path], "sleep": s, "exit": code, "stderr": text, "raw": reply text, "reply": {fields}}"""
-import json, os, re, sys, time
+step: {"write": {path: text}, "delete": [path], "sleep": s, "exit": code, "stderr": text, "raw": reply text, "reply": {fields},
+"mcp": [tool, arguments] = call a tool on the orch MCP server named in the call's config; its text becomes the reply summary}"""
+import json, os, re, subprocess, sys, time
 from pathlib import Path
 
 
@@ -47,6 +48,15 @@ def main():
     if "exit" in step:
         sys.stderr.write(step.get("stderr", "mock failure"))
         sys.exit(step["exit"])
+    if "mcp" in step:  # what an agent CLI does: start the server from its per-call config, with a minimal env
+        srv = json.loads(os.environ["OPENCODE_CONFIG_CONTENT"])["mcp"]["orch"]
+        msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
+                {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": step["mcp"][0], "arguments": step["mcp"][1]}}]
+        env = {**srv["environment"], **{k: os.environ[k] for k in ("SYSTEMROOT",) if k in os.environ}}
+        out = subprocess.run(srv["command"], input="".join(json.dumps(m) + "\n" for m in msgs), capture_output=True,
+                             encoding="utf-8", env=env, timeout=60).stdout
+        step = {**step, "reply": {"summary": json.loads(out.splitlines()[-1])["result"]["content"][0]["text"], **step.get("reply", {})}}
     reply = {**default(role, task, sc), **step.get("reply", {})}
     if role == "worker" and "files" not in step.get("reply", {}):
         reply["files"] = list(step.get("write", {}))

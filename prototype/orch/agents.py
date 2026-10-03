@@ -254,9 +254,27 @@ def supports_readonly(aid):
     return "ro" in catalog()[aid].get("mode", {})
 
 
-def run_agent(aid, model, prompt, cwd, out_dir, schema=None, session=None, timeout=1800, readonly=False, on_start=None, env=None):
-    """schema = contract name in catalog/schemas. readonly = plan/read-only mode (lead, reviewer, probes)."""
+def mcp_server(project):
+    """How an agent CLI starts this workspace's MCP server (orch/mcp.py). The env is explicit: CLIs give MCP servers a minimal one
+    (no home directory to derive ~/.orchestra from, on Windows)."""
+    return {"command": sys.executable, "args": ["-m", "orch", "--ws", str(project), "mcp"],
+            "env": {"PYTHONPATH": str(ROOT), "ORCH_HOME": str(HOME)}}
+
+
+def toml(v):
+    """JSON strings and arrays are valid TOML; objects become inline tables (codex -c key=value parses the value as TOML)."""
+    if isinstance(v, dict):
+        return "{" + ", ".join(f"{json.dumps(k)} = {toml(x)}" for k, x in v.items()) + "}"
+    return json.dumps(v, ensure_ascii=False)
+
+
+def run_agent(aid, model, prompt, cwd, out_dir, schema=None, session=None, timeout=1800, readonly=False, on_start=None, env=None,
+              mcp=None):
+    """schema = contract name in catalog/schemas. readonly = plan/read-only mode (lead, reviewer, probes).
+    mcp = a project: the agent gets that workspace's MCP server through its CLI's per-call config (catalog "mcp": extra args
+    with {mcp_json}/{mcp_toml}, or "config" = opencode's OPENCODE_CONFIG_CONTENT). Nothing global is written."""
     a = catalog()[aid]
+    srv = mcp_server(mcp) if mcp and a.get("mcp") else None
     exe = resolve_bin(a["bin"])
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -274,14 +292,20 @@ def run_agent(aid, model, prompt, cwd, out_dir, schema=None, session=None, timeo
     sch = SCHEMAS / f"{schema}.json" if schema else None
     fill = {"model": model, "session": session or "", "out": str(out_dir / "last.txt"), "prompt": prompt,
             "mode": a.get("mode", {}).get("ro" if readonly else "rw", ""),
-            "schema": str(sch or ""), "schema_json": json.dumps(json.loads(sch.read_text())) if sch else ""}
+            "schema": str(sch or ""), "schema_json": json.dumps(json.loads(sch.read_text())) if sch else "",
+            "mcp_json": json.dumps({"mcpServers": {"orch": srv}}) if srv else "", "mcp_toml": toml(srv) if srv else "",
+            "mcp_tools": ",mcp__orch" if srv else ""}
     args = a["resume"] if session and a.get("resume") else a["run"]
+    args = a["mcp"] + args if srv and isinstance(a["mcp"], list) else args
     if not sch:  # drop "--flag {schema}" pairs when the call has no contract
         args = [x for i, x in enumerate(args) if "{schema" not in x and not (i + 1 < len(args) and "{schema" in args[i + 1])]
     cmd = exe + [re.sub(r"\{(\w+)\}", lambda m: fill.get(m.group(1), m.group(0)), x) for x in args]
     (out_dir / "last.txt").unlink(missing_ok=True)
-    if a.get("router"):
-        env = {**(env or {}), "OPENCODE_CONFIG_CONTENT": router_config(a, model)}
+    cfg = router_config(a, model) if a.get("router") else {}
+    if srv and a["mcp"] == "config":
+        cfg["mcp"] = {"orch": {"type": "local", "command": [srv["command"], *srv["args"]], "environment": srv["env"]}}
+    if cfg:
+        env = {**(env or {}), "OPENCODE_CONFIG_CONTENT": json.dumps(cfg)}
     t0 = time.time()
     try:
         code = spawn(cmd, cwd, worker_env(a, env), prompt.encode("utf-8") if a["prompt"] == "stdin" else None,
@@ -309,9 +333,9 @@ def run_agent(aid, model, prompt, cwd, out_dir, schema=None, session=None, timeo
 def router_config(a, model):
     """opencode merges OPENCODE_CONFIG_CONTENT into its config: one OpenAI-compatible provider "router" at the local endpoint
     (9router, LiteLLM, one-api ...). The key comes from the vault through the profile's env, never from this JSON."""
-    return json.dumps({"provider": {"router": {
+    return {"provider": {"router": {
         "npm": "@ai-sdk/openai-compatible", "name": a["name"], "models": {model: {"name": model}},
-        "options": {"baseURL": a["router"], "apiKey": "{env:ROUTER_API_KEY}", "headers": a.get("router_headers", {})}}}})
+        "options": {"baseURL": a["router"], "apiKey": "{env:ROUTER_API_KEY}", "headers": a.get("router_headers", {})}}}}
 
 
 FAILURES = [  # first match wins: a usage-limit message that links a billing or login page is still "quota"

@@ -17,7 +17,7 @@ YES = {"y", "yes", "ok", "okay", "approve", "approved", "accept", "lgtm", "go", 
 HARD_CAP = 6  # attempts per task before the user is asked
 TEAM_DEFAULTS = {"max_parallel": 4, "timeout": 1800, "verify_timeout": 600, "budget_tokens": 0, "max_amend": 1,
                  "skills": True, "auto_approve": False, "wait_reset": 600, "cooldown": 3600, "account_max": {},
-                 "verify_allow": None}
+                 "verify_allow": None, "mcp": False}
 
 RULES = {
     "common": """You are one agent in Orchestra, a local multi-agent coding team. The engine (a program, not an LLM) owns git, scheduling and integration.
@@ -409,7 +409,8 @@ class Engine:
                 self.kills[task] = kill
 
             run = lambda p, sub, sess: agents.run_agent(aid, model, p, cwd, sub, schema=contract_name, session=sess, timeout=timeout,
-                                                        readonly=readonly, on_start=started, env={"ORCH_WS": str(self.ws.project)})
+                                                        readonly=readonly, on_start=started, env={"ORCH_WS": str(self.ws.project)},
+                                                        mcp=self.ws.project if self.team["mcp"] else None)
             r = run(prompt, d, session)
             calls, obj, err = [r], None, None
             if r["ok"]:
