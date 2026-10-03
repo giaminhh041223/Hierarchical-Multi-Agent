@@ -70,7 +70,7 @@ Mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn 
    python -m orch --ws D:/du-an-cua-ban resume
    ```
 
-6. Hoặc làm mọi thứ trên web UI. UI chỉ mở trên 127.0.0.1, link in ra đã kèm token truy cập.
+6. Hoặc làm mọi thứ trên web UI. UI chỉ mở trên 127.0.0.1, link in ra đã kèm token truy cập. Tab Run vẽ sơ đồ DAG của run: mỗi cột một độ sâu phụ thuộc, màu theo trạng thái; di chuột lên node để xem chi tiết.
 
    ```bash
    python -m orch --ws D:/du-an-cua-ban ui

@@ -17,7 +17,7 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
 | Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả. 9router đã có trên máy nhưng chưa nối (§16 P0).</li></ul> |
 | Chưa chạy | <ul><li>`models refresh` / `skills refresh`: tải dữ liệu từ Internet, bạn tự chạy.</li><li>Nối 9router: cần bạn thao tác (§16 P0).</li></ul> |
-| Cố ý chưa làm | Canvas kéo-thả kiểu n8n, embeddings cho knowledge graph, worker chạy từ xa. |
+| Cố ý chưa làm | Sửa plan bằng kéo-thả trên canvas (sơ đồ DAG chỉ để xem đã có), embeddings cho knowledge graph, worker chạy từ xa. |
 
 ## 1. Ý tưởng cốt lõi
 
@@ -430,7 +430,7 @@ Ma trận quyền:
 - Chỉ bind 127.0.0.1.
 - Mỗi lần mở có một token ngẫu nhiên. Token nằm trong fragment của URL (không bao giờ gửi lên server hay ghi log) và được gửi qua header `X-Orch-Token`.
 - Kiểm tra Host để chống DNS rebinding, kiểm tra Origin để chống CSRF.
-- CSP với nonce; dữ liệu render bằng text node, không dùng `innerHTML`.
+- CSP với nonce; dữ liệu render bằng text node, không dùng `innerHTML`. Sơ đồ DAG cũng vậy: SVG dựng bằng DOM, chữ là text node.
 - Giới hạn kích thước request và timeout socket.
 - Vault chỉ hiện ở dạng đã che.
 
@@ -586,13 +586,16 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 - Repo map gộp theo thư mục cho repo lớn (§9).
 
 **P2**
-- Canvas DAG kiểu n8n: trước hết chỉ để xem, sau đó sửa plan bằng kéo-thả.
+- Canvas DAG kiểu n8n:
+  - đã có sơ đồ chỉ để xem trong tab Run: mỗi cột một độ sâu phụ thuộc, màu theo trạng thái, nét đứt là thứ tự ngầm (work chạy sau PLAN và SKILLS);
+  - còn lại: sửa plan bằng kéo-thả.
 - Embeddings cho knowledge graph, khi đo được FTS bỏ sót.
 - Mở knowledge graph và board cho agent qua MCP server.
 - Worker chạy từ xa; khi đó mới cần lease/heartbeat.
 
 **Giới hạn đã biết** (đánh dấu `ponytail:` trong code):
 - Repo map cắt ở cùng một độ sâu thư mục cho cả cây (tối đa 300 dòng).
+- Sơ đồ DAG xếp hàng theo thứ tự board, chưa giảm cạnh cắt nhau; cạnh nhảy cột có thể chạy sau node ở giữa.
 - Gợi ý đội hình: prior cố định nặng bằng k = 5 lời gọi; chưa tính thời gian và token.
 - Tài khoản at risk bị nhân hệ số cố định 0,75, không theo thời gian còn lại trước khi hết.
 - Knowledge graph chỉ tìm theo từ khoá.

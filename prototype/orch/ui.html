@@ -18,6 +18,10 @@ textarea { width: 100%; }
 .muted { opacity: .7; } .err { color: #d33; } .ok { color: #2a2; }
 .done { color: #2a2; } .failed, .cancelled { color: #d33; } .pending_user, .needs_lead { color: #c80; font-weight: 600; }
 .running, .verifying, .integrating { color: #27c; }
+.dag { overflow: auto; margin: 6px 0 14px; }
+.dag rect { fill: Canvas; stroke: currentColor; stroke-width: 1.5; }
+.dag text { fill: CanvasText; font-size: 12px; } .dag text.head { fill: currentColor; font-weight: 600; }
+.dag path { fill: none; stroke: #888; stroke-width: 1.2; }
 </style></head>
 <body>
 <header><strong>Orchestra</strong><nav id="tabs"></nav><span id="msg" class="muted"></span></header>
@@ -55,6 +59,36 @@ const draft = (key, props) => h(props.rows ? "textarea" : "input", Object.assign
 const table = (head, rows) => h("table", {}, h("tr", {}, head.map(x => h("th", {}, x))), rows.map(r => h("tr", {}, r.map(c => h("td", {}, c)))));
 const btn = (label, fn) => h("button", {onclick: fn}, label);
 const time = ts => new Date(ts * 1000).toLocaleTimeString();
+const svg = (tag, attrs, ...kids) => {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) if (v !== null) e.setAttribute(k, v);
+  e.append(...kids);
+  return e;
+};
+
+// The run's task graph, read-only, left to right: one column per dependency depth. Dashed = implicit order (work starts
+// after PLAN and SKILLS). ponytail: rows in board order, no crossing reduction; add a barycenter pass if plans get tangled.
+function dag(tasks) {
+  const by = Object.fromEntries(tasks.map(t => [t.id, t])), depth = {}, rows = [], pos = {}, W = 180, H = 46, GX = 48, GY = 14;
+  const up = t => (t.deps.length ? t.deps : t.kind === "work" ? [by.SKILLS ? "SKILLS" : "PLAN"] : t.kind === "skills" ? ["PLAN"] : [])
+    .filter(d => by[d] && d !== t.id);
+  const col = t => {
+    if (!(t.id in depth)) { depth[t.id] = 0; depth[t.id] = Math.max(0, ...up(t).map(d => col(by[d]) + 1)); }  // 0 first: a cycle cannot loop
+    return depth[t.id];
+  };
+  for (const t of tasks) { const c = col(t); rows[c] = (rows[c] || 0) + 1; pos[t.id] = [c * (W + GX), (rows[c] - 1) * (H + GY)]; }
+  const width = rows.length * (W + GX) - GX, height = Math.max(...rows.map(n => n || 0)) * (H + GY) - GY;
+  const edges = tasks.flatMap(t => up(t).map(d => {
+    const [x1, y1] = pos[d], [x2, y2] = pos[t.id], a = x1 + W, b = y1 + H / 2, c = y2 + H / 2;
+    return svg("path", {d: `M${a},${b} C${a + GX / 2},${b} ${x2 - GX / 2},${c} ${x2},${c}`, "stroke-dasharray": t.deps.length ? null : "4 3"});
+  }));
+  const nodes = tasks.map(t => svg("g", {class: t.status, transform: `translate(${pos[t.id]})`},
+    svg("title", {}, `${t.id}: ${t.title}\n${t.status}${t.assignee ? ", " + t.assignee : ""}${t.attempts ? ", try " + t.attempts : ""}`),
+    svg("rect", {width: W, height: H, rx: 6}),
+    svg("text", {x: 8, y: 18, class: "head"}, `${t.id} · ${t.status}`),
+    svg("text", {x: 8, y: 36}, t.title.length > 27 ? t.title.slice(0, 26) + "…" : t.title)));
+  return h("div", {class: "dag"}, svg("svg", {width, height, viewBox: `0 0 ${width} ${height}`}, ...edges, ...nodes));
+}
 
 async function Run() {
   const s = await api("state"), live = t => !["done", "failed", "cancelled"].includes(t.status);
@@ -75,6 +109,7 @@ async function Run() {
       draft("ans:" + t.id, {rows: 2, placeholder: "yes / retry / cancel / reassign <worker> / any instruction"}),
       h("div", {class: "row"}, btn("Send answer", () => act(() => api("answer", {task: t.id, text: drafts["ans:" + t.id] || "yes"})))))),
     s.tasks.length > 0 && h("h3", {}, "Board"),
+    s.tasks.length > 0 && dag(s.tasks),
     s.tasks.length > 0 && table(["id", "status", "worker", "try", "deps", "title", ""], s.tasks.map(t => [
       t.id, h("span", {class: t.status}, t.status), t.assignee || "", t.attempts, t.deps.join(", "), t.title,
       live(t) ? btn("cancel", () => act(() => api("cancel", {task: t.id}))) : ""])),

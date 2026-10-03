@@ -48,7 +48,7 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 | `core.py` | Đường dẫn, SQLite của workspace (`.orch/orch.db`), khoá engine, vault, JSON strict. |
 | `models.py` | Cơ sở dữ liệu model: benchmark Epoch AI, giá OpenRouter, lịch sử run; gợi ý đội hình (`suggest`). |
 | `skills.py` | Skill catalog (repo GitHub ghim commit, skill đã cài) và skill architect. |
-| `server.py`, `ui.html` | Web UI local (`python -m orch ui`): chỉ 127.0.0.1, có token. |
+| `server.py`, `ui.html` | Web UI local (`python -m orch ui`): chỉ 127.0.0.1, có token. Tab Run có sơ đồ DAG chỉ để xem (`dag()`). |
 | `mock.py` | Agent giả theo kịch bản, dùng cho test. |
 | `__main__.py` | CLI `python -m orch <lệnh>`. |
 
@@ -91,4 +91,4 @@ Xem `prototype/PLAN.md` §0 và §16.
 2. Nối 9router: người dùng tự kiểm tra cấu hình an toàn (§13), login dashboard và provider, `vault set NINEROUTER_API_KEY`, rồi `discover --only opencode@9router`.
 3. Tự chạy `models refresh`, `skills refresh` và `login claude`.
 
-P1 ở §16 đã xong. Tiếp theo là P2, bắt đầu bằng canvas DAG chỉ để xem trong web UI.
+P1 ở §16 đã xong, P2 đã có sơ đồ DAG chỉ để xem. Các mục P2 còn lại chỉ làm khi có nhu cầu đo được (xem §16).
