@@ -1,0 +1,5 @@
+{"type":"object","additionalProperties":false,"required":["status","summary","files","decisions","facts","question"],
+ "properties":{"status":{"type":"string","enum":["done","blocked","failed"]},"summary":{"type":"string"},
+  "files":{"$ref":"#/$defs/strings"},"decisions":{"$ref":"#/$defs/strings"},"facts":{"$ref":"#/$defs/strings"},
+  "question":{"type":["string","null"]}},
+ "$defs":{"strings":{"type":"array","items":{"type":"string"}}}}

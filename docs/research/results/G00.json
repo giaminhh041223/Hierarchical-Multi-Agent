@@ -1,0 +1,469 @@
+{
+  "acceptance_selfcheck": [
+    {
+      "covered": true,
+      "criterion_id": "G00-A1",
+      "evidence_refs": [
+        "G00-C01",
+        "G00-C02",
+        "G00-C05"
+      ],
+      "gap": null
+    },
+    {
+      "covered": true,
+      "criterion_id": "G00-A2",
+      "evidence_refs": [
+        "G00-C03",
+        "G00-C07"
+      ],
+      "gap": null
+    },
+    {
+      "covered": true,
+      "criterion_id": "G00-A3",
+      "evidence_refs": [
+        "G00-C02",
+        "G00-C05",
+        "G00-C08"
+      ],
+      "gap": null
+    },
+    {
+      "covered": true,
+      "criterion_id": "G00-A4",
+      "evidence_refs": [
+        "G00-C04",
+        "G00-C06",
+        "G00-C08"
+      ],
+      "gap": null
+    },
+    {
+      "covered": true,
+      "criterion_id": "G00-A5",
+      "evidence_refs": [
+        "G00-C01",
+        "G00-C02",
+        "G00-C03",
+        "G00-C04",
+        "G00-C05",
+        "G00-C06",
+        "G00-C07",
+        "G00-C08"
+      ],
+      "gap": null
+    }
+  ],
+  "claims": [
+    {
+      "derived_from": [],
+      "evidence_level": "DOCUMENTED",
+      "id": "G00-C01",
+      "limitations": [
+        "Căn cứ trên danh sách yêu cầu tại BRIEF.md ngày 02/10/2026."
+      ],
+      "locators": [
+        {
+          "content_hash": "41fe2e8c18b779e1769288d48e3d28ec23c82b99905e068786c7ad8cf7710e23",
+          "file_path": "docs/research/BRIEF.md",
+          "line_end": null,
+          "line_start": null,
+          "observation_log": null,
+          "retrieved_at": "2026-10-02",
+          "revision": null,
+          "section": "Yêu cầu từ người dùng",
+          "source_id": null,
+          "symbol": null,
+          "url": null
+        }
+      ],
+      "scope": {
+        "platform": "Windows",
+        "project": "Agent Orchestra",
+        "version": "02/10/2026"
+      },
+      "statement": "18 yêu cầu RQ01–RQ18 được phân loại chuẩn xác thành USER_REQUIREMENT (13), USER_EXPLORATORY (2), USER_INSPIRATION (1), CURRENT_DELIVERABLE (1) và CURRENT_CONSTRAINT (1)."
+    },
+    {
+      "derived_from": [],
+      "evidence_level": "DOCUMENTED",
+      "id": "G00-C02",
+      "limitations": [
+        "Phản ánh quyết định chưa phê duyệt kỹ thuật cho sản phẩm tính đến ngày 02/10/2026."
+      ],
+      "locators": [
+        {
+          "content_hash": "41fe2e8c18b779e1769288d48e3d28ec23c82b99905e068786c7ad8cf7710e23",
+          "file_path": "docs/research/BRIEF.md",
+          "line_end": null,
+          "line_start": null,
+          "observation_log": null,
+          "retrieved_at": "2026-10-02",
+          "revision": null,
+          "section": "Đề xuất trước đó chưa phải quyết định đã chốt",
+          "source_id": null,
+          "symbol": null,
+          "url": null
+        }
+      ],
+      "scope": {
+        "platform": "Windows",
+        "project": "Agent Orchestra",
+        "version": "02/10/2026"
+      },
+      "statement": "Toàn bộ đề xuất kiến trúc trước đây (Python stdlib, SQLite, vanilla UI, Git worktree, 2 vòng review) mang nhãn PROPOSED; người dùng chưa chốt stack, model cho sản phẩm, budget hay SLA."
+    },
+    {
+      "derived_from": [],
+      "evidence_level": "DOCUMENTED",
+      "id": "G00-C03",
+      "limitations": [
+        "Chỉ là tài liệu discovery lịch sử ngày 02/10/2026, chưa xác minh auth, quota hay inference."
+      ],
+      "locators": [
+        {
+          "content_hash": "ba24ed915411e1f80b6e31f7968673b0ffc0a92a04bc2916aae465e1f61bc273",
+          "file_path": "docs/INTEGRATIONS.md",
+          "line_end": null,
+          "line_start": null,
+          "observation_log": null,
+          "retrieved_at": "2026-10-02",
+          "revision": null,
+          "section": "Ma trận hỗ trợ",
+          "source_id": null,
+          "symbol": null,
+          "url": null
+        }
+      ],
+      "scope": {
+        "platform": "Windows",
+        "project": "Agent Orchestra",
+        "version": "02/10/2026"
+      },
+      "statement": "Khảo sát ghi nhận Codex 0.153.4, OpenCode 1.17.7, Antigravity 1.2.14 và catalog Claude/Gemini là quan sát lịch sử tài liệu; trạng thái auth, inference và quota là UNKNOWN."
+    },
+    {
+      "derived_from": [],
+      "evidence_level": "DOCUMENTED",
+      "id": "G00-C04",
+      "limitations": [
+        "Áp dụng theo chỉ thị chuyển trạng thái dự án ngày 02/10/2026."
+      ],
+      "locators": [
+        {
+          "content_hash": "dfbdec765444e422b9b3b3aca71240d4015a64ce29b496f8d5a084ddcd827318",
+          "file_path": "README.md",
+          "line_end": null,
+          "line_start": null,
+          "observation_log": null,
+          "retrieved_at": "2026-10-02",
+          "revision": null,
+          "section": "Agent Orchestra — bản đề xuất dự án",
+          "source_id": null,
+          "symbol": null,
+          "url": null
+        }
+      ],
+      "scope": {
+        "platform": "Windows",
+        "project": "Agent Orchestra",
+        "version": "02/10/2026"
+      },
+      "statement": "Dự án hoạt động ở chế độ research/planning-only; các tệp mã nguồn và giao diện nháp trước đây chưa nghiệm thu và không phải reference implementation."
+    },
+    {
+      "derived_from": [],
+      "evidence_level": "PROPOSED",
+      "id": "G00-C05",
+      "limitations": [
+        "Thiết kế sơ bộ đề xuất, cần thẩm định qua nghiên cứu và người dùng chốt."
+      ],
+      "locators": [
+        {
+          "content_hash": "4b22f95125e614415ba0995d9c1039f0334c374cfe3bf643f2af4faaceaa1abe",
+          "file_path": "docs/PRODUCT_PLAN.md",
+          "line_end": null,
+          "line_start": null,
+          "observation_log": null,
+          "retrieved_at": "2026-10-02",
+          "revision": null,
+          "section": "Những điều đã thống nhất trong cuộc trao đổi",
+          "source_id": null,
+          "symbol": null,
+          "url": null
+        }
+      ],
+      "scope": {
+        "platform": "Windows",
+        "project": "Agent Orchestra",
+        "version": "02/10/2026"
+      },
+      "statement": "Ranh giới MVP đề xuất gồm local single-user trên Windows, Lead/Reviewer/Worker/Skill Architect, non-blocking scheduler và kết nối CLI/API chính thức; benchmark/graph là candidate extensions."
+    },
+    {
+      "derived_from": [],
+      "evidence_level": "PROPOSED",
+      "id": "G00-C06",
+      "limitations": [
+        "Kế hoạch giao việc nghiên cứu đề xuất, chưa thực hiện các task downstream."
+      ],
+      "locators": [
+        {
+          "content_hash": "133f453fa0f13d4bb1e3d095a4b168d3172e1ba7d9bf87d8382f3d0d0291bdb9",
+          "file_path": "docs/research/README.md",
+          "line_end": null,
+          "line_start": null,
+          "observation_log": null,
+          "retrieved_at": "2026-10-02",
+          "revision": null,
+          "section": "Giai đoạn và điều kiện chuyển bước",
+          "source_id": null,
+          "symbol": null,
+          "url": null
+        }
+      ],
+      "scope": {
+        "platform": "Windows",
+        "project": "Agent Orchestra",
+        "version": "02/10/2026"
+      },
+      "statement": "Lộ trình 26 task G00–G25 gồm 5 giai đoạn có dependency chặt chẽ (G01 lập baseline tối đa 12 nguồn recheck; downstream recheck nguồn dùng); runtime questions chuyển thành future experiment."
+    },
+    {
+      "derived_from": [
+        "G00-C03"
+      ],
+      "evidence_level": "INFERRED",
+      "id": "G00-C07",
+      "limitations": [
+        "Lập luận logic dựa trên quy tắc phân định tài nguyên hệ thống."
+      ],
+      "locators": [
+        {
+          "content_hash": "7dec54660d1e9eb84ffdb2447adac3052eeab463098367b8f680031a967e765a",
+          "file_path": "docs/research/GEMINI_RULES.md",
+          "line_end": null,
+          "line_start": null,
+          "observation_log": null,
+          "retrieved_at": "2026-10-02",
+          "revision": null,
+          "section": "Những nhầm lẫn cần chặn",
+          "source_id": null,
+          "symbol": null,
+          "url": null
+        }
+      ],
+      "scope": {
+        "platform": "Windows",
+        "project": "Agent Orchestra",
+        "version": "02/10/2026"
+      },
+      "statement": "Không thể suy diễn trạng thái xác thực, hạn mức hay khả năng suy luận thành công từ binary CLI hoặc catalog; thư mục làm việc và Git worktree không phải là OS sandbox."
+    },
+    {
+      "derived_from": [],
+      "evidence_level": "DOCUMENTED",
+      "id": "G00-C08",
+      "limitations": [
+        "Áp dụng theo chỉ thị vận hành kênh ngày 02/10/2026."
+      ],
+      "locators": [
+        {
+          "content_hash": "b6875a73ae45b671f3b45e5c2d6f843482411c030bd26256f233b07b77e05ee4",
+          "file_path": "docs/research/CONTROL_BRIEF.md",
+          "line_end": null,
+          "line_start": null,
+          "observation_log": null,
+          "retrieved_at": "2026-10-02",
+          "revision": null,
+          "section": "Chỉ thị vận hành kênh hiện tại",
+          "source_id": null,
+          "symbol": null,
+          "url": null
+        },
+        {
+          "content_hash": "97f9653cce5d8315207d1c5ba8c74758ea4d188c6d961b4dc3a37854dd130930",
+          "file_path": "docs/research/tasks/G00-baseline.md",
+          "line_end": null,
+          "line_start": null,
+          "observation_log": null,
+          "retrieved_at": "2026-10-02",
+          "revision": null,
+          "section": "Công việc theo thứ tự",
+          "source_id": null,
+          "symbol": null,
+          "url": null
+        }
+      ],
+      "scope": {
+        "platform": "Windows",
+        "project": "Agent Orchestra",
+        "version": "02/10/2026"
+      },
+      "statement": "BRIEF.md ưu tiên hơn tài liệu nháp khi xác định scope planning, nhưng chỉ thị trực tiếp từ người dùng và host policy có quyền ưu tiên cao nhất. Người dùng chọn Gemini Flash 3.8 High cho phiên worker nghiên cứu hiện tại, chưa chọn model cho các vai trò của sản phẩm."
+    }
+  ],
+  "commands": [],
+  "conflicts": [
+    {
+      "claim_refs": [
+        "G00-C04",
+        "G00-C08"
+      ],
+      "description": "Mã nguồn nháp và test case trước đây đối lập với chỉ thị dừng triển khai sang research-only.",
+      "followup": "Áp dụng BRIEF.md và CONTROL_BRIEF; xem toàn bộ mã nháp là dữ liệu tham khảo, không chạy inference hay audit code nháp.",
+      "resolution": "RESOLVED_WITH_EVIDENCE"
+    },
+    {
+      "claim_refs": [
+        "G00-C02",
+        "G00-C05"
+      ],
+      "description": "Đề xuất stack công nghệ (Python stdlib, SQLite, vanilla UI, tối đa 2 vòng review) đối lập với việc người dùng chưa chốt quyết định kỹ thuật.",
+      "followup": "Gắn nhãn PROPOSED cho toàn bộ kiến trúc và quy trình đề xuất; bảo lưu quyền lựa chọn công nghệ cho người dùng tại G23.",
+      "resolution": "RESOLVED_WITH_EVIDENCE"
+    },
+    {
+      "claim_refs": [
+        "G00-C03",
+        "G00-C07"
+      ],
+      "description": "Ghi nhận CLI version và catalog đối lập với nguy cơ ngộ nhận đã sẵn sàng suy luận hoặc an toàn sandbox.",
+      "followup": "Ghi nhận discovery lịch sử ngày 02/10/2026; đánh dấu UNKNOWN cho auth/inference/quota; nhấn mạnh worktree/folder không phải OS sandbox.",
+      "resolution": "VERSION_SCOPED"
+    }
+  ],
+  "input_refs": [
+    {
+      "content_hash": "e05fbef9895de3f53933ca87585e32fc4487db419caa449880161bdc44a1f88c",
+      "ref": "AGENTS.md",
+      "revision": null
+    },
+    {
+      "content_hash": "41fe2e8c18b779e1769288d48e3d28ec23c82b99905e068786c7ad8cf7710e23",
+      "ref": "docs/research/BRIEF.md",
+      "revision": null
+    },
+    {
+      "content_hash": "7dec54660d1e9eb84ffdb2447adac3052eeab463098367b8f680031a967e765a",
+      "ref": "docs/research/GEMINI_RULES.md",
+      "revision": null
+    },
+    {
+      "content_hash": "97f9653cce5d8315207d1c5ba8c74758ea4d188c6d961b4dc3a37854dd130930",
+      "ref": "docs/research/tasks/G00-baseline.md",
+      "revision": null
+    },
+    {
+      "content_hash": "44db8481447f22d3a473f6a56a81d4d6571026ae0855da1144add960fc1e4115",
+      "ref": "docs/research/templates/REPORT_TEMPLATE.md",
+      "revision": null
+    },
+    {
+      "content_hash": "2d21134eae9ba0d29217603c38f73027097a6cae49bff512f289675c8cad9d90",
+      "ref": "docs/research/result.schema.json",
+      "revision": null
+    },
+    {
+      "content_hash": "dfbdec765444e422b9b3b3aca71240d4015a64ce29b496f8d5a084ddcd827318",
+      "ref": "README.md",
+      "revision": null
+    },
+    {
+      "content_hash": "4b22f95125e614415ba0995d9c1039f0334c374cfe3bf643f2af4faaceaa1abe",
+      "ref": "docs/PRODUCT_PLAN.md",
+      "revision": null
+    },
+    {
+      "content_hash": "ba24ed915411e1f80b6e31f7968673b0ffc0a92a04bc2916aae465e1f61bc273",
+      "ref": "docs/INTEGRATIONS.md",
+      "revision": null
+    },
+    {
+      "content_hash": "133f453fa0f13d4bb1e3d095a4b168d3172e1ba7d9bf87d8382f3d0d0291bdb9",
+      "ref": "docs/research/README.md",
+      "revision": null
+    },
+    {
+      "content_hash": "b6875a73ae45b671f3b45e5c2d6f843482411c030bd26256f233b07b77e05ee4",
+      "ref": "docs/research/CONTROL_BRIEF.md",
+      "revision": null
+    },
+    {
+      "content_hash": "e16a306c5b53a6f6d042c91ecce814fbc0f112cac8a338f5f3d687a9455dca05",
+      "ref": "docs/research/reviews/G00.json",
+      "revision": "2"
+    },
+    {
+      "content_hash": "8e25617b6ddf13925bfdb1bca7da38bfc5d032be6505668ba267d8fad2ccb304",
+      "ref": "docs/research/results/G00.json",
+      "revision": "2"
+    }
+  ],
+  "output_files": [
+    "docs/research/reports/G00.md",
+    "docs/research/results/G00.json"
+  ],
+  "requirement_ids": [
+    "RQ01",
+    "RQ02",
+    "RQ03",
+    "RQ04",
+    "RQ05",
+    "RQ06",
+    "RQ07",
+    "RQ08",
+    "RQ09",
+    "RQ10",
+    "RQ11",
+    "RQ12",
+    "RQ13",
+    "RQ14",
+    "RQ15",
+    "RQ16",
+    "RQ17",
+    "RQ18"
+  ],
+  "revision": 3,
+  "runtime_tests": "NOT_RUN",
+  "schema_status": {
+    "errors": [],
+    "validated": false,
+    "validator": null
+  },
+  "schema_version": "1.0",
+  "scope_summary": "Chốt và chuẩn hóa 18 yêu cầu RQ01–RQ18, phân định quan sát discovery lịch sử và năng lực runtime, xác định ranh giới MVP đề xuất và ánh xạ lộ trình G01–G25 ở chế độ planning-only theo revision 3.",
+  "task_id": "G00",
+  "task_status": "PENDING_REVIEW",
+  "unknowns": [
+    {
+      "blocks_decision": true,
+      "id": "U01",
+      "impact": "Xác định việc Codex CLI có thể dùng làm execution host hay cần cấu hình lại.",
+      "next_verification": "Trong G09, chỉ thực hiện lệnh `--version` và `--help` theo allowlist để xác minh metadata; đọc official auth docs. Trạng thái auth/quota thực tế giữ UNKNOWN cho bài thử nghiệm tương lai cần người dùng ủy quyền rõ ràng ngoài allowlist của G09. Không tạo lệnh kiểm tra chưa xác minh.",
+      "question": "Trạng thái xác thực tài khoản và hạn mức thực tế của Codex CLI trên máy hiện tại là gì?"
+    },
+    {
+      "blocks_decision": true,
+      "id": "U02",
+      "impact": "Quyết định mức độ an toàn sandbox khi giao task cho Claude/Gemini qua Antigravity.",
+      "next_verification": "Trong G10, đọc tài liệu permission chính thức và kiểm tra `--help` theo allowlist; tách riêng kiểm chứng isolation/sandbox thành future experiment cần OS sandbox/quyền riêng.",
+      "question": "Khả năng cách ly thư mục và cấu hình quyền per-run của Antigravity CLI trên Windows ra sao?"
+    },
+    {
+      "blocks_decision": false,
+      "id": "U03",
+      "impact": "Ảnh hưởng đến việc chọn kiến trúc adapter OpenCode và quản lý session/quyền.",
+      "next_verification": "Phân tích OpenAPI schema chính thức và kiểm tra capability matrix trong G11.",
+      "question": "Mức độ tương thích giữa OpenCode v1 CLI và v2 server OpenAPI đối với luồng approval và streaming?"
+    },
+    {
+      "blocks_decision": false,
+      "id": "U04",
+      "impact": "Ảnh hưởng đến thiết kế database schema và scheduler engine ở G17.",
+      "next_verification": "Trình bày bảng phân tích trade-off kỹ thuật trong G17/G23; làm rõ Git worktree là checkout/workspace chứ không phải state database. Nếu so Git thì xem xét versioned metadata files trong Git repo với các hạn chế concurrency.",
+      "question": "Người dùng ưu tiên cơ chế lưu trữ metadata và state nào giữa SQLite, JSON files hay versioned files trong Git repository?"
+    }
+  ]
+}

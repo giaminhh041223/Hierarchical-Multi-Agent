@@ -1,0 +1,5 @@
+{"_doc": "Curated skill sources pinned to a commit (bump ref deliberately). Only SKILL.md folders under prefix are indexed. Repos approved with `python -m orch skills approve <url>` are kept in ~/.orchestra/skills/sources.json.",
+ "sources": [
+  {"id": "anthropic", "repo": "anthropics/skills", "ref": "8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4", "prefix": "skills/"},
+  {"id": "openai", "repo": "openai/skills", "ref": "49f948faa9258a0c61caceaf225e179651397431", "prefix": "skills/.curated/"}
+ ]}

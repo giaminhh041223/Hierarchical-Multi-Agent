@@ -1,0 +1,332 @@
+# Orchestra (prototype)
+
+Orchestra điều phối nhiều AI coding agent CLI (codex, claude, agy, opencode, gemini …) ngay trên máy của bạn.
+
+Cách làm việc:
+- Một lead lập plan cùng reviewer.
+- Các worker làm song song, mỗi worker trong một git worktree riêng.
+- Engine tự kiểm tra, verify và gộp kết quả vào nhánh `orch/<run>/main`.
+- Bạn chỉ được hỏi khi việc vượt quyền của lead.
+
+Thiết kế đầy đủ, trạng thái hiện tại và biên bản trao đổi với Codex nằm ở [PLAN.md](PLAN.md).
+
+## Yêu cầu
+
+- Windows 10/11. Trên Linux (WSL) bộ test đã chạy qua, nhưng chưa chạy với agent thật. macOS chưa thử.
+- Python 3.11 trở lên. Chỉ dùng thư viện chuẩn, không cần `pip install`.
+- git.
+- Ít nhất một agent CLI đã cài và đăng nhập. Trên máy này đã dùng được `codex`, `agy` và `opencode@free` (model free của OpenCode Zen, không cần tài khoản).
+
+## Bắt đầu nhanh
+
+Mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn bằng `--ws <thư mục>`, đặt **trước** tên lệnh. Cũng có thể đặt biến `ORCH_WS`, hoặc đứng trong thư mục dự án và thêm `prototype/` vào `PYTHONPATH`.
+
+1. Tìm agent, model và trạng thái đăng nhập. `--probe` gửi một lời gọi rất nhỏ tới từng agent để chắc chắn nó dùng được.
+
+   ```bash
+   python -m orch discover --probe
+   ```
+
+2. Đăng nhập agent còn thiếu, hoặc lưu API key vào vault (mã hoá DPAPI):
+
+   ```bash
+   python -m orch login claude
+   ```
+
+   ```bash
+   python -m orch vault set ZAI_API_KEY
+   ```
+
+3. Chọn đội cho dự án. Lệnh này:
+   - liệt kê agent/model, gợi ý lead, reviewer, skill architect và worker;
+   - probe các model được chọn;
+   - ghi `.orch/team.json` và `.orch/rules/`.
+
+   Dự án chưa có commit nào thì lệnh đề nghị `git init` kèm commit đầu tiên.
+
+   ```bash
+   python -m orch --ws D:/du-an-cua-ban init
+   ```
+
+4. Giao mục tiêu. Engine chạy ở cửa sổ này cho tới khi xong. Khi cần bạn, nó chờ câu trả lời; thêm `--exit-on-wait` để engine thoát với mã 3 thay vì chờ.
+
+   ```bash
+   python -m orch --ws D:/du-an-cua-ban run "Thêm endpoint /health kèm test"
+   ```
+
+5. Ở cửa sổ khác, xem việc đang chờ bạn và trả lời. Đầu tiên là duyệt plan: plan nằm ở `.orch/runs/<run>/plan.md`.
+
+   ```bash
+   python -m orch --ws D:/du-an-cua-ban inbox
+   ```
+
+   ```bash
+   python -m orch --ws D:/du-an-cua-ban answer PLAN "yes"
+   ```
+
+   Nếu engine đã dừng (dùng `--exit-on-wait`, Ctrl+C, hoặc crash), chạy tiếp bằng `resume`:
+
+   ```bash
+   python -m orch --ws D:/du-an-cua-ban resume
+   ```
+
+6. Hoặc làm mọi thứ trên web UI. UI chỉ mở trên 127.0.0.1, link in ra đã kèm token truy cập.
+
+   ```bash
+   python -m orch --ws D:/du-an-cua-ban ui
+   ```
+
+7. Đọc `.orch/runs/<run>/report.md`, xem diff, rồi tự merge khi hài lòng. Engine không bao giờ đụng vào nhánh của bạn.
+
+   ```bash
+   git merge orch/<run>/main
+   ```
+
+## Lệnh
+
+| Lệnh | Việc |
+|---|---|
+| `discover [--probe] [--only codex,agy]` | Tìm agent CLI, model và trạng thái đăng nhập. Kết quả ghi vào `~/.orchestra/resources.json`. |
+| `login <agent>` | Mở luồng đăng nhập của chính CLI đó. Với claude: gõ `/login` trong cửa sổ mở ra. |
+| `vault list` · `vault set NAME` · `vault rm NAME` | Quản lý API key: nhập ẩn, mã hoá DPAPI, chỉ hiển thị dạng đã che. |
+| `models refresh` · `models show [id…]` · `models suggest` | DB model:<ul><li>`refresh` tải dữ liệu Epoch AI và OpenRouter.</li><li>`show` in thẻ model.</li><li>`suggest` gợi ý đội.</li></ul> |
+| `skills list` · `skills refresh` · `skills approve <url>` · `skills reject <url>` | Chỉ mục skill:<ul><li>`refresh` gọi GitHub API.</li><li>`approve` / `reject` duyệt repo ngoài danh sách.</li></ul> |
+| `init [--yes] [--team file.json] [--no-probe]` | Chọn đội cho dự án. |
+| `pool` · `pool plan [--preset steady\|match\|precise] [--criteria "s=3,t"] [--per 1] [--no-test] [--yes]` · `pool test [agent/model …]` | Resource planner:<ul><li>`pool` in quota của từng tài khoản và backup của từng worker.</li><li>`plan` xếp hạng, pre-test rồi lưu pool backup.</li><li>`test` thử lại vài model.</li></ul>Xem [Hết usage](#hết-usage-xoay-vòng-và-pool-backup). |
+| `run "<mục tiêu>" [--yes] [--exit-on-wait]` | Bắt đầu một run. `--yes` tự duyệt plan sau khi reviewer đã review. |
+| `resume [--exit-on-wait]` | Chạy tiếp run hiện tại. |
+| `status` · `board` · `inbox` | Xem tình hình run, bảng task, việc đang chờ bạn. |
+| `answer <task> "<trả lời>"` | Trả lời một task đang chờ. |
+| `cancel <task \| all>` | Huỷ một task (kéo theo các task phụ thuộc nó) hoặc huỷ cả run. |
+| `log [-n 40]` | Xem các sự kiện gần nhất. Đây là kênh chung của cả đội. |
+| `kg search <từ khoá> [-k 8]` · `kg links <node>` · `kg add <entity> <fact>` | Knowledge graph dùng chung. |
+| `ui [--port 8765] [--no-browser]` | Web UI. Cổng bận thì tự chọn cổng khác. |
+
+Mã thoát của `run` và `resume`:
+- `0`: xong;
+- `3`: đang chờ bạn;
+- `1`: thất bại hoặc bị huỷ.
+
+## Trả lời câu hỏi
+
+| Task đang chờ | Câu trả lời |
+|---|---|
+| `PLAN` | <ul><li>`yes` / `có` / `duyệt` / `ok` / `lgtm`: bắt đầu.</li><li>Viết góp ý: lead lập lại plan theo góp ý.</li></ul> |
+| Task công việc | <ul><li>`retry`;</li><li>`reassign <worker>`;</li><li>`cancel` / `skip` / `hủy` / `bỏ qua`;</li><li>văn bản tự do: thành chỉ dẫn cho lần thử sau.</li></ul> |
+| `BUDGET<n>` | Ngân sách token mới (`500k`, `2m`, `5000000`) hoặc `stop`. |
+| `REVIEW<n>` | <ul><li>`accept` / `yes`: kết thúc.</li><li>`retry`: review lại.</li><li>Mô tả việc cần làm: lead bổ sung task.</li></ul> |
+
+## Hết usage: xoay vòng và pool backup
+
+**Khi một tài khoản hết usage giữa run**, engine xử lý như sau, không tốn token:
+- **Khoá cả tài khoản.** Mọi worker và vai trò dùng tài khoản đó tạm dừng tới giờ reset. Giờ reset lấy theo thứ tự:
+  1. thông báo lỗi của CLI;
+  2. bản ghi quota của chính CLI (codex);
+  3. tham số `cooldown` (mặc định 3600 s).
+- **Reset sắp tới hoặc không có ai thay:** task chờ. "Sắp tới" nghĩa là trong vòng `wait_reset` (mặc định 600 s).
+- **Còn lâu mới reset:** một worker dự phòng làm tiếp ngay trong worktree đó, giữ phần việc dở.
+- **Sau giờ reset:** task tự quay về worker chính ở lần thử kế tiếp. Engine không cắt ngang backup đang chạy.
+- **Task còn trong hàng đợi** của tài khoản đã hết được chuyển ngay, khỏi phải tốn một lời gọi thất bại.
+- **Lead, reviewer, skill architect** được một vai trò hoặc worker khác đứng thay.
+
+Thứ tự chọn người thay:
+1. Worker còn slot trống trước.
+2. Rồi lần lượt:
+   1. backup được lập riêng cho worker đó;
+   2. backup viết tay;
+   3. backup của worker khác;
+   4. worker chính khác.
+3. Không bao giờ chọn tài khoản đang bị khoá.
+
+**Resource planner** là một vai trò tất định: code, không phải LLM, nên không tốn token. Đầu mỗi `run` và `resume`, nó:
+- Đọc quota của từng tài khoản.
+  - Codex: đọc từ chính rollout của codex. Chỉ đọc object `rate_limits`, không đọc nội dung hội thoại.
+  - Agent khác: học từ lỗi của chúng.
+- Ghi vào `plan.md` mục `## Resources`: % đã dùng, giờ reset, và dự báo "hết lúc ~HH:MM theo tốc độ hiện tại".
+- Khoá trước tài khoản đã hết.
+- Cảnh báo khi một tài khoản có thể hết trước giờ reset mà worker của nó chưa có backup.
+
+```bash
+python -m orch --ws D:/du-an-cua-ban pool plan
+```
+
+`pool plan` làm lần lượt:
+1. Bạn tick tiêu chí, hoặc chọn một trong 3 preset.
+2. Engine xếp hạng mọi model đã đăng nhập.
+3. Engine pre-test 3 ứng viên đầu của mỗi worker bằng một task code nhỏ. Engine tự chấm kết quả, không tin lời model.
+4. Engine lưu ứng viên tốt nhất vào `team.json` làm backup của từng worker.
+
+Các trường hợp luôn bị loại:
+- model cùng tài khoản với worker chính, vì sẽ hết usage cùng lúc;
+- tài khoản đã dùng ≥ 90%;
+- model đang làm worker chính;
+- model có lần pre-test gần nhất lỗi nặng: auth, sai model, trả lời sai hợp đồng.
+
+| Tiêu chí | Đo gì |
+|---|---|
+| `s` ổn định | Tỉ lệ lời gọi không bị quota / rate limit / timeout cắt ngang, tức không bị "bóp token". Lấy từ lịch sử của bạn và pre-test. |
+| `c` code | Percentile SWE-bench Verified, Terminal-Bench, METR time horizon. |
+| `r` suy luận | Percentile GPQA Diamond, HLE, Epoch ECI. |
+| `h` trung thực | Tỉ lệ "done" qua được verify. Càng cao thì càng ít ảo giác. |
+| `n` tương đương | Năng lực gần worker chính nhất. Model mạnh hơn chỉ bị trừ nửa điểm. |
+| `q` nhanh | 30 s = 1 điểm, 10 phút = 0 điểm. |
+| `f` free | Không tốn quota trả phí. |
+| `t` tin cậy | Bộ lọc: chỉ giữ model có kết quả benchmark công khai. Cần chạy `models refresh`. |
+
+| Preset | Trọng số | Khi nào dùng |
+|---|---|---|
+| `steady` (mặc định): Ổn định, không đứt gãy | s3 q2 f2 h1 c1 | Gián đoạn ngắn, cần công việc chảy liên tục. |
+| `match`: Năng lực tương đương | n3 c3 r2 s1, lọc t | Gián đoạn dài, task cốt lõi. |
+| `precise`: Chính xác, ít ảo giác | h3 r3 s1 c1, lọc t | Task nhạy cảm. |
+
+Cách tính điểm:
+- Điểm = trung bình có trọng số của các tiêu chí.
+- Tiêu chí chưa có dữ liệu tính 0,5.
+- Cột `conf` cho biết bao nhiêu phần trọng số có dữ liệu thật.
+
+Chỉnh tiêu chí:
+- Trong hộp thoại: gõ chữ cái để bật/tắt, `c=3` để đặt trọng số, số `1`–`3` để chọn preset.
+- Trên dòng lệnh: `--criteria "s=3,q=2,t"`.
+
+## 9router (tuỳ chọn): nhiều API AI free qua một endpoint
+
+[9router](https://github.com/decolua/9router) là router chạy local, có endpoint tương thích OpenAI tại `http://127.0.0.1:20128/v1`. Nó gom nhiều nhà cung cấp, có cả gói free, nên làm pool backup rất hợp. Orchestra dùng nó qua profile `opencode@9router`: opencode gọi router, key lấy từ vault và không bao giờ ghi vào file cấu hình.
+
+Prototype chưa cài 9router. Tự cài nếu bạn muốn, theo các bước:
+
+1. Cài từ npm: gói `9router`, khoảng 54 MB, MIT. Đọc README của repo trước.
+2. Cấu hình an toàn **trước khi** đăng nhập dashboard:
+   - `HOSTNAME=127.0.0.1`: Docker mặc định `0.0.0.0`.
+   - `REQUIRE_API_KEY=true`: mặc định `false`.
+   - Đổi `INITIAL_PASSWORD`: mặc định `123456`.
+   - Tắt Cloud Sync nếu không cần.
+   - Không bật các tính năng MITM, cài chứng chỉ hay DNS.
+3. Trên dashboard (`http://127.0.0.1:20128`): kết nối các nhà cung cấp, tạo API key.
+4. Gửi key cho Orchestra và kiểm tra:
+
+   ```bash
+   python -m orch vault set NINEROUTER_API_KEY
+   ```
+
+   ```bash
+   python -m orch discover --only opencode@9router --probe
+   ```
+
+5. Model của router xuất hiện dạng `opencode@9router/<provider>/<model>`. `pool plan` tự xếp hạng và pre-test chúng.
+
+Engine gửi kèm header `X-9Router-Token-Saver: off`. Lý do: tính năng nén prompt của router có thể làm hỏng hợp đồng JSON giữa engine và worker.
+
+## Dùng Claude Code hoặc Codex làm lead tương tác
+
+Mở Claude Code hoặc Codex trong dự án của bạn và bảo nó điều khiển Orchestra qua CLI, ví dụ:
+
+> dùng `python -m orch --ws . status`, `inbox`, `answer`, `kg search` để theo dõi và xử lý run
+
+Bên trong run, worker đã có sẵn `ORCH_WS` và `PYTHONPATH`, nên tự tra knowledge graph được bằng `python -m orch kg search …`.
+
+## Workspace
+
+Engine đặt `<dự án>/.orch/` vào `.git/info/exclude`, nên thư mục này không lọt vào commit. Nội dung:
+
+```
+.orch/
+  orch.db                 tasks, attempts, plans, events (kênh chung), facts, links, skills
+  team.json               đội và tham số
+  rules/                  common.md, lead.md, reviewer.md, worker.md, skill_architect.md, <worker>.md
+  runs/<run>/plan.md      plan để bạn duyệt
+  runs/<run>/report.md    báo cáo cuối: task, commit, token và chi phí theo agent/model
+  runs/<run>/attempts/    prompt, đầu ra, log verify của từng lần gọi
+```
+
+Bạn sửa `rules/` tự do; engine chỉ tạo file khi file chưa có.
+
+Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi bằng `ORCH_HOME`): `resources.json`, `vault.dpapi`, `history.db`, `skills/`, và các worktree trong `wt/`.
+
+## team.json
+
+`init` tạo file này. Bạn có thể viết tay rồi dùng `init --team file.json`.
+
+```json
+{
+  "lead":            {"agent": "codex", "model": "<model>"},
+  "reviewer":        {"agent": "agy",   "model": "<model>"},
+  "skill_architect": {"agent": "agy",   "model": "<model>"},
+  "workers": {
+    "codex-1": {"agent": "codex", "model": "<model>", "max": 1},
+    "agy-2":   {"agent": "agy",   "model": "<model>", "max": 1},
+    "oc-3":    {"agent": "opencode@free", "model": "opencode/big-pickle", "max": 1, "backup": true}
+  },
+  "wait_reset": 600,
+  "cooldown": 3600,
+  "max_parallel": 4,
+  "timeout": 1800,
+  "verify_timeout": 600,
+  "budget_tokens": 0,
+  "max_amend": 1,
+  "skills": true,
+  "auto_approve": false,
+  "notify_url": null
+}
+```
+
+| Trường | Ý nghĩa |
+|---|---|
+| `agent` | Id trong [catalog/agents.json](catalog/agents.json): `codex`, `claude`, `claude@zai`, `agy`, `opencode`, `opencode@free`, `opencode@9router`, `gemini`, `cursor-agent`. Một id là một tài khoản, tức một quota. |
+| `max` | Số task một worker chạy cùng lúc. |
+| `backup` | Worker chỉ đứng thay, không có trong danh sách lead dùng để lập plan. |
+| `for` | Danh sách worker chính mà backup này được lập riêng cho. `pool plan` tự ghi trường này. Thiếu `for` thì backup đứng thay cho tất cả. |
+| `wait_reset` | Reset trong vòng chừng này giây thì chờ, không xoay vòng. |
+| `cooldown` | Thời gian khoá một tài khoản hết usage khi CLI không nói giờ reset. Đây cũng là mốc bật lại model chính. |
+| `pool` | Preset, tiêu chí và thời điểm của lần `pool plan` gần nhất. |
+| `max_parallel` | Tổng số task chạy song song. |
+| `timeout` | Thời gian tối đa (giây) cho mỗi lần gọi agent. |
+| `verify_timeout` | Thời gian tối đa (giây) cho mỗi lệnh verify. |
+| `budget_tokens` | Ngân sách token của run. `0` = không giới hạn. |
+| `max_amend` | Số lần lead được bổ sung task sau review cuối. |
+| `skills` | Bật/tắt skill architect. |
+| `auto_approve` | Bỏ qua bước bạn duyệt plan. |
+| `notify_url` | Webhook kiểu ntfy/Slack/Discord, gửi khi cần bạn và khi xong. Có thể thay bằng biến `ORCH_NOTIFY_URL`. |
+
+## Biến môi trường
+
+| Biến | Ý nghĩa |
+|---|---|
+| `ORCH_HOME` | Thư mục dữ liệu chung, mặc định `~/.orchestra`. |
+| `ORCH_WS` | Dự án mặc định, thay cho `--ws`. |
+| `ORCH_NOTIFY_URL` | Webhook thông báo. |
+| `ORCH_MOCK`, `ORCH_CRASH_AT` | Chỉ dùng cho test. |
+
+## Bảo mật (tóm tắt)
+
+Chi tiết ở [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
+
+- **Agent chạy với quyền của bạn.** Worktree không phải sandbox. Giới hạn thật là sandbox/permission mode của từng CLI, ví dụ `codex -s workspace-write`.
+- **Secret.**
+  - Mỗi agent chỉ nhận đúng biến chứng thực adapter của nó cần.
+  - Lệnh verify chạy không có secret nào.
+  - Log, events và UI đều che secret.
+- **Git.** Engine commit với hook tắt và không bao giờ ghi vào nhánh hay working tree của bạn.
+- **Web UI.** Chỉ mở trên 127.0.0.1, có token, kiểm tra Host và Origin, có CSP.
+- **Duyệt plan.** Lệnh verify trong plan do model đề xuất. Hãy đọc chúng trong `plan.md` trước khi trả lời `yes`. `--yes` / `auto_approve` bỏ qua bước này.
+
+## Kiểm thử
+
+```bash
+python tests/test_e2e.py
+```
+
+- 18 test end-to-end: Linux khoảng 35 giây, Windows khoảng 2,5 phút.
+- Dùng mock agent theo kịch bản, không tốn token.
+- Riêng test 9router dựng một router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router giả đó.
+- Lọc theo tên: `python tests/test_e2e.py crash`.
+- Mỗi test dùng một repo git tạm: tự xoá khi pass, giữ lại để điều tra khi fail.
+
+## Lưu ý
+
+- `models refresh` và `skills refresh` tải dữ liệu từ Internet (Epoch AI, OpenRouter, GitHub API), nên chỉ chạy khi bạn muốn. Chưa refresh thì vẫn có gợi ý đội, nhưng chỉ theo thứ tự phát hiện vì chưa có điểm benchmark. Bạn chọn lại được ở bước `init`.
+- `claude` đã cài nhưng chưa đăng nhập.
+- `opencode` đã nâng lên 1.18.34. Profile `opencode@free` và `opencode@9router` dùng thư mục dữ liệu riêng trong `~/.orchestra`, không đụng dữ liệu opencode của bạn. 8/10 model free trả lời được.
+- `agy` không chạy được lệnh shell ở chế độ headless. Engine báo trước cho nó và tự chạy lệnh verify.
+- Sandbox của codex trên Windows không thấy `python`: worker codex không tự chạy test được. Engine vẫn verify bên ngoài. Muốn worker tự test thì chỉnh sandbox của codex. Đây là cấu hình của bạn nên prototype không đổi.
+- Skill và rule toàn cục của codex (`~/.codex`) cũng được nạp vào worker codex. Hãy để ý nếu chúng mâu thuẫn với `rules/`.
+- Hai điểm va chạm với `AGENTS.md` ở thư mục cha cần bạn quyết định: lệnh verify lấy từ plan JSON, và việc tải skill curated tự động. Xem [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).

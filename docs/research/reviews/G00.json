@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "task_id": "G00",
+  "result_revision": 3,
+  "result_content_hash": "edbdec7aedb650f6f3883f0b257badb20c74418a5e46d43827556f8c2dd7014e",
+  "reviewer_identity": "Codex lead (/root)",
+  "independence": "NOT_TASK_AUTHOR",
+  "decision": "REVISE",
+  "verified_claim_ids": [
+    "G00-C01",
+    "G00-C02",
+    "G00-C03",
+    "G00-C04",
+    "G00-C05",
+    "G00-C06",
+    "G00-C07",
+    "G00-C08"
+  ],
+  "criteria": [
+    {
+      "id": "G00-A1",
+      "passed": false,
+      "reason": "18 requirements phân loại đúng; row RQ04 rút gọn thành supportZAI trong khi canonical BRIEF là xem xétZAI. Model mạnh/user choice RQ02 cần giữ là yêu cầu thay vì chỉ PROPOSED."
+    },
+    {
+      "id": "G00-A2",
+      "passed": true,
+      "reason": "Historical states DOCUMENTED, current Flash worker tách riêng; không nâng discovery thành auth/quota client khác."
+    },
+    {
+      "id": "G00-A3",
+      "passed": true,
+      "reason": "User Flash3.8High selection chỉ áp dụng currentworker; final model roles/stack/budget vẫn chưa chốt."
+    },
+    {
+      "id": "G00-A4",
+      "passed": false,
+      "reason": "Result và wrapper schema valid; hashes/locators match13inputfiles. Report ghi11files và bỏAGENTS trong input list; đây là metadata incorrect."
+    },
+    {
+      "id": "G00-A5",
+      "passed": false,
+      "reason": "Most corrections resolved, nhưng report1898words vượt explicitfinal1800words target. Future experiment cleanup cần official client lifecycle thay xóa token thủ công."
+    }
+  ],
+  "critical_unknowns": [
+    "Hard filesystem/tool restrictions chưa verified; channel là event monitor, không OS sandbox.",
+    "Auth/quota Codex/OpenCode/nativeAPIs chưa verified; current Flash inference không suy trạng thái các nguồn khác."
+  ],
+  "required_corrections": [
+    "Lead phải chọn thu nhỏ followup/manual baseline adjudication sau khi hết hai correction rounds; không tự thêm paid correction thứ ba.",
+    "Report ghi đúng13input files, baoAGENTS.md; header Snapshot chỉ mô tả input/target, không gán Git/stack như runtime observed.",
+    "Giữ RQ04 xem xétZAI; RQ02 lead strongmodel/userchoice là requirement, exact model mới chưa chốt.",
+    "Rút report<=1800whitespace words theo scope đã giao; không coi fullschema valid là contentacceptance.",
+    "Future auth experiment chỉ qua official client/login/logout được authorize, không xóa token/auth store thủ công."
+  ],
+  "allowed_downstream_assumptions": [],
+  "reviewed_at": "2026-10-02T17:14:22.101683+00:00"
+}

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Independent lead/reviewer decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "result_revision",
+    "result_content_hash",
+    "reviewer_identity",
+    "independence",
+    "decision",
+    "verified_claim_ids",
+    "criteria",
+    "critical_unknowns",
+    "required_corrections",
+    "allowed_downstream_assumptions",
+    "reviewed_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^G[0-2][0-9]$"
+    },
+    "result_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "result_content_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "reviewer_identity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "independence": {
+      "const": "NOT_TASK_AUTHOR"
+    },
+    "decision": {
+      "enum": [
+        "ACCEPT",
+        "ACCEPT_WITH_UNKNOWNS",
+        "REVISE",
+        "WAITING_INPUT"
+      ]
+    },
+    "verified_claim_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "passed",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "critical_unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "required_corrections": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "allowed_downstream_assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
