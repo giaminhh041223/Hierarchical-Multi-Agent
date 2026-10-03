@@ -592,6 +592,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 - Embeddings cho knowledge graph, khi đo được FTS bỏ sót.
 - Mở knowledge graph và board cho agent qua MCP server.
 - Worker chạy từ xa; khi đó mới cần lease/heartbeat.
+- Thiết kế lại giao diện web UI: kế hoạch, token màu đã kiểm tra tương phản, lộ trình 4 pha và plugin hỗ trợ ở [docs/UIUX.md](docs/UIUX.md).
 
 **Giới hạn đã biết** (đánh dấu `ponytail:` trong code):
 - Repo map cắt ở cùng một độ sâu thư mục cho cả cây (tối đa 300 dòng).
