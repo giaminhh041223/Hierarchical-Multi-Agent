@@ -19,7 +19,7 @@ Bối cảnh cho Claude Code (local hoặc cloud) khi làm việc trong repo nà
 cd prototype && PYTHONIOENCODING=utf-8 PYTHONPATH=. python tests/test_e2e.py
 ```
 
-- 18 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 35 giây, Windows khoảng 2,5 phút.
+- 22 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 40 giây, Windows khoảng 2–3 phút.
 - Lọc theo tên: thêm một phần tên test vào cuối lệnh, ví dụ `pool`.
 - Cần Python 3.11+ và git. Test tự truyền danh tính git, không cần `git config`.
 - Test 9router dựng router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router đó.
@@ -46,7 +46,7 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 | `agents.py` | Agent CLI: discovery, probe, chạy headless trong cây tiến trình (Job Object / process group), parse output, login, đọc quota. |
 | `pool.py` | Resource planner: dự báo quota; xếp hạng và pre-test backup pool; ba preset `steady`, `match`, `precise`. |
 | `core.py` | Đường dẫn, SQLite của workspace (`.orch/orch.db`), khoá engine, vault, JSON strict. |
-| `models.py` | Cơ sở dữ liệu model: benchmark Epoch AI, giá OpenRouter, lịch sử run. |
+| `models.py` | Cơ sở dữ liệu model: benchmark Epoch AI, giá OpenRouter, lịch sử run; gợi ý đội hình (`suggest`). |
 | `skills.py` | Skill catalog (repo GitHub ghim commit, skill đã cài) và skill architect. |
 | `server.py`, `ui.html` | Web UI local (`python -m orch ui`): chỉ 127.0.0.1, có token. |
 | `mock.py` | Agent giả theo kịch bản, dùng cho test. |
@@ -54,6 +54,7 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 
 - `catalog/`: `agents.json` (profile agent CLI), `skills.json`, `schemas/` (JSON schema cho plan, verdict, triage, handoff, skills).
 - Dữ liệu chạy: `~/.orchestra` (`ORCH_HOME`: resources.json, history.db, vault, worktree) và `<dự án>/.orch/`. Không bao giờ commit hai chỗ này.
+- `~/.orchestra/agents.json` ghi đè `catalog/agents.json` theo từng profile, chỉ trên máy người dùng (ví dụ port của router). Không sửa catalog trong repo cho nhu cầu của một máy.
 
 ## Quy ước
 
@@ -66,10 +67,11 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 
 - Không đọc hay in nội dung secret. Với file auth chỉ kiểm tra có tồn tại. Từ rollout của codex chỉ đọc object `rate_limits` và timestamp, không đọc nội dung hội thoại.
 - Không commit credential, `.orchestra/`, `.orch/`, log. Repo có thể public: quét secret trước khi push.
-- Output của model là đề xuất không tin cậy. Hai điểm va chạm với `AGENTS.md` (`PLAN.md` §13) chờ người dùng quyết định.
+- Output của model là đề xuất không tin cậy. Hai điểm va chạm với `AGENTS.md` (`PLAN.md` §13) đã có opt-in (`verify_allow`, `"skills": "propose"`). Mặc định giữ hành vi cũ; bật hay không do người dùng quyết định.
 - Không sửa dữ liệu hay config global của tool người dùng. Test opencode dùng `XDG_DATA_HOME` riêng.
 - Phải hỏi người dùng trước khi: tải hoặc cài gói; login, tạo tài khoản, nhập key; pre-test model trả phí (tốn quota).
-- 9router: không bật MITM, cert hay DNS. Khuyến nghị `HOSTNAME=127.0.0.1`, `REQUIRE_API_KEY=true`, đổi `INITIAL_PASSWORD`, tắt Cloud Sync.
+- 9router: không bật MITM, cert hay DNS. Khuyến nghị `HOSTNAME=127.0.0.1`, `REQUIRE_API_KEY=true`, đổi `INITIAL_PASSWORD`, tắt Cloud Sync. Không sửa cấu hình hay dừng/khởi động lại router của người dùng khi chưa được phép.
+- Pre-test hoặc probe qua router tốn quota subscription phía sau nó: hỏi trước.
 - Không đổi cài đặt hệ thống hay bảo mật (ví dụ sandbox Windows của codex), chỉ khuyến nghị.
 
 ## Bẫy đã gặp
@@ -85,8 +87,8 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 Xem `prototype/PLAN.md` §0 và §16.
 
 Đang chờ người dùng:
-1. Quyết định hai điểm va chạm với `AGENTS.md` (§13).
-2. Đồng ý cài 9router (npm `9router@0.5.95`). Sau đó người dùng tự login dashboard và provider, rồi `vault set NINEROUTER_API_KEY`.
+1. Quyết định có bật hai opt-in ở §13 trong `team.json` hay không.
+2. Nối 9router: người dùng tự kiểm tra cấu hình an toàn (§13), login dashboard và provider, `vault set NINEROUTER_API_KEY`, rồi `discover --only opencode@9router`.
 3. Tự chạy `models refresh`, `skills refresh` và `login claude`.
 
-Làm được trên cloud: các mục P1 ở §16, ví dụ trừ điểm tài khoản at risk, pre-test khó hơn cho `match` và `precise`. Allowlist lệnh verify chỉ làm sau khi người dùng quyết định §13.
+P1 ở §16 đã xong. Tiếp theo là P2, bắt đầu bằng canvas DAG chỉ để xem trong web UI.

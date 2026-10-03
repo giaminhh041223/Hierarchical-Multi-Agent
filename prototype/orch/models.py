@@ -1,6 +1,7 @@
 """Model knowledge base: public benchmarks (Epoch AI, CC-BY) + prices (OpenRouter) + our own run history."""
-import csv, io, json, re, time, urllib.request, zipfile
+import bisect, csv, io, json, re, time, urllib.request, zipfile
 
+from . import agents
 from .core import CATALOG, history
 
 EPOCH_URL = "https://epoch.ai/data/benchmark_data.zip"
@@ -17,6 +18,7 @@ BENCH = {
     "hle_external.csv": ("Model version", "Accuracy", "hle"),
     "metr_time_horizons_external.csv": ("Model version", "Time horizon", "metr_minutes"),
 }
+CODING, REASONING = ("swe_bench", "terminal_bench", "metr_minutes"), ("gpqa", "hle", "eci")
 NOISE = {"high", "medium", "low", "max", "xhigh", "minimal", "unknown", "thinking", "preview", "latest", "exp", "free"}
 
 
@@ -99,11 +101,37 @@ def card(model_id, db=None):
     return " ".join(bits) or "no data"
 
 
-def suggest(candidates, db=None):
-    """candidates: [(agent, model)] usable on this machine -> default team by capability index.
-    ponytail: ranks by ECI only; weigh price/speed/observed ok_rate once there is enough run history."""
+def percentiles(db):
+    cols = {}
+    for m in db["models"].values():
+        for k in CODING + REASONING:
+            if isinstance(m.get(k), (int, float)):
+                cols.setdefault(k, []).append(m[k])
+    return {k: sorted(v) for k, v in cols.items()}
+
+
+def profile(model, db, cols):
+    """Benchmark percentiles among all known models: coding, reasoning, overall capability (None = no public result)."""
+    m = db["models"].get(norm(model), {})
+    p = {k: bisect.bisect_right(cols[k], m[k]) / len(cols[k]) for k in CODING + REASONING if k in cols and isinstance(m.get(k), (int, float))}
+    mean = lambda ks: sum(p[k] for k in ks) / len(ks) if ks else None
+    return {"c": mean([k for k in CODING if k in p]), "r": mean([k for k in REASONING if k in p]), "cap": mean(list(p))}
+
+
+def suggest(candidates, db=None, k=5):
+    """candidates: [(agent, model)] usable on this machine -> default team, best first by expected quality: the benchmark
+    prior (capability percentile among known models, 0.5 without public results) worth k calls, updated by this pair's own
+    record: (k * prior + right) / (k + right + wrong). right = calls that ended ok or integrated; wrong = a false "done"
+    (verify), a malformed reply (invalid), a timeout. Quota, auth and the like say nothing about the model.
+    ponytail: k fixed and time / tokens unweighted; fit k and add a speed term once the history holds a few hundred runs."""
     db = db or load()
-    score = lambda c: info(c[1], db).get("eci") or 0
+    cols = percentiles(db)
+
+    def score(c):
+        right, wrong = history().execute("SELECT coalesce(sum(ok), 0), coalesce(sum(outcome IN ('verify', 'invalid', 'timeout')), 0)"
+                                         " FROM runs WHERE agent=? AND model=?", c).fetchone()
+        cap = profile(c[1], db, cols)["cap"]
+        return (k * (0.5 if cap is None else cap) + right) / (k + right + wrong)
     ranked = sorted(candidates, key=score, reverse=True)
     if not ranked:
         return {}
@@ -112,9 +140,9 @@ def suggest(candidates, db=None):
     reviewer = next((c for c in ranked[1:] if org(c) != org(lead)), ranked[1] if len(ranked) > 1 else lead)
     rest = [c for c in ranked if c not in (lead, reviewer)] or [reviewer]
     seen, workers = set(), []
-    for c in rest:  # one worker per agent CLI: parallelism across subscriptions, not within one
-        if c[0] not in seen:
-            seen.add(c[0])
+    for c in rest:  # one worker per account (agents.account): parallelism across subscriptions, not within one
+        if agents.account(*c) not in seen:
+            seen.add(agents.account(*c))
             workers.append(c)
     return {"lead": lead, "reviewer": reviewer, "skill_architect": rest[-1], "workers": workers[:4]}
 

@@ -1,5 +1,5 @@
 {
-  "_doc": "Adapter manifests. run/resume = args after the binary; {model} {session} {out} {schema} (file) {schema_json} (inline) {prompt} {mode} are filled per call. mode.rw = worker edits, mode.ro = read-only/plan (lead, reviewer, probes). prompt: stdin | arg. verified = flags tested on this machine.",
+  "_doc": "Adapter manifests. run/resume = args after the binary; {model} {session} {out} {schema} (file) {schema_json} (inline) {prompt} {mode} are filled per call. mode.rw = worker edits, mode.ro = read-only/plan (lead, reviewer, probes). prompt: stdin | arg. verified = flags tested on this machine. router = an OpenAI-compatible endpoint whose model ids are provider/model: each provider prefix is its own quota account, and shares maps the prefixes that are also a CLI's subscription to that CLI. Machine-specific changes go in ~/.orchestra/agents.json, merged per profile.",
   "codex": {
     "name": "OpenAI Codex CLI", "bin": "codex", "verified": true,
     "auth_files": ["~/.codex/auth.json"], "auth_env": ["OPENAI_API_KEY", "CODEX_API_KEY"],
@@ -53,7 +53,8 @@
     "name": "OpenCode via 9router (local OpenAI-compatible router, github.com/decolua/9router)", "base": "opencode", "verified": false,
     "router": "http://127.0.0.1:20128/v1", "router_headers": {"X-9Router-Token-Saver": "off"},
     "models_from": "router", "models_cmd": null, "needs_vault": ["NINEROUTER_API_KEY"], "auth_files": [], "login": null,
-    "login_hint": "connect providers and create an API key on the 9router dashboard (http://127.0.0.1:20128), then: python -m orch vault set NINEROUTER_API_KEY",
+    "login_hint": "connect providers and create an API key on the 9router dashboard, then: python -m orch vault set NINEROUTER_API_KEY. Another port than 20128? ~/.orchestra/agents.json: {\"opencode@9router\": {\"router\": \"http://127.0.0.1:PORT/v1\"}}",
+    "shares": {"cx": "codex", "ag": "agy", "cc": "claude", "gc": "gemini", "cu": "cursor-agent"},
     "env": {"XDG_DATA_HOME": "{home}/opencode-9router", "ROUTER_API_KEY": "{vault:NINEROUTER_API_KEY}"},
     "run": ["run", "--pure", "--format", "json", "--agent", "{mode}", "-m", "router/{model}", "{prompt}"],
     "resume": ["run", "--pure", "--format", "json", "--agent", "{mode}", "-m", "router/{model}", "--session", "{session}", "{prompt}"]

@@ -5,15 +5,29 @@ from pathlib import Path
 from .core import CATALOG, HOME, ROOT, SCHEMAS, SECRET_NAME, vault
 
 RESOURCES = HOME / "resources.json"
+OVERRIDES = HOME / "agents.json"  # this machine's changes (a router's port, its own profiles); the repo catalog stays untouched
 
 
 def catalog():
     raw = json.loads((CATALOG / "agents.json").read_text(encoding="utf-8"))
+    for k, a in (json.loads(OVERRIDES.read_text(encoding="utf-8")) if OVERRIDES.exists() else {}).items():
+        if k != "_doc":
+            raw[k] = {**raw.get(k, {}), **a}
     raw.pop("_doc", None)
     for k, a in raw.items():  # profiles inherit from their base adapter
         if "base" in a:
             raw[k] = {**raw[a["base"]], **a}
     return raw
+
+
+def account(aid, model=None):
+    """The quota a call spends. An agent id is one login; a router holds one account per provider prefix of its model ids
+    (cx/, ag/ ...), and "shares" maps the prefixes that are also a CLI's subscription: those run out together with the CLI."""
+    a = catalog().get(aid) or {}
+    if not a.get("router") or "/" not in (model or ""):
+        return aid
+    pre = model.split("/", 1)[0]
+    return a.get("shares", {}).get(pre) or f"{aid}/{pre}"
 
 
 def resolve_bin(name):
@@ -340,7 +354,7 @@ def usage(aid, now=None):
     """Quota windows of an account, or None when its CLI keeps no record (agy, opencode, routers: learned from errors).
     codex: the rate_limits snapshots in its session rollouts; only that object is read, never conversation content.
     -> [{"minutes": 300, "used": 42.0 (%), "resets": epoch or None (rolled over), "burn": %/hour or None}]"""
-    a = catalog()[aid]
+    a = catalog().get(aid) or {}  # aid may be a router's provider account (opencode@9router/if): no record
     if a.get("usage") != "codex_rollouts":
         return None
     now = time.time() if now is None else now

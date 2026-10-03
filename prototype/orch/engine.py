@@ -3,7 +3,7 @@
 The lead is stateless: every lead prompt is rebuilt from the DB. Workers edit isolated git worktrees; the engine commits,
 merges the integration tip in, checks scope, runs the plan's verify commands, records the commit as intent, fast-forwards
 the run's integration branch, and only then publishes facts and releases dependents."""
-import contextlib, fnmatch, hashlib, json, os, re, shutil, sqlite3, subprocess, threading, time, traceback, urllib.request
+import collections, contextlib, fnmatch, hashlib, json, os, re, shutil, sqlite3, subprocess, threading, time, traceback, urllib.request
 from pathlib import Path
 
 from . import agents, models, pool
@@ -16,7 +16,8 @@ TASK_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,15}$")
 YES = {"y", "yes", "ok", "okay", "approve", "approved", "accept", "lgtm", "go", "có", "ok luôn", "đồng ý", "duyệt"}
 HARD_CAP = 6  # attempts per task before the user is asked
 TEAM_DEFAULTS = {"max_parallel": 4, "timeout": 1800, "verify_timeout": 600, "budget_tokens": 0, "max_amend": 1,
-                 "skills": True, "auto_approve": False, "wait_reset": 600, "cooldown": 3600}
+                 "skills": True, "auto_approve": False, "wait_reset": 600, "cooldown": 3600, "account_max": {},
+                 "verify_allow": None}
 
 RULES = {
     "common": """You are one agent in Orchestra, a local multi-agent coding team. The engine (a program, not an LLM) owns git, scheduling and integration.
@@ -139,6 +140,27 @@ def check_plan(plan, workers, existing=None):
     if len(done) < len(graph):
         errs.append(f"dependency cycle among {sorted(set(graph) - done)}")
     return errs
+
+
+ASK_VERIFY = "Verify commands outside team verify_allow:"
+
+
+def allowed(cmd, allow):
+    """team "verify_allow": command prefixes, e.g. [["python", "-m", "unittest"]], that run without asking. None (default) =
+    no list: the plan approval covers its commands."""
+    return allow is None or any(cmd[:len(a)] == a for a in allow)
+
+
+def file_map(files, limit=300):
+    """Every path when they fit in `limit` lines; else the deepest directory level that fits, deeper ones as "dir/ (n files)".
+    ponytail: one cut level for the whole tree; expand small directories further (greedy by size) if plans miss files."""
+    rows = {}
+    for depth in range(max((f.count("/") for f in files), default=0) + 1, 0, -1):
+        rows = collections.Counter("/".join(f.split("/")[:depth]) + ("/" if f.count("/") >= depth else "") for f in files)
+        if len(rows) <= limit:
+            break
+    lines = [r + (f" ({n} files)" if r.endswith("/") else "") for r, n in sorted(rows.items())]
+    return ("\n".join(lines[:limit]) + (f"\n... {len(lines) - limit} more" if len(lines) > limit else "")) or "(empty repository)"
 
 
 def check_handoff(h):
@@ -274,6 +296,14 @@ class Engine:
             return True
         return False
 
+    def unapproved(self, cmds):
+        """Verify commands outside team verify_allow that the user has not allowed in this run."""
+        return [v for v in cmds if not allowed(v, self.team["verify_allow"]) and not self.rmeta(f"allow:{json.dumps(v)}")]
+
+    def approve(self, cmds):
+        for v in self.unapproved(cmds):
+            self.rmeta(f"allow:{json.dumps(v)}", 1)
+
     def to_user(self, tid, question, expect=None):
         t = self.ws.task(tid)
         if self.ws.update(tid, _expect=expect or t["status"], status="pending_user", question=question[:4000]):
@@ -347,7 +377,7 @@ class Engine:
         usage; fresh = the same request without the session's context, since a stand-in cannot resume that session."""
         me = who
         while True:
-            if role != "worker" and self.cooling(who["agent"]):
+            if role != "worker" and self.cooling(self.acct(who)):
                 who = self.stand_in(readonly) or who
             if who is not me:
                 self.ws.event("stand_in", f"{who['agent']}/{who['model']} stands in for the {role}: {me['agent']} is out of usage", task, role)
@@ -358,7 +388,7 @@ class Engine:
             except Fail as f:
                 if role == "worker" or f.cls not in ("quota", "rate_limit"):
                     raise
-                self.cool(who["agent"], f.detail, self.team["cooldown"] if f.cls == "quota" else 300)
+                self.cool(self.acct(who), f.detail, self.team["cooldown"] if f.cls == "quota" else 300)
                 if not self.stand_in(readonly):
                     raise
 
@@ -448,10 +478,12 @@ class Engine:
 
     def schedule(self, gate):
         ts = self.ws.tasks()
-        by, busy = {t["id"]: t for t in ts}, {}
+        by, busy, per = {t["id"]: t for t in ts}, {}, {}  # running work per worker, per account
         for t in ts:
             if t["kind"] == "work" and t["status"] in ACTIVE:
                 busy[t["assignee"]] = busy.get(t["assignee"], 0) + 1
+                ac = self.acct(self.team["workers"].get(t["assignee"]))
+                per[ac] = per.get(ac, 0) + 1
         running = sum(busy.values())
         skills_open = by.get("SKILLS", {}).get("status") not in (None, *TERMINAL)
         for t in ts:
@@ -471,19 +503,22 @@ class Engine:
                 continue
             if t["kind"] == "work":
                 home = self.rmeta(f"home:{tid}")  # set by rotate(): the planned worker, back once its usage limit resets
-                if home in self.team["workers"] and not self.cooling(self.team["workers"][home]["agent"]):
+                if home in self.team["workers"] and not self.cooling(self.acct(self.team["workers"][home])):
                     self.reassign(t, home, f"{home} is available again", keep=True)
                     t = self.ws.task(tid)  # start it in this pass: the loop calls a tick without jobs "stuck"
-                elif self.cooling(ag := (self.team["workers"].get(t["assignee"]) or {}).get("agent")):
+                elif self.cooling(ag := self.acct(self.team["workers"].get(t["assignee"]))):
                     # out of usage before it even started: move it now instead of spending a failing call first
                     self.rotate(t, f"{ag} is out of usage until {hm(self.cool_until(ag))}", self.cool_until(ag))
                     t = self.ws.task(tid)
                     if t["status"] != "todo" or t["eligible_at"] > time.time():
                         continue
                 w = self.team["workers"].get(t["assignee"]) or {}
-                if skills_open or running >= self.team["max_parallel"] or busy.get(t["assignee"], 0) >= w.get("max", 1):
+                ac = self.acct(w)  # account_max: workers sharing one subscription take turns instead of burning it in parallel
+                if skills_open or running >= self.team["max_parallel"] or busy.get(t["assignee"], 0) >= w.get("max", 1) \
+                        or per.get(ac, 0) >= self.team["account_max"].get(ac, float("inf")):
                     continue
                 busy[t["assignee"]] = busy.get(t["assignee"], 0) + 1
+                per[ac] = per.get(ac, 0) + 1
                 running += 1
             if self.ws.update(tid, _expect="todo", status="running"):
                 fn = {"plan": self.job_plan, "skills": self.job_skills, "work": self.job_work, "review": self.job_review}[t["kind"]]
@@ -522,6 +557,7 @@ class Engine:
             if t["kind"] == "plan":
                 plan = self.latest_plan()
                 if low in YES and plan:
+                    self.approve([v for p in plan["plan"]["tasks"] for v in p["verify"]])  # shown in plan.md
                     self.materialize(plan["plan"], "pending_user")
                 else:
                     self.set(tid, "todo", "re-plan", "pending_user", question=None,
@@ -535,6 +571,14 @@ class Engine:
                     self.start(tid, self.job_amend, t, [f"User: {a}"])
             elif t["kind"] == "gate":
                 self.apply_gate(t, low)
+            elif t["kind"] == "skills" and low != "retry":
+                from . import skills
+                self.set(tid, "done", skills.settle(self, low in YES), "pending_user", question=None)
+            elif low in YES and self.unapproved(t["spec"].get("verify", [])):
+                self.approve(t["spec"]["verify"])
+                for x in self.ws.tasks("pending_user"):  # this task, and others held only by the same commands
+                    if x["answer"] is None and (x["question"] or "").startswith(ASK_VERIFY) and not self.unapproved(x["spec"]["verify"]):
+                        self.set(x["id"], "todo", "verify commands allowed by the user", "pending_user", question=None, eligible_at=0)
             elif low in ("cancel", "skip", "hủy", "bỏ qua"):
                 self.terminate(tid, "cancelled", "cancelled by the user")
             elif (m := re.fullmatch(r"reassign\s+(\S+)", low)) and self.worker_name(m.group(1)):
@@ -585,7 +629,8 @@ class Engine:
             return self.terminate(tid, "cancelled", "cancelled by the user")
         prior = self.ws.q("SELECT count(*) n FROM attempts WHERE run=? AND task=? AND outcome=?", self.run, tid, cls)[0]["n"]
         self.end_attempt(self.open_attempt(tid), cls, detail)
-        st, agent = t["status"], (self.team["workers"].get(t["assignee"]) or {}).get("agent", t["assignee"])
+        w = self.team["workers"].get(t["assignee"])
+        st, agent, ac = t["status"], (w or {}).get("agent", t["assignee"]), self.acct(w) or t["assignee"]
         if t["attempts"] >= HARD_CAP:
             return self.to_user(tid, f"{tid} used {t['attempts']} attempts (last: {cls}: {detail[:500]}). "
                                      "Reply with instructions, 'reassign <worker>' or 'cancel'.", st)
@@ -594,8 +639,8 @@ class Engine:
                                      "(or store its API key: `python -m orch vault set NAME`), then reply 'retry'. "
                                      "Or reply 'reassign <worker>' / 'cancel'.", st)
         if cls == "quota" or (cls == "rate_limit" and prior >= 3):
-            return self.rotate(t, f"{agent} is out of usage: {detail[:200].strip()}",
-                               self.cool(agent, detail, self.team["cooldown"] if cls == "quota" else 300))
+            return self.rotate(t, f"{ac} is out of usage: {detail[:200].strip()}",
+                               self.cool(ac, detail, self.team["cooldown"] if cls == "quota" else 300))
         if cls == "rate_limit":
             wait = min(900, 60 * 2 ** prior)
             return self.set(tid, "todo", f"rate limited: retry in {wait}s", st, eligible_at=time.time() + wait)
@@ -616,6 +661,11 @@ class Engine:
                  session=None, question=None, eligible_at=0, note=note)
 
     # --- usage limits: per-account cooldowns, worker rotation, role stand-ins ---------------------------------
+    @staticmethod
+    def acct(w):
+        """The account (quota) a worker or role spends: its agent id, or a router provider (agents.account)."""
+        return agents.account(w["agent"], w["model"]) if w else None
+
     def cool_until(self, aid):
         return float(self.ws.meta(f"cool:{aid}") or 0)
 
@@ -623,7 +673,7 @@ class Engine:
         return self.cool_until(aid) > time.time()
 
     def cool(self, aid, detail, seconds):
-        """Per agent id (= per account), shared by every run of this workspace. The reset time the CLI names (in its message,
+        """Per account (acct), shared by every run of this workspace. The reset time the CLI names (in its message,
         or in its quota record) beats the default: team "cooldown" for usage limits, 5 minutes for repeated rate limits."""
         until = agents.reset_at(detail) or agents.usage_reset(aid) or time.time() + seconds
         self.ws.meta(f"cool:{aid}", until)
@@ -644,7 +694,7 @@ class Engine:
         mine = self.rmeta(f"home:{t['id']}") or t["assignee"]
         rank = lambda w: 3 if not w.get("backup") else 0 if mine in w.get("for", []) else 2 if w.get("for") else 1
         ok = [(busy.get(n, 0) >= w.get("max", 1), rank(w), i, n) for i, (n, w) in enumerate(self.team["workers"].items())
-              if n != t["assignee"] and not self.cooling(w["agent"])]
+              if n != t["assignee"] and not self.cooling(self.acct(w))]
         return min(ok)[-1] if ok else None
 
     def rotate(self, t, why, until):
@@ -664,7 +714,7 @@ class Engine:
         for aid, o in pool.outlooks(self.team, self.ws).items():
             if o["out_until"] and o["out_until"] > self.cool_until(aid):
                 self.ws.meta(f"cool:{aid}", o["out_until"])
-            bare = [n for n, w in self.primaries().items() if w["agent"] == aid and not pool.backups_of(self.team, n)]
+            bare = [n for n, w in self.primaries().items() if self.acct(w) == aid and not pool.backups_of(self.team, n)]
             self.ws.event("resources", f"{aid}: {o['text']}" + (f"; no backup for {', '.join(bare)}: python -m orch pool plan"
                                                                  if o["risk"] and bare else ""))
 
@@ -672,7 +722,7 @@ class Engine:
         """For lead / reviewer / skill architect calls: the first role or worker whose account is not cooling."""
         tm = self.team
         return next((w for w in (tm["lead"], tm["reviewer"], tm.get("skill_architect"), *tm["workers"].values())
-                     if w and not self.cooling(w["agent"]) and (not readonly or agents.supports_readonly(w["agent"]))), None)
+                     if w and not self.cooling(self.acct(w)) and (not readonly or agents.supports_readonly(w["agent"]))), None)
 
     # --- worktrees ------------------------------------------------------------------------------------------
     def worktree(self, tid):
@@ -773,12 +823,17 @@ class Engine:
             summary = f"skill architect unavailable ({f.cls}): {f.detail[:200]}"
         except Exception as e:  # skills are an optimisation: never block the run on them
             summary = f"skills skipped: {e}"
+        if self.ws.q("SELECT 1 FROM skills WHERE run=? AND status='proposed' AND curated=1", self.run):
+            return self.to_user("SKILLS", f"{summary}. Reply 'yes' to install them (team skills=propose), or 'no' to work without them.", "running")
         self.set("SKILLS", "done", summary, "running")
 
     def job_work(self, t):
         tid, w = t["id"], self.team["workers"].get(t["assignee"])
         if not w:
             return self.route(tid, "missing", f"worker {t['assignee']!r} is not in the team ({', '.join(self.team['workers'])})")
+        if ask := self.unapproved(t["spec"]["verify"]):  # an auto-approved plan or an amendment: nobody has seen these yet
+            return self.to_user(tid, ASK_VERIFY + "\n" + "\n".join(f"- {subprocess.list2cmdline(v)}" for v in ask)
+                                + "\nReply 'yes' to allow them in this run, or 'cancel'.")
         path = self.worktree(tid)
         try:
             from . import skills
@@ -977,9 +1032,7 @@ class Engine:
                          for n, w in self.primaries().items())
 
     def repo_map(self, limit=300):
-        """ponytail: flat `git ls-files` capped at 300 paths; summarize per directory for big repos."""
-        files = git(self.main_wt, "ls-files").splitlines()
-        return ("\n".join(files[:limit]) + (f"\n... {len(files) - limit} more" if len(files) > limit else "")) or "(empty repository)"
+        return file_map(git(self.main_wt, "ls-files").splitlines(), limit)
 
     def kg_text(self, query, k=8):
         facts = self.ws.kg_search(query, k)
@@ -1073,7 +1126,8 @@ class Engine:
         lines += [f"| {t['id']} | {t['assignee']} | {', '.join(t['deps']) or '-'} | {t['title']} |" for t in plan["tasks"]]
         for t in plan["tasks"]:
             lines += ["", f"## {t['id']}: {t['title']}", *[f"- [ ] {a}" for a in t["acceptance"]],
-                      f"- scope: {', '.join(t['scope_paths'])}", *[f"- verify: `{subprocess.list2cmdline(v)}`" for v in t["verify"]]]
+                      f"- scope: {', '.join(t['scope_paths'])}", *[f"- verify: `{subprocess.list2cmdline(v)}`" + ("" if allowed(v, self.team["verify_allow"]) else " (not in verify_allow)")
+                                                     for v in t["verify"]]]
         lines += ["", "## Resources", "", *pool.describe(self.team, self.ws)]
         for i, v in enumerate(verdicts, 1):
             lines += ["", f"## Review round {i}: {v['verdict']}", *[f"- {x['severity']} [{x['task_id'] or 'plan'}] {x['message']}" for x in v["issues"]]]

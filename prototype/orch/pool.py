@@ -1,7 +1,7 @@
 """Resource planner, deterministic (zero tokens): each account's quota outlook, and a pre-tested backup pool per primary
 worker, ranked by criteria the user ticks or by one of three presets. The engine moves a task to its worker's backup when
 that account runs out (Engine.spare) and hands it back after the reset, or after team "cooldown" seconds (Engine.schedule)."""
-import bisect, copy, math, re, shutil, subprocess, sys, threading, time
+import copy, math, re, shutil, subprocess, sys, threading, time
 
 from . import agents, models
 from .core import HOME, contract, extract_json, history, hm, record, schema, validate
@@ -21,11 +21,23 @@ PRESETS = {
     "match": ("Năng lực tương đương: long outages, core tasks", {"n": 3, "c": 3, "r": 2, "s": 1, "t": 1}),
     "precise": ("Chính xác, ít ảo giác: sensitive tasks", {"h": 3, "r": 3, "s": 1, "c": 1, "t": 1}),
 }
-CODING, REASONING = ("swe_bench", "terminal_bench", "metr_minutes"), ("gpqa", "hle", "eci")
 BROKEN = ("auth", "model", "missing", "error", "invalid", "blocked")  # a last pool test like this excludes the model until retested
+RISK = 0.75  # ponytail: flat score factor for an at-risk account; scale it by the time left before it runs out if that misranks
 FIZZ = ("Create fizz.py in the current directory with a function fizz(n) that returns 'Fizz' for multiples of 3, 'Buzz' for "
         "multiples of 5, 'FizzBuzz' for multiples of both and str(n) otherwise. Change nothing else.")
 CHECK = "from fizz import fizz; assert [fizz(i) for i in (1, 3, 5, 15, 7, 30)] == ['1', 'Fizz', 'Buzz', 'FizzBuzz', '7', 'FizzBuzz']"
+ROMAN = ("Create roman.py in the current directory with to_roman(n), the Roman numeral of an int from 1 to 3999, and "
+         "from_roman(s), its value. from_roman must raise ValueError for every string that is not a numeral in standard form, "
+         "for example '', 'IIII', 'VX', 'IM' and 'MMMM'. Change nothing else.")
+ROMAN_CHECK = ("from roman import to_roman as t, from_roman as f\n"
+               "assert [t(n) for n in (1, 4, 9, 14, 40, 90, 400, 1994, 3999)] == "
+               "['I', 'IV', 'IX', 'XIV', 'XL', 'XC', 'CD', 'MCMXCIV', 'MMMCMXCIX']\n"
+               "assert all(f(t(n)) == n for n in range(1, 4000))\n"
+               "for bad in ('', 'IIII', 'VX', 'IM', 'MMMM', 'IIV', 'XXC', 'VV', 'LC', 'DM', 'IL', 'XIIII', 'ABC'):\n"
+               "    try: f(bad)\n"
+               "    except ValueError: continue\n"
+               "    raise AssertionError(bad)")
+TESTS = {False: ("POOL", FIZZ, CHECK), True: ("POOL-HARD", ROMAN, ROMAN_CHECK)}  # hard: the edge cases weak models claim but miss
 
 
 # --- quota outlook ------------------------------------------------------------------------------------------
@@ -51,11 +63,11 @@ def outlook(aid, cool_until=0.0, now=None):
 
 
 def accounts(team):
-    """agent id (= one account, one quota) -> the roles and workers that use it"""
+    """account (one quota: agents.account) -> the roles and workers that use it"""
     use = {}
     for n, r in [*((n, team.get(n)) for n in ("lead", "reviewer", "skill_architect")), *team["workers"].items()]:
         if r:
-            use.setdefault(r["agent"], []).append(n)
+            use.setdefault(agents.account(r["agent"], r["model"]), []).append(n)
     return use
 
 
@@ -105,59 +117,52 @@ def observed(agent, model):
     return {"stable": lap(n - (cut or 0), n), "honest": lap(good or 0, (good or 0) + (bad or 0)), "avg_s": avg_s, "last": last}
 
 
-def fresh(pair, hours=24):
-    last = observed(*pair)["last"]
-    return bool(last and last[1] > time.time() - hours * 3600)
+def fresh(pair, hard=False, hours=24):
+    """Pool-tested within `hours`; for the hard test only a hard one counts."""
+    last = history().execute("SELECT max(ts) FROM runs WHERE agent=? AND model=? AND role='pool' AND (task='POOL-HARD' OR ?=0)",
+                             (*pair, int(hard))).fetchone()[0]
+    return bool(last and last > time.time() - hours * 3600)
 
 
-def percentiles(db):
-    cols = {}
-    for m in db["models"].values():
-        for k in CODING + REASONING:
-            if isinstance(m.get(k), (int, float)):
-                cols.setdefault(k, []).append(m[k])
-    return {k: sorted(v) for k, v in cols.items()}
-
-
-def profile(model, db, cols):
-    """Benchmark percentiles among all known models: coding, reasoning, overall capability (None = no public result)."""
-    m = db["models"].get(models.norm(model), {})
-    p = {k: bisect.bisect_right(cols[k], m[k]) / len(cols[k]) for k in CODING + REASONING if k in cols and isinstance(m.get(k), (int, float))}
-    mean = lambda ks: sum(p[k] for k in ks) / len(ks) if ks else None
-    return {"c": mean([k for k in CODING if k in p]), "r": mean([k for k in REASONING if k in p]), "cap": mean(list(p))}
+def hard(crit):
+    """Rankings led by capability or honesty (match, precise) pre-test with the hard task."""
+    return any(crit.get(k, 0) >= 3 for k in "ncrh")
 
 
 def rank(team, cands, crit, ws, db=None):
-    """-> {primary worker: [row, best first]}; row = {"pair", "score", "conf", "s": {letter: score}, "last": last pool test}.
+    """-> {primary worker: [row, best first]}; row = {"pair", "score", "conf", "s": {letter: score}, "last": last pool test, "risk"}.
     Never a backup: the primary's own account (it runs out together), an account cooling or >= 90% used, a model already
-    working as a primary, a model whose last pool test failed hard (BROKEN), and with filter t a model without benchmarks."""
+    working as a primary, a model whose last pool test failed hard (BROKEN), and with filter t a model without benchmarks.
+    An account at risk (may run out before its reset at the current pace) keeps RISK of its score."""
     db = db or models.load()
-    cols, cat, looks, base = percentiles(db), agents.catalog(), {}, {}
+    cols, cat, looks, base = models.percentiles(db), agents.catalog(), {}, {}
     weights = {k: v for k, v in crit.items() if k != "t" and v}
     total = sum(weights.values()) or 1
     for aid, model in dict.fromkeys(cands):
         if aid not in cat:
             continue
-        if aid not in looks:
-            looks[aid] = outlook(aid, float(ws.meta(f"cool:{aid}") or 0))
-        ob, cp = observed(aid, model), profile(model, db, cols)
-        if looks[aid]["out_until"] or looks[aid]["used"] >= 90 or (ob["last"] and ob["last"][0] in BROKEN) or (crit.get("t") and cols and cp["cap"] is None):
+        ac = agents.account(aid, model)
+        if ac not in looks:
+            looks[ac] = outlook(ac, float(ws.meta(f"cool:{ac}") or 0))
+        ob, cp = observed(aid, model), models.profile(model, db, cols)
+        if looks[ac]["out_until"] or looks[ac]["used"] >= 90 or (ob["last"] and ob["last"][0] in BROKEN) or (crit.get("t") and cols and cp["cap"] is None):
             continue
         q = None if not ob["avg_s"] else min(1.0, max(0.0, 1 - math.log(max(ob["avg_s"], 1) / 30) / math.log(20)))
         base[(aid, model)] = ({"s": ob["stable"], "c": cp["c"], "r": cp["r"], "h": ob["honest"], "q": q,
-                               "f": float(bool(cat[aid].get("free")) or "free" in model.lower())}, cp["cap"], ob["last"])
+                               "f": float(bool(cat[aid].get("free")) or "free" in model.lower())}, cp["cap"], ob["last"], ac)
     prim = {n: w for n, w in team["workers"].items() if not w.get("backup")}
     taken = {(w["agent"], w["model"]) for w in prim.values()}
     out = {}
     for name, p in prim.items():
-        pc, rows = profile(p["model"], db, cols)["cap"], []
-        for (aid, model), (s, cap, last) in base.items():
-            if aid == p["agent"] or (aid, model) in taken:
+        pc, rows, mine = models.profile(p["model"], db, cols)["cap"], [], agents.account(p["agent"], p["model"])
+        for (aid, model), (s, cap, last, ac) in base.items():
+            if ac == mine or (aid, model) in taken:
                 continue
             s = {**s, "n": None if cap is None or pc is None else 1 - ((cap - pc) / 2 if cap > pc else pc - cap)}
-            score = sum(v * (0.5 if s[k] is None else s[k]) for k, v in weights.items()) / total
+            score = sum(v * (0.5 if s[k] is None else s[k]) for k, v in weights.items()) / total * (RISK if looks[ac]["risk"] else 1)
             conf = sum(v for k, v in weights.items() if s[k] is not None) / total
-            rows.append({"pair": (aid, model), "score": round(score, 3), "conf": round(conf, 2), "s": s, "last": last})
+            rows.append({"pair": (aid, model), "score": round(score, 3), "conf": round(conf, 2), "s": s, "last": last,
+                         "risk": looks[ac]["risk"]})
         out[name] = sorted(rows, key=lambda r: (-r["score"], -r["conf"]))
     return out
 
@@ -170,25 +175,26 @@ def table(ranked, team, per):
         for i, r in enumerate(rows[:max(per, 4)]):
             s = " ".join(f"{k}={'-' if v is None else round(v, 2)}" for k, v in r["s"].items())
             test = f"tested {r['last'][0]} {hm(r['last'][1])}" if r["last"] else "untested"
-            lines.append(f"  {'*' if i < per else ' '} {'/'.join(r['pair']):<42} {r['score']:.2f} conf {r['conf']:.2f}  {s}  {test}")
+            lines.append(f"  {'*' if i < per else ' '} {'/'.join(r['pair']):<42} {r['score']:.2f} conf {r['conf']:.2f}  {s}  {test}"
+                         + ("  account at risk" if r["risk"] else ""))
     return "\n".join(lines)
 
 
 # --- pre-test: one tiny real task per candidate -------------------------------------------------------------
-def pretest(pairs, timeout=300):
+def pretest(pairs, timeout=300, hard=False):
     """One small coding task per (agent, model), checked by us: is it reachable and entitled, does it follow the worker output
     contract, and is its "done" true? Recorded in history (role "pool"), where the s / h / q criteria read it.
     Accounts run in parallel, one call at a time each: a quota is per account."""
-    by, res = {}, {}
+    by, res, (tid, job, check) = {}, {}, TESTS[hard]
     for p in dict.fromkeys(pairs):
-        by.setdefault(p[0], []).append(p)
+        by.setdefault(agents.account(*p), []).append(p)
 
     def one(aid, model):
         d = HOME / "probe" / "pool" / re.sub(r"[^\w.-]", "_", f"{aid}-{model}")
         shutil.rmtree(d, ignore_errors=True)
         (d / "wt").mkdir(parents=True)
-        prompt = "\n\n".join(filter(None, ["ORCH-CALL role=worker task=POOL", "You are being tried out as a backup worker: one small task.",
-                                           contract("handoff"), f"## Task\n{FIZZ}", agents.catalog()[aid].get("note")]))
+        prompt = "\n\n".join(filter(None, [f"ORCH-CALL role=worker task={tid}", "You are being tried out as a backup worker: one small task.",
+                                           contract("handoff"), f"## Task\n{job}", agents.catalog()[aid].get("note")]))
         r = agents.run_agent(aid, model, prompt, d / "wt", d / "out", schema="handoff", timeout=timeout)  # out_dir outside the cwd
         outcome, detail = r["failure"] or "error", r["error"] or ""
         if r["ok"]:
@@ -196,11 +202,11 @@ def pretest(pairs, timeout=300):
                 h = validate(extract_json(r["text"]), schema("handoff"))
             except ValueError as e:
                 h, detail = None, str(e)
-            passed = subprocess.run([sys.executable, "-c", CHECK], cwd=d / "wt", env=agents.clean_env(), capture_output=True,
+            passed = subprocess.run([sys.executable, "-c", check], cwd=d / "wt", env=agents.clean_env(), capture_output=True,
                                     timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode == 0
             outcome = "invalid" if h is None else "blocked" if h["status"] != "done" else "ok" if passed else "verify"
             detail = detail if h is None else h["summary"]
-        record("pool", "POOL", aid, model, "pool", outcome, r["seconds"], r["tokens_in"], r["tokens_out"], r["cost"])
+        record("pool", tid, aid, model, "pool", outcome, r["seconds"], r["tokens_in"], r["tokens_out"], r["cost"])
         return {"outcome": outcome, "seconds": r["seconds"], "detail": detail[:300]}
 
     def account(ps):

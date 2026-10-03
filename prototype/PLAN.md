@@ -12,11 +12,11 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | Hạng mục | Trạng thái |
 |---|---|
 | Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+, không cần `pip install`. |
-| Test end-to-end | 18/18 PASS với mock agent (không tốn token). Đã chạy trên Windows (Python 3.13) và Linux/WSL (Python 3.14). |
+| Test end-to-end | 22/22 PASS với mock agent (không tốn token). Đã chạy trên Windows (Python 3.13) và Linux/WSL (Python 3.14). |
 | Adapter đã kiểm chứng cờ dòng lệnh trên máy này | <ul><li>`codex` 0.153.4.</li><li>`agy` 1.2.15.</li><li>`opencode` 1.18.34, profile `opencode@free`:<ul><li>8/10 model free trả lời được;</li><li>`big-pickle` và `fledge-alpha-free` qua pre-test code.</li></ul></li></ul> |
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
-| Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả, chưa cài 9router.</li></ul> |
-| Chưa chạy | <ul><li>`models refresh` / `skills refresh`: tải dữ liệu từ Internet, bạn tự chạy.</li><li>Cài 9router: cần bạn đồng ý (§13).</li></ul> |
+| Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả. 9router đã có trên máy nhưng chưa nối (§16 P0).</li></ul> |
+| Chưa chạy | <ul><li>`models refresh` / `skills refresh`: tải dữ liệu từ Internet, bạn tự chạy.</li><li>Nối 9router: cần bạn thao tác (§16 P0).</li></ul> |
 | Cố ý chưa làm | Canvas kéo-thả kiểu n8n, embeddings cho knowledge graph, worker chạy từ xa. |
 
 ## 1. Ý tưởng cốt lõi
@@ -198,8 +198,11 @@ Bạn có thể trả lời:
 Mục tiêu: hết usage là chuyện thường ngày, không phải lỗi, nên engine tự xử lý bằng code, không tốn token. Cách dùng và bảng tiêu chí: [README](README.md#hết-usage-xoay-vòng-và-pool-backup).
 
 **Đơn vị là tài khoản, không phải worker.**
-- Một agent id (`codex`, `agy`, `opencode@free`, …) là một tài khoản, tức một quota.
-- `cool(aid)` ghi `cool:<aid>` vào `ws.meta`. Mọi worker và vai trò dùng tài khoản đó cùng dừng.
+- Tài khoản = `agents.account(agent, model)`, tức một quota. Thường đó là agent id (`codex`, `agy`, `opencode@free`, …).
+- Profile router (`opencode@9router`) có một tài khoản cho mỗi tiền tố provider của model id (`if/…` → `opencode@9router/if`).
+  - `shares` ánh xạ tiền tố nào cũng là subscription của một CLI về tài khoản của CLI đó (`cx/…` → `codex`), vì hai bên hết usage cùng lúc.
+- `cool(acct)` ghi `cool:<acct>` vào `ws.meta`. Mọi worker và vai trò dùng tài khoản đó cùng dừng.
+- `account_max` trong `team.json` (ví dụ `{"codex": 1}`) giới hạn số task work chạy song song trên một tài khoản, cho trường hợp nhiều worker dùng chung một subscription. Mặc định không giới hạn.
 - Giờ mở khoá lấy theo thứ tự:
   1. giờ reset trong thông báo lỗi của CLI;
   2. bản ghi quota của chính CLI: codex ghi `rate_limits` vào rollout, engine chỉ đọc object này;
@@ -235,10 +238,13 @@ Mục tiêu: hết usage là chuyện thường ngày, không phải lỗi, nên
 - Điểm = Σ wᵢ·sᵢ / Σ wᵢ.
   - Tiêu chí chưa có dữ liệu tính 0,5.
   - `conf` = phần trọng số có dữ liệu thật.
+  - Tài khoản at risk chỉ giữ `RISK` = 0,75 số điểm.
 - Nguồn dữ liệu:
   - `c`/`r`/`n`: percentile benchmark công khai (`models refresh`);
   - `s`/`h`/`q`: lịch sử của chính bạn và pre-test.
 - Pre-test là một task code nhỏ (FizzBuzz) theo đúng hợp đồng handoff.
+  - Khi một trong n/c/r/h có trọng số ≥ 3 (preset `match` và `precise`), pre-test dùng bài khó hơn: chuyển đổi số La Mã hai chiều và từ chối mọi chuỗi không chuẩn (`IIII`, `VX`, `IM` …). Model yếu hay báo "done" mà bỏ sót đúng các trường hợp này. Cờ `--hard` ép dùng bài khó.
+  - Khi cần bài khó, chỉ kết quả bài khó trong 24 giờ qua mới được tính là còn mới.
   - Engine tự chạy lệnh kiểm tra; "done" mà kiểm tra trượt thì ghi `verify`, tức ảo giác.
   - Các tài khoản chạy song song; trong cùng tài khoản chạy lần lượt.
   - Kết quả ghi vào `history.db` với role `pool`.
@@ -296,11 +302,13 @@ Thêm một CLI mới = thêm một mục JSON, cộng một parser nhỏ nếu 
 | `claude@zai` | Claude Code trỏ tới endpoint tương thích Anthropic của Z.ai. Cần `ZAI_API_KEY` trong vault. |
 | `opencode` | Đã nâng lên 1.18.34; bản cũ tự lỗi khi migrate sqlite.<ul><li>Profile gốc dùng dữ liệu thật của bạn, nên discover nên tránh nó.</li><li>`opencode` lấy thư mục dự án từ biến `PWD`, không lấy cwd thật. `spawn()` luôn đặt `PWD` bằng cwd; trước khi sửa, pre-test đã ghi file ra ngoài worktree.</li></ul> |
 | `opencode@free` | Model free của OpenCode Zen, không cần tài khoản.<ul><li>Chạy với `--pure` và thư mục dữ liệu riêng: `XDG_DATA_HOME=~/.orchestra/opencode-free`.</li><li>Danh sách model còn có `meta/*`, có thể cần đăng nhập; pre-test sẽ lọc ra.</li></ul> |
-| `opencode@9router` | Provider tương thích OpenAI, cấu hình qua `OPENCODE_CONFIG_CONTENT`.<ul><li>Key đi từ vault qua biến `ROUTER_API_KEY`, không bao giờ nằm trong JSON cấu hình.</li><li>Header `X-9Router-Token-Saver: off`.</li><li>Model lấy từ `GET /v1/models` của router.</li></ul> |
+| `opencode@9router` | Provider tương thích OpenAI, cấu hình qua `OPENCODE_CONFIG_CONTENT`.<ul><li>Key đi từ vault qua biến `ROUTER_API_KEY`, không bao giờ nằm trong JSON cấu hình.</li><li>Header `X-9Router-Token-Saver: off`.</li><li>Model lấy từ `GET /v1/models` của router.</li><li>Mỗi tiền tố provider là một tài khoản. `shares` (`cx`→`codex`, `ag`→`agy`, `cc`→`claude`, `gc`→`gemini`, `cu`→`cursor-agent`) gộp các tiền tố trùng subscription với CLI (§6.1).</li><li>Mặc định `http://127.0.0.1:20128/v1`. Router chạy port khác thì ghi đè trong `~/.orchestra/agents.json`.</li></ul> |
 | `gemini`, `cursor-agent` | Có manifest sẵn, chưa kiểm chứng. |
 | `mock`, `mock@b`, `mock@c` | Ẩn. Agent theo kịch bản, dùng cho test. `@b` và `@c` là tài khoản thứ hai và thứ ba để test xoay vòng. |
 
-Profile `agent@x` kế thừa `base` rồi ghi đè vài trường. Mỗi profile là một tài khoản riêng (một quota riêng).
+Profile `agent@x` kế thừa `base` rồi ghi đè vài trường. Mỗi profile là một tài khoản riêng (một quota riêng), trừ profile router (§6.1).
+
+`~/.orchestra/agents.json` ghi đè catalog theo từng profile và chỉ áp dụng trên máy này (ví dụ port của router). Catalog trong repo giữ nguyên.
 
 Về tiến trình:
 - Shim npm (`*.cmd`) được giải về binary thật, để tránh cmd.exe tự phân tích tham số.
@@ -325,7 +333,7 @@ Xếp theo mức tác động (thống nhất với Codex ở vòng 1):
    Worker không bao giờ nhận lịch sử hội thoại của agent khác.
 3. **Handoff có giới hạn:** summary, files, decisions và tối đa 5 facts.
 4. **Kiểm soát đầu ra công cụ.**
-   - Repo map tối đa 300 đường dẫn (150 cho reviewer).
+   - Repo map tối đa 300 dòng (150 cho reviewer). Repo lớn hơn thì gộp theo thư mục, kèm số file.
    - Lỗi verify chỉ giữ 3.000 ký tự cuối.
    - Log đầy đủ nằm trong `attempts/`, không nằm trong prompt.
 5. **Tiền tố ổn định.** Rule và contract đứng đầu, phần thay đổi đứng cuối, để tận dụng prompt cache của provider.
@@ -371,10 +379,11 @@ Giá OpenRouter chỉ là "giá API tham khảo", không áp cho CLI dùng subsc
 
 **Sử dụng.**
 - `card()` tóm tắt mỗi model thành một dòng gọn cho prompt; lead đọc thẻ này thay vì lên web.
-- `suggest()` gợi ý đội hình:
-  - lead là model có ECI cao nhất;
-  - reviewer thuộc tổ chức khác với lead;
-  - mỗi CLI một worker, tối đa 4 worker.
+- `suggest()` gợi ý đội hình theo chất lượng kỳ vọng `(k·prior + đúng) / (k + đúng + sai)`, với k = 5:
+  - prior là percentile năng lực benchmark của model (0,5 nếu không có kết quả công khai);
+  - đúng = lời gọi kết thúc `ok` hoặc `integrated`; sai = `verify`, `invalid`, `timeout`. Hết quota hay lỗi auth không nói gì về model nên không tính;
+  - lead là cặp có điểm cao nhất; reviewer thuộc tổ chức khác với lead;
+  - mỗi tài khoản (`agents.account`) một worker, tối đa 4 worker.
 
 ## 12. Skill architect
 
@@ -448,7 +457,14 @@ Ma trận quyền:
    - Đặt `"skills": false`.
    - Hoặc chuyển mọi skill sang trạng thái "đề xuất, chờ bạn duyệt".
 
-Prototype chưa đổi gì ở hai điểm này, vì đây là quyết định của bạn.
+Prototype đã có cơ chế opt-in cho cả hai điểm. Mặc định giữ hành vi cũ, vì bật hay không là quyết định của bạn.
+- `"verify_allow": [["python", "-m", "unittest"], …]` (lựa chọn b). Mỗi phần tử là một tiền tố lệnh.
+  - Lệnh ngoài danh sách dừng task **trước** khi gọi worker, kể cả khi `auto_approve`.
+  - Bạn trả lời `yes` một lần thì lệnh đó được phép trong cả run, và mọi task đang chờ vì cùng lệnh được thả.
+  - Duyệt plan bằng tay cũng là duyệt các lệnh trong plan đó. `plan.md` ghi `(not in verify_allow)` cạnh từng lệnh ngoài danh sách. Lệnh trong bản amend chưa ai xem nên vẫn bị hỏi.
+- `"skills": "propose"`. Skill curated được chọn chỉ ở trạng thái đề xuất.
+  - Task SKILLS hỏi bạn một lần; các task work chờ câu trả lời.
+  - `yes` thì cài tất cả; câu trả lời khác thì làm tiếp mà không có skill.
 
 ## 14. Trao đổi với Codex (2 vòng)
 
@@ -525,7 +541,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 - Test chạy engine thật với mock agent theo kịch bản.
 - Mỗi test dùng một repo git tạm: tự xoá khi pass, giữ lại khi fail để điều tra.
 - `ORCH_HOME` trỏ vào một thư mục tạm, nên test không đụng `~/.orchestra` thật.
-- Thời gian: Linux khoảng 35 giây, Windows khoảng 2,5 phút.
+- Thời gian: Linux khoảng 40 giây, Windows khoảng 2–3 phút.
 
 | Test | Chứng minh |
 |---|---|
@@ -539,14 +555,18 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `pre_rotation_skips_an_exhausted_worker` | Task đang xếp hàng sau một tài khoản vừa hết usage được chuyển sang backup trước khi chạy. Không có ghi chú "phần việc dở". |
 | `quota_outlook_from_codex_rollouts` | <ul><li>Đọc `rate_limits` từ rollout giả.</li><li>Tính % đã dùng, tốc độ dùng, dự báo "hết lúc ~", trạng thái at risk.</li><li>Bản ghi 100% thì khoá tới giờ reset.</li></ul> |
 | `router_profile_lists_models_and_routes_opencode` | <ul><li>Router giả: danh sách model, key gửi qua header Bearer, key không lọt vào cấu hình.</li><li>Có opencode thì thêm một lời gọi thật qua router giả.</li><li>Tiến trình con nhận `PWD` bằng cwd.</li></ul> |
-| `pool_plan_ranks_pretests_and_backs_up` | <ul><li>`pool plan` xếp hạng và pre-test.</li><li>Model báo "done" mà kiểm tra trượt bị ghi `verify` và xếp sau.</li><li>Lưu backup riêng cho từng worker.</li><li>Trong run, backup đó thật sự nhận task khi worker chính hết usage.</li></ul> |
+| `router_accounts_per_provider_and_shared` | <ul><li>`~/.orchestra/agents.json` ghi đè profile trên máy này.</li><li>Router: mỗi tiền tố provider một tài khoản. Tiền tố trong `shares` hết usage cùng CLI, nên backup trên tiền tố đó bị bỏ qua.</li></ul> |
+| `account_limits_parallelism_and_risk_lowers_rank` | <ul><li>`account_max` bắt hai worker cùng tài khoản chạy lần lượt.</li><li>Tài khoản at risk xếp sau trong pool.</li></ul> |
+| `suggest_shrinks_benchmarks_toward_history` | <ul><li>Prior benchmark co về lịch sử: model mạnh mà hay báo "done" sai mất vị trí lead.</li><li>Lỗi quota không tính; mỗi tài khoản một worker.</li></ul> |
+| `pool_plan_ranks_pretests_and_backs_up` | <ul><li>`pool plan` xếp hạng và pre-test. Preset `precise` dùng bài khó, `pool test` mặc định dùng bài dễ.</li><li>Model báo "done" mà kiểm tra trượt bị ghi `verify` và xếp sau.</li><li>Lưu backup riêng cho từng worker.</li><li>Trong run, backup đó thật sự nhận task khi worker chính hết usage.</li></ul> |
 | `merge_conflict_is_resolved_by_the_worker` | <ul><li>Hai task sửa cùng một file.</li><li>Worker đến sau nhận dấu xung đột, tự gộp, rồi được tích hợp.</li></ul> |
 | `plan_review_user_approval_and_amendment` | <ul><li>Reviewer chặn → lead sửa plan bằng session cũ.</li><li>Bạn duyệt.</li><li>Review cuối chặn → amend → REVIEW2.</li></ul> |
 | `budget_gate_then_stop` | <ul><li>Chạm ngân sách → cổng BUDGET.</li><li>`stop` huỷ run; task còn lại không chạy.</li></ul> |
 | `skill_architect_installs_and_places` | <ul><li>Cài skill, quét ra script đáng xem.</li><li>Đặt đúng worktree của task, không commit skill.</li><li>Repo ngoài danh sách thành đề xuất và được `approve`.</li></ul> |
+| `opt_in_gates_verify_allowlist_and_skill_proposals` | <ul><li>`skills: propose`: skill chờ bạn duyệt, task work chờ theo.</li><li>`verify_allow`: lệnh ngoài danh sách dừng task trước lời gọi worker, kể cả trong run auto-approve. Một `yes` thả mọi task chờ cùng lệnh.</li></ul> |
 | `skills_index_offline` | <ul><li>Lập chỉ mục từ cây GitHub (giả lập mạng).</li><li>Cài đặt dùng lại cache theo commit.</li></ul> |
 | `ui_server_security` | Token, Host, Origin, CSP; vault được che; kiểm tra input. |
-| `scope_and_plan_checks` | Các kiểm tra plan và scope ở dạng hàm thuần. |
+| `scope_and_plan_checks` | Các kiểm tra plan, scope, allowlist lệnh verify và repo map ở dạng hàm thuần. |
 
 ## 16. Lộ trình
 
@@ -554,16 +574,16 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 1. `python -m orch models refresh` và `python -m orch skills refresh` (tải từ Internet).
 2. `python -m orch login claude` (gõ `/login` trong cửa sổ mở ra) để dùng được Claude Code, rồi kiểm chứng các cờ của nó.
 3. ~~Smoke run thật với đội codex + agy~~: đã xong (§0).
-4. Quyết định hai điểm va chạm ở §13.
-5. Nếu muốn dùng 9router: tự cài, cấu hình an toàn (§13), `vault set NINEROUTER_API_KEY`, rồi `discover --only opencode@9router --probe` và `pool plan`.
+4. Quyết định hai điểm va chạm ở §13. Cơ chế opt-in đã có, chỉ cần bật trong `team.json`.
+5. Dùng 9router: cấu hình an toàn (§13), `vault set NINEROUTER_API_KEY`, rồi `discover --only opencode@9router --probe` và `pool plan`. Router chạy port khác 20128 thì ghi đè trong `~/.orchestra/agents.json`.
 
-**P1**
-- Ranking trừ điểm tài khoản at risk. Hiện chỉ loại tài khoản đã dùng ≥ 90%.
-- Pre-test thêm một task khó hơn FizzBuzz cho preset `match` và `precise`.
-- Chính sách lệnh verify (allowlist) và chế độ duyệt skill, theo quyết định ở §13.
-- `suggest()` dùng thêm số liệu quan sát (ok-rate, thời gian, token), co về benchmark prior khi còn ít dữ liệu.
-- Giới hạn song song theo tài khoản, khi nhiều worker dùng chung một subscription.
-- Repo map tóm tắt theo thư mục cho repo lớn.
+**P1: đã xong (2026-10-03)**
+- Ranking trừ điểm tài khoản at risk (§6.1).
+- Pre-test khó cho `match` và `precise` (§6.1).
+- Opt-in allowlist lệnh verify và chế độ duyệt skill (§13).
+- `suggest()` co benchmark prior về lịch sử chạy thật (§11).
+- Giới hạn song song theo tài khoản bằng `account_max` (§6.1).
+- Repo map gộp theo thư mục cho repo lớn (§9).
 
 **P2**
 - Canvas DAG kiểu n8n: trước hết chỉ để xem, sau đó sửa plan bằng kéo-thả.
@@ -572,8 +592,9 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 - Worker chạy từ xa; khi đó mới cần lease/heartbeat.
 
 **Giới hạn đã biết** (đánh dấu `ponytail:` trong code):
-- Repo map phẳng, tối đa 300 file.
-- Gợi ý đội hình chỉ dựa trên ECI.
+- Repo map cắt ở cùng một độ sâu thư mục cho cả cây (tối đa 300 dòng).
+- Gợi ý đội hình: prior cố định nặng bằng k = 5 lời gọi; chưa tính thời gian và token.
+- Tài khoản at risk bị nhân hệ số cố định 0,75, không theo thời gian còn lại trước khi hết.
 - Knowledge graph chỉ tìm theo từ khoá.
 - Chỉ mục skill bị cắt nếu cây repo có hơn 100k mục.
 - Một engine mỗi workspace.

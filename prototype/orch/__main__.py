@@ -180,7 +180,7 @@ def cmd_pool(a):
         pairs = [tuple(x.split("/", 1)) for x in a.pairs] or [(w["agent"], w["model"]) for w in team["workers"].values() if w.get("backup")]
         if not pairs or any(len(p) != 2 or p[0] not in agents.catalog() for p in pairs):
             raise SystemExit("name agent/model pairs (python -m orch discover lists them), or plan a pool first")
-        for (aid, m), r in pool.pretest(pairs).items():
+        for (aid, m), r in pool.pretest(pairs, hard=a.hard).items():
             print(f"{aid}/{m}: {r['outcome']} ({r['seconds']}s) {r['detail'][:150]}")
         return
     if a.action == "plan":
@@ -189,10 +189,11 @@ def cmd_pool(a):
         if not db["models"]:
             print("no benchmark DB: c / r / n count as 0.5 and the t filter is off "
                   "(python -m orch models refresh downloads the public Epoch AI + OpenRouter data)")
-        ranked = pool.rank(team, cands, crit, ws, db)
-        todo = list(dict.fromkeys(r["pair"] for rows in ranked.values() for r in rows[:3] if not pool.fresh(r["pair"])))
-        if todo and not a.no_test and (a.yes or confirm(f"Pre-test {len(todo)} candidate(s) with a tiny coding task, one agent call each? [Y/n] ", True)):
-            for (aid, m), r in pool.pretest(todo).items():
+        ranked, hard = pool.rank(team, cands, crit, ws, db), a.hard or pool.hard(crit)
+        todo = list(dict.fromkeys(r["pair"] for rows in ranked.values() for r in rows[:3] if not pool.fresh(r["pair"], hard)))
+        if todo and not a.no_test and (a.yes or confirm(f"Pre-test {len(todo)} candidate(s) with a {'small' if hard else 'tiny'} coding task, "
+                                                        "one agent call each? [Y/n] ", True)):
+            for (aid, m), r in pool.pretest(todo, hard=hard).items():
                 print(f"  test {aid}/{m}: {r['outcome']} ({r['seconds']}s)")
             ranked = pool.rank(team, cands, crit, ws, db)
         print(pool.table(ranked, team, a.per))
@@ -257,6 +258,7 @@ def main(argv=None):
     s.add_argument("--criteria", help='e.g. "s=3,q=2,t": a letter toggles, letter=N sets its weight (0 = off)')
     s.add_argument("--per", type=int, default=1, help="backups per primary worker")
     s.add_argument("--no-test", action="store_true", help="rank without pre-testing")
+    s.add_argument("--hard", action="store_true", help="pre-test with the harder task (default for match / precise rankings)")
     s.add_argument("--yes", action="store_true", help="no questions: preset or --criteria, pre-test, save")
     a = ap.parse_args(argv)
     try:
