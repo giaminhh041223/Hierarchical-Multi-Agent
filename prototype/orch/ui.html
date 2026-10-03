@@ -1,38 +1,750 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Orchestra</title>
 <style>
-:root { color-scheme: light dark; font: 14px/1.45 system-ui, sans-serif; }
-body { margin: 0; }
-header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #8885; flex-wrap: wrap; }
-nav button { border: 0; background: none; padding: 6px 10px; cursor: pointer; font: inherit; border-bottom: 2px solid transparent; }
-nav button.on { border-bottom-color: currentColor; font-weight: 600; }
-main { padding: 12px; max-width: 1200px; }
-table { border-collapse: collapse; width: 100%; margin: 6px 0 14px; }
-td, th { border-bottom: 1px solid #8883; padding: 4px 6px; text-align: left; vertical-align: top; }
-pre { white-space: pre-wrap; word-break: break-word; background: #8881; padding: 8px; max-height: 45vh; overflow: auto; margin: 4px 0 12px; }
-textarea, input[type=text], input[type=password], input[type=search] { box-sizing: border-box; font: inherit; padding: 4px 6px; }
-textarea { width: 100%; }
-.card { border: 1px solid #8885; border-radius: 6px; padding: 8px 10px; margin: 8px 0; }
-.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
-.muted { opacity: .7; } .err { color: #d33; } .ok { color: #2a2; }
-.done { color: #2a2; } .failed, .cancelled { color: #d33; } .pending_user, .needs_lead { color: #c80; font-weight: 600; }
-.running, .verifying, .integrating { color: #27c; }
-.dag { overflow: auto; margin: 6px 0 14px; }
-.dag rect { fill: Canvas; stroke: currentColor; stroke-width: 1.5; }
-.dag text { fill: CanvasText; font-size: 12px; } .dag text.head { fill: currentColor; font-weight: 600; }
-.dag path { fill: none; stroke: #888; stroke-width: 1.2; }
-.dag path.hit { stroke: transparent; stroke-width: 12; cursor: pointer; } .dag path.hit:hover { stroke: #d334; }
-.dag [data-id] { cursor: crosshair; touch-action: none; user-select: none; }
-.dag line.drag { stroke: currentColor; stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
-</style></head>
+:root {
+  --paper: #F3F4F1;
+  --surface: #FFFFFF;
+  --ink: #1C2024;
+  --muted: #545B63;
+  --line: #DADDD8;
+  --control: #7E858C;
+  --running: #1F5FBF;
+  --done: #1D7443;
+  --waiting: #8F5300;
+  --failed: #B3261E;
+
+  color-scheme: light dark;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Noto Sans", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 400;
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #16191C;
+    --surface: #1E2226;
+    --ink: #E4E6E3;
+    --muted: #A0A8B0;
+    --line: #2A2F34;
+    --control: #69717A;
+    --running: #7DAAF0;
+    --done: #5CC489;
+    --waiting: #F0AE4C;
+    --failed: #FF8A80;
+  }
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.header-brand {
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-right: 4px;
+}
+
+nav#tabs {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+nav button {
+  flex: none;  /* a narrow window scrolls the tab bar instead of squeezing the labels into each other */
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  border-radius: 4px;
+  min-height: 32px;
+  min-width: 32px;
+}
+
+nav button:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+nav button.on {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  font-weight: 600;
+  border-color: var(--line);
+}
+
+.tab-gap {
+  margin-left: 20px;
+}
+
+@media (max-width: 640px) {
+  .tab-gap {
+    margin-left: 8px;
+  }
+}
+
+#header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pending-pill {
+  background: color-mix(in srgb, var(--waiting) 14%, var(--surface));
+  color: var(--waiting);
+  border: 1px solid color-mix(in srgb, var(--waiting) 40%, var(--surface));
+  font-weight: 600;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+}
+
+.pending-pill:hover {
+  background: color-mix(in srgb, var(--waiting) 22%, var(--surface));
+}
+
+main {
+  padding: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+h1, h2, h3, .heading {
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 20px 0 8px;
+}
+
+h1, h2 {
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+h3 {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+p, .prose {
+  max-width: 75ch;
+  margin: 6px 0 12px;
+}
+
+.question {
+  white-space: pre-wrap;
+}
+
+.mono, pre, code {
+  font-family: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.bold {
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.ok {
+  color: var(--done);
+}
+
+.err {
+  color: var(--failed);
+}
+
+.run-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.meta-sep {
+  color: var(--line);
+  user-select: none;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  background: var(--surface);
+}
+
+.card-waiting {
+  border-left: 4px solid var(--waiting);
+  background: color-mix(in srgb, var(--waiting) 4%, var(--surface));
+}
+
+.card-goal {
+  border-left: 4px solid var(--control);
+  background: color-mix(in srgb, var(--ink) 2%, var(--surface));
+}
+
+.card-err {
+  border-left: 4px solid var(--failed);
+  background: color-mix(in srgb, var(--failed) 6%, var(--surface));
+}
+
+.goal-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.field-grow {
+  flex: 1;
+  min-width: 200px;
+}
+
+.field-action {
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 8px;
+}
+
+label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  user-select: none;
+}
+
+input[type=checkbox] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+
+textarea, input[type=text], input[type=password], input[type=search], select {
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--control);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  min-height: 32px;
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+#team-input {
+  font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  font-size: 13px;
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 32px;
+  min-width: 32px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--control);
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+button:hover {
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
+}
+
+button.primary {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+button.primary:hover {
+  background: color-mix(in srgb, var(--paper) 15%, var(--ink));
+}
+
+button.secondary {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--control);
+}
+
+button.danger {
+  color: var(--failed);
+  border-color: var(--control);
+  background: var(--surface);
+}
+
+button.danger:hover {
+  border-color: var(--failed);
+  background: color-mix(in srgb, var(--failed) 8%, var(--surface));
+}
+
+.table-wrap {
+  overflow: auto;
+  max-height: 70vh;
+  max-width: 100%;
+  margin: 8px 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  z-index: 1;
+}
+
+td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: middle;
+  color: var(--ink);
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+tbody tr:hover td {
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
+}
+
+.truncate {
+  max-width: 380px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.badge.todo {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--control) 12%, var(--surface));
+  border: 1px solid var(--line);
+}
+
+.badge.running, .badge.verifying, .badge.integrating {
+  color: var(--running);
+  background: color-mix(in srgb, var(--running) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--running) 30%, transparent);
+}
+
+.badge.done {
+  color: var(--done);
+  background: color-mix(in srgb, var(--done) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--done) 30%, transparent);
+}
+
+.badge.pending_user, .badge.needs_lead {
+  color: var(--waiting);
+  background: color-mix(in srgb, var(--waiting) 15%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--waiting) 30%, transparent);
+}
+
+.badge.failed, .badge.cancelled {
+  color: var(--failed);
+  background: color-mix(in srgb, var(--failed) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--failed) 30%, transparent);
+}
+
+.badge.unknown {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--control) 12%, var(--surface));
+  border: 1px solid var(--line);
+}
+
+.badge-sym {
+  font-size: 11px;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.pulse {
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
+}
+
+details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  margin: 12px 0;
+  overflow: hidden;
+}
+
+summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  user-select: none;
+  background: color-mix(in srgb, var(--ink) 2%, var(--surface));
+  border-bottom: 1px solid transparent;
+  color: var(--ink);
+}
+
+details[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+summary:hover {
+  background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+}
+
+details pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  max-height: 45vh;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
+  padding: 10px 12px;
+  max-height: 45vh;
+  overflow: auto;
+  border-radius: 4px;
+  margin: 8px 0 12px;
+  border: 1px solid var(--line);
+}
+
+.dag {
+  overflow-x: auto;
+  margin: 12px 0 16px;
+  padding: 4px 0;
+  max-width: 100%;
+}
+
+.dag rect.dag-node-bg {
+  fill: var(--surface);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+.dag path.dag-stripe {
+  fill: var(--control);
+}
+
+.dag g.running path.dag-stripe,
+.dag g.verifying path.dag-stripe,
+.dag g.integrating path.dag-stripe {
+  fill: var(--running);
+}
+
+.dag g.done path.dag-stripe {
+  fill: var(--done);
+}
+
+.dag g.pending_user path.dag-stripe,
+.dag g.needs_lead path.dag-stripe {
+  fill: var(--waiting);
+}
+
+.dag g.failed path.dag-stripe,
+.dag g.cancelled path.dag-stripe {
+  fill: var(--failed);
+}
+
+.dag path.dag-stripe.edit {
+  fill: var(--control);
+}
+
+.dag g.running rect.dag-node-bg,
+.dag g.verifying rect.dag-node-bg,
+.dag g.integrating rect.dag-node-bg {
+  stroke: var(--running);
+}
+
+.dag g.done rect.dag-node-bg {
+  stroke: var(--done);
+}
+
+.dag g.pending_user rect.dag-node-bg,
+.dag g.needs_lead rect.dag-node-bg {
+  stroke: var(--waiting);
+}
+
+.dag g.failed rect.dag-node-bg,
+.dag g.cancelled rect.dag-node-bg {
+  stroke: var(--failed);
+}
+
+.dag text {
+  fill: var(--ink);
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+}
+
+.dag text.head {
+  fill: var(--ink);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dag text.dag-title {
+  fill: var(--muted);
+  font-size: 12px;
+}
+
+.dag path.edge {
+  fill: none;
+  stroke: var(--control);
+  stroke-width: 1.2;
+}
+
+.dag path.hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  cursor: pointer;
+}
+
+.dag path.hit:hover {
+  stroke: color-mix(in srgb, var(--failed) 30%, transparent);
+}
+
+.dag [data-id] {
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.dag line.drag {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+.plan-editor {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 2%, var(--surface));
+}
+
+#toasts {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+  max-width: 400px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--ink) 16%, transparent);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.toast.ok {
+  border-color: var(--done);
+  background: color-mix(in srgb, var(--done) 10%, var(--surface));
+  color: var(--done);
+}
+
+.toast.err {
+  border-color: var(--failed);
+  background: color-mix(in srgb, var(--failed) 10%, var(--surface));
+  color: var(--failed);
+}
+
+.toast-msg {
+  flex: 1;
+}
+
+.toast-close {
+  background: transparent;
+  border: 0;
+  color: currentColor;
+  cursor: pointer;
+  padding: 4px 6px;
+  min-height: 24px;
+  min-width: 24px;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 4px;
+  opacity: 0.8;
+}
+
+.toast-close:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+</style>
+</head>
 <body>
-<header><strong>Orchestra</strong><nav id="tabs"></nav><span id="msg" class="muted"></span></header>
+<header>
+  <div class="header-brand"><strong>Orchestra</strong></div>
+  <nav id="tabs" aria-label="Main navigation"></nav>
+  <div id="header-right"></div>
+</header>
 <main id="main"></main>
+<div id="toasts" role="status" aria-live="polite"></div>
 <script>
 "use strict";
-const drafts = {};
-let tab = "Run", timer = null;
+const drafts = {}, openBlocks = {}, tabCache = {};
+let tab = "Run", timer = null, pendingCount = 0;
+
+const STATUSES = {
+  todo: { sym: "○", text: "waiting", cls: "todo" },
+  running: { sym: "▶", text: "running", cls: "running" },
+  verifying: { sym: "▶", text: "verifying", cls: "verifying" },
+  integrating: { sym: "▶", text: "integrating", cls: "integrating" },
+  done: { sym: "✓", text: "done", cls: "done" },
+  pending_user: { sym: "!", text: "needs you", cls: "pending_user" },
+  needs_lead: { sym: "?", text: "with lead", cls: "needs_lead" },
+  failed: { sym: "✕", text: "failed", cls: "failed" },
+  cancelled: { sym: "–", text: "cancelled", cls: "cancelled" }
+};
 
 async function api(path, body) {
   const r = await fetch("/api/" + path, {method: body ? "POST" : "GET",
@@ -42,32 +754,88 @@ async function api(path, body) {
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
+
 // Every string becomes a text node: nothing coming from agents, repos or the DB is ever parsed as HTML.
 function h(tag, props, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
     if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
     else if (k === "class") e.className = v;
+    else if (k === "role" || k.startsWith("aria")) { if (v != null && v !== false) e.setAttribute(k.replace(/^aria(?=[A-Z])/, "aria-").toLowerCase(), v); }
     else e[k] = v;
   }
   for (const k of kids.flat(Infinity)) if (k !== null && k !== undefined && k !== false) e.append(k instanceof Node ? k : String(k));
   return e;
 }
-function say(text, cls) { const m = document.getElementById("msg"); m.className = cls || "muted"; m.textContent = text; }
+
+function badge(status) {
+  const s = STATUSES[status] || { sym: "•", text: status, cls: "unknown" };
+  const isPulse = ["running", "verifying", "integrating"].includes(status);
+  return h("span", {
+    class: "badge " + s.cls + (isPulse ? " pulse" : ""),
+    title: status
+  },
+    h("span", {class: "badge-sym", "aria-hidden": "true"}, s.sym),
+    " ",
+    h("span", {class: "badge-text"}, s.text)
+  );
+}
+
+function say(text, cls) {
+  if (!text) return;
+  const toasts = document.getElementById("toasts");
+  if (!toasts) return;
+  const isErr = cls === "err";
+  const t = h("div", {class: "toast " + (cls || ""), role: isErr ? "alert" : null},  // the container is the polite live region
+    h("span", {class: "toast-msg"}, text),
+    h("button", {
+      class: "toast-close",
+      ariaLabel: "Close notification",
+      onclick: () => t.remove()
+    }, "✕")
+  );
+  toasts.append(t);
+  if (!isErr) {
+    setTimeout(() => {
+      t.remove();
+    }, 5000);
+  }
+}
+
 async function act(fn, ok) {
   try { const r = await fn(); say(ok || (r && r.ok) || "done", "ok"); } catch (e) { say(e.message, "err"); }
   render();
 }
+
 const draft = (key, props) => h(props.rows ? "textarea" : "input", Object.assign({value: drafts[key] || "", oninput: e => drafts[key] = e.target.value}, props));
-const table = (head, rows) => h("table", {}, h("tr", {}, head.map(x => h("th", {}, x))), rows.map(r => h("tr", {}, r.map(c => h("td", {}, c)))));
-const btn = (label, fn) => h("button", {onclick: fn}, label);
+
+const table = (head, rows) => h("div", {class: "table-wrap"},
+  h("table", {},
+    h("thead", {}, h("tr", {}, head.map(x => h("th", {}, x)))),
+    h("tbody", {}, rows.map(r => h("tr", {}, r.map(c => h("td", {}, c)))))
+  )
+);
+
+const btn = (label, fn, cls) => h("button", {onclick: fn, class: cls || "secondary"}, label);
 const time = ts => new Date(ts * 1000).toLocaleTimeString();
+
 const svg = (tag, attrs, ...kids) => {
   const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
   for (const [k, v] of Object.entries(attrs)) if (typeof v === "function") e.addEventListener(k.slice(2), v); else if (v !== null) e.setAttribute(k, v);
   e.append(...kids);
   return e;
 };
+
+function detailsBlock(key, title, content) {
+  const d = h("details", {
+    ontoggle: e => { openBlocks[key] = e.target.open; }
+  },
+    h("summary", {}, title),
+    h("pre", {class: "mono"}, content)
+  );
+  if (openBlocks[key]) d.open = true;
+  return d;
+}
 
 // The run's task graph, left to right: one column per dependency depth. Dashed = implicit order (work starts after PLAN and
 // SKILLS). edit = the plan editor's graph: lines can be clicked away, tasks dragged onto each other (connect).
@@ -84,17 +852,22 @@ function dag(tasks, edit) {
   const width = rows.length * (W + GX) - GX, height = Math.max(...rows.map(n => n || 0)) * (H + GY) - GY;
   const edges = tasks.flatMap(t => up(t).flatMap(d => {
     const [x1, y1] = pos[d], [x2, y2] = pos[t.id], a = x1 + W, b = y1 + H / 2, c = y2 + H / 2;
-    const p = `M${a},${b} C${a + GX / 2},${b} ${x2 - GX / 2},${c} ${x2},${c}`, line = svg("path", {d: p, "stroke-dasharray": t.deps.length ? null : "4 3"});
+    const p = `M${a},${b} C${a + GX / 2},${b} ${x2 - GX / 2},${c} ${x2},${c}`, line = svg("path", {d: p, class: "edge", "stroke-dasharray": t.deps.length ? null : "4 3"});
     return edit ? [line, svg("path", {d: p, class: "hit", onclick: () => { t.deps = t.deps.filter(x => x !== d); render(); }},
       svg("title", {}, `${t.id} waits for ${d}: click to remove`))] : [line];
   }));
-  const nodes = tasks.map(t => svg("g", {class: edit ? null : t.status, transform: `translate(${pos[t.id]})`, "data-id": edit ? t.id : null,
-      onpointerdown: edit ? e => connect(e, t.id) : null},
-    svg("title", {}, edit ? `${t.id}: ${t.title}\n${t.assignee}. Drag onto another task to make that one wait for this one.`
-      : `${t.id}: ${t.title}\n${t.status}${t.assignee ? ", " + t.assignee : ""}${t.attempts ? ", try " + t.attempts : ""}`),
-    svg("rect", {width: W, height: H, rx: 6}),
-    svg("text", {x: 8, y: 18, class: "head"}, `${t.id} · ${edit ? t.assignee : t.status}`),
-    svg("text", {x: 8, y: 36}, t.title.length > 27 ? t.title.slice(0, 26) + "…" : t.title)));
+  const nodes = tasks.map(t => {
+    const s = STATUSES[t.status] || { sym: "•", text: t.status };
+    const headText = edit ? `${t.id} · ${t.assignee || ""}` : `${t.id}  ${s.sym} ${s.text}`;
+    return svg("g", {class: (edit ? "" : t.status), transform: `translate(${pos[t.id]})`, "data-id": edit ? t.id : null,
+        onpointerdown: edit ? e => connect(e, t.id) : null},
+      svg("title", {}, edit ? `${t.id}: ${t.title}\n${t.assignee}. Drag onto another task to make that one wait for this one.`
+        : `${t.id}: ${t.title}\n${t.status}${t.assignee ? ", " + t.assignee : ""}${t.attempts ? ", try " + t.attempts : ""}`),
+      svg("rect", {width: W, height: H, rx: 6, class: "dag-node-bg"}),
+      svg("path", {d: `M0,6 A6,6 0 0,1 6,0 L6,${H} A6,6 0 0,1 0,${H - 6} Z`, class: "dag-stripe " + (edit ? "edit" : t.status)}),
+      svg("text", {x: 12, y: 18, class: "head"}, headText),
+      svg("text", {x: 12, y: 36, class: "dag-title"}, t.title.length > 25 ? t.title.slice(0, 24) + "…" : t.title));
+  });
   return h("div", {class: "dag"}, svg("svg", {width, height, viewBox: `0 0 ${width} ${height}`}, ...edges, ...nodes));
 }
 
@@ -115,6 +888,7 @@ function connect(e, from) {  // a line follows the pointer; dropped on another t
   root.append(line);
   for (const [k, f] of on) addEventListener(k, f);
 }
+
 function addDep(t, d) {  // t waits for d; refused when d already waits for t, directly or not (a cycle)
   const by = Object.fromEntries(drafts.plan.tasks.map(x => [x.id, x])), seen = new Set(), todo = [d];
   while (todo.length) {
@@ -125,149 +899,317 @@ function addDep(t, d) {  // t waits for d; refused when d already waits for t, d
   if (!t.deps.includes(d)) t.deps.push(d);
   render();
 }
+
 // Edit the plan waiting for approval (drafts.plan): who does each task and what it waits for. The table is the keyboard route.
 function planEditor(s) {
   const p = drafts.plan, drop = (t, d) => { t.deps = t.deps.filter(x => x !== d); render(); };
-  return h("div", {},
-    h("p", {class: "muted"}, "Drag from a task onto another: the second then waits for the first. Click a line to remove it. Saving makes a new plan version, which still needs your yes."),
+  return h("div", {class: "plan-editor"},
+    h("p", {class: "prose muted"}, "Drag from a task onto another: the second then waits for the first. Click a line to remove it. Saving makes a new plan version, which still needs your yes."),
     p.version !== s.edit.version && h("p", {class: "err"}, `The plan is now v${s.edit.version}: discard this edit and start again.`),
     dag(p.tasks, true),
-    table(["task", "worker", "waits for"], p.tasks.map(t => [h("div", {}, h("b", {}, t.id), h("div", {class: "muted"}, t.title)),
+    table(["Task", "Worker", "Waits for"], p.tasks.map(t => [
+      h("div", {}, h("b", {class: "mono"}, t.id), h("div", {class: "muted"}, t.title)),
       h("select", {ariaLabel: "worker for " + t.id, onchange: e => { t.assignee = e.target.value; render(); }},
         [...new Set([...s.edit.workers, t.assignee])].map(w => h("option", {value: w, selected: w === t.assignee}, w))),
-      h("div", {class: "row"}, p.tasks.filter(x => x.id !== t.id).map(x => h("label", {}, h("input", {type: "checkbox", checked: t.deps.includes(x.id),
-        onchange: e => e.target.checked ? addDep(t, x.id) : drop(t, x.id)}), " " + x.id)))])),
+      h("div", {class: "row"}, p.tasks.filter(x => x.id !== t.id).map(x => h("label", {class: "checkbox-label"},
+        h("input", {type: "checkbox", checked: t.deps.includes(x.id), onchange: e => e.target.checked ? addDep(t, x.id) : drop(t, x.id)}),
+        " ", h("span", {class: "mono"}, x.id))))
+    ])),
     h("div", {class: "row"},
       btn("Save as plan v" + (p.version + 1), () => act(async () => {
         const r = await api("plan", {version: p.version, tasks: p.tasks.map(t => ({id: t.id, deps: t.deps, assignee: t.assignee}))});
         delete drafts.plan;
         return r;
-      })),
-      btn("Discard", () => { delete drafts.plan; render(); })));
+      }), "primary"),
+      btn("Discard", () => { delete drafts.plan; render(); }, "secondary")
+    )
+  );
 }
 
-async function Run() {
-  const s = await api("state"), live = t => !["done", "failed", "cancelled"].includes(t.status);
+async function Run(data) {
+  const s = data || await api("state");
+  const live = t => !["done", "failed", "cancelled"].includes(t.status);
   if (drafts.plan && !s.edit) { delete drafts.plan; say("The plan is not waiting for approval any more: your edit was dropped", "err"); }
   const pending = s.tasks.filter(t => t.status === "pending_user");
+
   return h("div", {},
-    h("div", {class: "row"}, h("span", {class: "muted"}, s.project), " | run ", h("b", {}, s.run || "none"),
-      " | ", h("span", {class: s.status || ""}, s.status || (s.run ? "open" : "")), " | engine ", h("b", {}, s.engine ? "running" : "stopped")),
-    s.goal && h("div", {class: "card"}, h("b", {}, "Goal: "), s.goal),
+    h("div", {class: "run-meta"},
+      h("span", {class: "mono muted"}, s.project),
+      h("span", {class: "meta-sep"}, "·"),
+      h("span", {}, "run ", h("b", {class: "mono"}, s.run || "none")),
+      h("span", {class: "meta-sep"}, "·"),
+      s.status && STATUSES[s.status] ? badge(s.status) : h("span", {class: "mono muted"}, s.status || (s.run ? "open" : "idle")),
+      h("span", {class: "meta-sep"}, "·"),
+      h("span", {}, "engine ", h("b", {class: s.engine ? "ok" : "muted"}, s.engine ? "running" : "stopped"))
+    ),
+    s.goal && h("div", {class: "card card-goal"},
+      h("div", {class: "goal-label"}, "Goal"),
+      h("div", {class: "prose"}, s.goal)
+    ),
     !s.has_team && h("p", {class: "err"}, "No team yet: pick one in the Team tab (or run python -m orch init)."),
     !s.engine && h("div", {class: "card"},
-      draft("goal", {rows: 3, placeholder: "What should the team build or fix? (the lead plans it, the reviewer checks the plan)"}),
+      h("div", {class: "field"},
+        h("label", {htmlFor: "goal-box"}, "Goal"),
+        draft("goal", {id: "goal-box", rows: 3, placeholder: "What should the team build or fix? (the lead plans it, the reviewer checks the plan)"})
+      ),
       h("div", {class: "row"},
-        h("label", {}, h("input", {type: "checkbox", checked: !!drafts.yes, onchange: e => drafts.yes = e.target.checked}), " auto-approve the reviewed plan"),
-        btn("Start run", () => act(() => api("run", {goal: drafts.goal || "", yes: !!drafts.yes}))),
-        s.run && !["done", "failed", "cancelled"].includes(s.status) && btn("Resume run " + s.run, () => act(() => api("resume", {}))))),
-    pending.length > 0 && h("h3", {}, "Waiting for you"),
-    pending.map(t => h("div", {class: "card"}, h("b", {}, t.id + ": " + t.title), h("pre", {}, t.question || ""),
+        h("label", {class: "checkbox-label"},
+          h("input", {type: "checkbox", checked: !!drafts.yes, onchange: e => drafts.yes = e.target.checked}),
+          " Auto-approve the reviewed plan"
+        ),
+        btn("Start run", () => act(() => api("run", {goal: drafts.goal || "", yes: !!drafts.yes})), "primary"),
+        s.run && !["done", "failed", "cancelled"].includes(s.status) && btn("Resume run " + s.run, () => act(() => api("resume", {})), "secondary")
+      )
+    ),
+    pending.length > 0 && h("h3", {}, `Waiting for you (${pending.length})`),
+    pending.map(t => h("div", {class: "card card-waiting"},
+      h("div", {class: "row"},
+        h("b", {class: "mono"}, t.id + ":"),
+        h("span", {class: "bold"}, t.title),
+        badge(t.status)
+      ),
+      t.question && h("p", {class: "prose question"}, t.question),
       t.id === "PLAN" && drafts.plan ? planEditor(s) : [
-        draft("ans:" + t.id, {rows: 2, placeholder: "yes / retry / cancel / reassign <worker> / any instruction"}),
-        h("div", {class: "row"}, btn("Send answer", () => act(() => api("answer", {task: t.id, text: drafts["ans:" + t.id] || "yes"}))),
+        h("div", {class: "field"},
+          h("label", {htmlFor: "ans-" + t.id}, "Your answer"),
+          draft("ans:" + t.id, {id: "ans-" + t.id, rows: 2, placeholder: "yes / retry / cancel / reassign <worker> / any instruction"})
+        ),
+        h("div", {class: "row"},
+          btn("Send answer", () => act(() => api("answer", {task: t.id, text: drafts["ans:" + t.id] || "yes"})), "primary"),
           t.id === "PLAN" && s.edit && btn("Edit plan", () => {
             drafts.plan = {version: s.edit.version, tasks: s.edit.tasks.map(x => ({...x, deps: [...x.deps]}))};
             render();
-          }))])),
+          }, "secondary")
+        )
+      ]
+    )),
     s.tasks.length > 0 && h("h3", {}, "Board"),
     s.tasks.length > 0 && dag(s.tasks),
-    s.tasks.length > 0 && table(["id", "status", "worker", "try", "deps", "title", ""], s.tasks.map(t => [
-      t.id, h("span", {class: t.status}, t.status), t.assignee || "", t.attempts, t.deps.join(", "), t.title,
-      live(t) ? btn("cancel", () => act(() => api("cancel", {task: t.id}))) : ""])),
-    s.tasks.some(live) && btn("Cancel all", () => confirm("Cancel every unfinished task?") && act(() => api("cancel", {task: "all"}))),
-    s.report && [h("h3", {}, "Report"), h("pre", {}, s.report)],
-    s.plan && [h("h3", {}, "Plan"), h("pre", {}, s.plan)],
-    s.log && [h("h3", {}, "Engine console"), h("pre", {}, s.log)]);
+    s.tasks.length > 0 && table(["Task", "Status", "Worker", "Try", "Deps", "Title", ""], s.tasks.map(t => [
+      h("span", {class: "mono bold"}, t.id),
+      badge(t.status),
+      h("span", {class: "mono"}, t.assignee || ""),
+      h("span", {class: "tabular"}, t.attempts),
+      h("span", {class: "mono"}, t.deps.join(", ")),
+      h("div", {class: "truncate", title: t.title}, t.title),
+      live(t) ? btn("Cancel", () => act(() => api("cancel", {task: t.id})), "danger") : ""
+    ])),
+    s.tasks.some(live) && h("div", {class: "row"},
+      btn("Cancel all", () => confirm("Cancel every unfinished task? Running and queued work will be stopped.") && act(() => api("cancel", {task: "all"})), "danger")
+    ),
+    s.report ? detailsBlock("report", "Report", s.report) : null,
+    s.plan ? detailsBlock("plan", "Plan", s.plan) : null,
+    s.log ? detailsBlock("log", "Engine console", s.log) : null
+  );
 }
 
-async function Events() {
-  const ev = await api("events");
-  return table(["time", "kind", "task", "actor", "message"], ev.map(e => [time(e.ts), h("span", {class: e.kind}, e.kind), e.task || "", e.actor, e.body]));
+async function Events(data) {
+  const ev = data || await api("events");
+  return table(["Time", "Kind", "Task", "Actor", "Message"], ev.map(e => [
+    h("span", {class: "tabular mono"}, time(e.ts)),
+    STATUSES[e.kind] ? badge(e.kind) : h("span", {class: "mono muted"}, e.kind),
+    h("span", {class: "mono"}, e.task || ""),
+    h("span", {class: "mono"}, e.actor),
+    h("div", {class: "truncate", title: e.body}, e.body)
+  ]));
+}
+
+async function Knowledge() {
+  const r = drafts.kq ? await api("kg?q=" + encodeURIComponent(drafts.kq)) : {facts: [], links: []};
+  return h("div", {},
+    h("p", {class: "prose muted"}, "Facts published by integrated tasks (only from work that passed verification), searchable by every agent."),
+    h("div", {class: "row"},
+      h("div", {class: "field field-grow"},
+        h("label", {htmlFor: "kq-input"}, "Search facts"),
+        draft("kq", {id: "kq-input", type: "search", placeholder: "e.g. auth api", onkeydown: e => e.key === "Enter" && render()})
+      ),
+      h("div", {class: "field-action"},
+        btn("Search", () => render(), "primary")
+      )
+    ),
+    table(["Entity", "Fact", "Task"], r.facts.map(f => [
+      h("span", {class: "mono bold"}, f.entity),
+      h("div", {class: "truncate", title: f.fact}, f.fact),
+      h("span", {class: "mono"}, f.task)
+    ])),
+    r.links.length > 0 && table(["From", "Relation", "To"], r.links.map(l => [
+      h("span", {class: "mono"}, l.src),
+      h("span", {class: "mono muted"}, l.rel),
+      h("span", {class: "mono"}, l.dst)
+    ]))
+  );
 }
 
 async function Agents() {
   const r = await api("agents");
   return h("div", {},
-    h("p", {class: "muted"}, "Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orchestra never sees passwords. A probe sends one tiny prompt per agent to prove the account works."),
-    h("div", {class: "row"}, btn("Discover", () => act(() => api("discover", {}))), btn("Discover + probe", () => act(() => api("discover", {probe: true})))),
-    Object.keys(r.agents).length === 0 && h("p", {}, "Nothing discovered yet: press Discover."),
-    table(["agent", "installed", "auth", "probe", "models", "keys it can use", ""], Object.entries(r.agents).map(([id, a]) => [
-      h("div", {}, h("b", {}, id), h("div", {class: "muted"}, a.name)),
-      a.installed ? (a.version || "yes") : h("span", {class: "muted"}, "no " + (a.install ? "(" + a.install + ")" : "")),
-      a.auth || "", a.probe ? (a.probe.ok ? h("span", {class: "ok"}, "ok " + a.probe.model) : h("span", {class: "err"}, a.probe.class + ": " + (a.probe.error || ""))) : "",
-      (a.models || []).slice(0, 12).join(", ") + ((a.models || []).length > 12 ? " ..." : ""),
-      (r.keys[id] || []).join(", "),
-      a.installed && a.login ? btn("Log in", () => act(() => api("login", {agent: id}))) : ""])));
-}
-
-async function Vault() {
-  const v = await api("vault");
-  return h("div", {},
-    h("p", {class: "muted"}, "API keys for agents that use them (e.g. ZAI_API_KEY for claude@zai, OPENAI_API_KEY for codex). Stored encrypted with Windows DPAPI for your user; each agent only receives the keys its adapter declares; values are masked here and redacted from logs."),
-    table(["name", "value", ""], Object.entries(v).map(([k, m]) => [k, m, btn("delete", () => confirm("Delete " + k + "?") && act(() => api("vault", {name: k, value: null})))])),
-    h("div", {class: "row"}, draft("vname", {type: "text", placeholder: "NAME_LIKE_THIS"}),
-      h("input", {type: "password", id: "vval", placeholder: "value", autocomplete: "off"}),
-      btn("Save key", () => act(async () => { const r = await api("vault", {name: drafts.vname || "", value: document.getElementById("vval").value}); drafts.vname = ""; return r; }, "saved"))));
+    h("p", {class: "prose muted"}, "Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orchestra never sees passwords. A probe sends one tiny prompt per agent to prove the account works."),
+    h("div", {class: "row"},
+      btn("Discover", () => act(() => api("discover", {})), "primary"),
+      btn("Discover + probe", () => act(() => api("discover", {probe: true})), "secondary")
+    ),
+    Object.keys(r.agents).length === 0 && h("p", {class: "muted"}, "Nothing discovered yet: press Discover."),
+    table(["Agent", "Installed", "Auth", "Probe", "Models", "Keys it can use", ""], Object.entries(r.agents).map(([id, a]) => [
+      h("div", {}, h("b", {class: "mono"}, id), h("div", {class: "muted"}, a.name)),
+      a.installed ? h("span", {class: "mono"}, a.version || "yes") : h("span", {class: "muted"}, "no " + (a.install ? "(" + a.install + ")" : "")),
+      h("span", {class: "mono"}, a.auth || ""),
+      a.probe ? (a.probe.ok ? h("span", {class: "ok mono"}, "ok " + a.probe.model) : h("span", {class: "err mono"}, a.probe.class + ": " + (a.probe.error || ""))) : "",
+      h("div", {class: "truncate", title: (a.models || []).join(", ")}, (a.models || []).slice(0, 12).join(", ") + ((a.models || []).length > 12 ? " ..." : "")),
+      h("span", {class: "mono"}, (r.keys[id] || []).join(", ")),
+      a.installed && a.login ? btn("Log in", () => act(() => api("login", {agent: id})), "secondary") : ""
+    ]))
+  );
 }
 
 async function Team() {
   const t = await api("team");
   if (drafts.team === undefined) drafts.team = JSON.stringify(t.team || t.suggested || {}, null, 2);
   return h("div", {},
-    h("p", {class: "muted"}, "lead = strongest model (plans, triages); reviewer = a different vendor if possible; workers = one per agent CLI. Edit the JSON, then save. Worker rule files are created in .orch/rules/."),
-    draft("team", {rows: 18, spellcheck: false}),
-    h("div", {class: "row"}, btn("Save team", () => act(() => api("team", {team: JSON.parse(drafts.team)}))),
-      t.suggested && btn("Use suggested team", () => { drafts.team = JSON.stringify(t.suggested, null, 2); render(); })),
+    h("p", {class: "prose muted"}, "lead = strongest model (plans, triages); reviewer = a different vendor if possible; workers = one per agent CLI. Edit the JSON, then save. Worker rule files are created in .orch/rules/."),
+    h("div", {class: "field"},
+      h("label", {htmlFor: "team-input"}, "Team configuration (JSON)"),
+      draft("team", {id: "team-input", rows: 18, spellcheck: false})
+    ),
+    h("div", {class: "row"},
+      btn("Save team", () => act(() => api("team", {team: JSON.parse(drafts.team)})), "primary"),
+      t.suggested && btn("Use suggested team", () => { drafts.team = JSON.stringify(t.suggested, null, 2); render(); }, "secondary")
+    ),
     h("h3", {}, "Usable models (agent / model / what we know)"),
-    t.candidates.length === 0 && h("p", {}, "None found yet: press Discover in the Agents tab (or log in to an agent first)."),
-    table(["agent", "model", "benchmarks, API reference price, our own run history"], t.candidates));
+    t.candidates.length === 0 && h("p", {class: "muted"}, "None found yet: press Discover in the Agents tab (or log in to an agent first)."),
+    table(["Agent", "Model", "Benchmarks, API reference price, our own run history"], t.candidates.map(([a, m, info]) => [
+      h("span", {class: "mono bold"}, a),
+      h("span", {class: "mono"}, m),
+      h("span", {}, info)
+    ]))
+  );
 }
 
-async function Knowledge() {
-  const r = drafts.kq ? await api("kg?q=" + encodeURIComponent(drafts.kq)) : {facts: [], links: []};
+async function Vault() {
+  const v = await api("vault");
   return h("div", {},
-    h("p", {class: "muted"}, "Facts published by integrated tasks (only from work that passed verification), searchable by every agent."),
-    h("div", {class: "row"}, draft("kq", {type: "search", placeholder: "search facts, e.g. auth api", onkeydown: e => e.key === "Enter" && render()}), btn("Search", () => render())),
-    table(["entity", "fact", "task"], r.facts.map(f => [f.entity, f.fact, f.task])),
-    r.links.length > 0 && table(["from", "relation", "to"], r.links.map(l => [l.src, l.rel, l.dst])));
-}
-
-async function Skills() {
-  const r = await api("skills");
-  return h("div", {},
-    h("p", {class: "muted"}, "Curated sources (pinned commits): " + r.sources.join(", ") + " + skills installed for your local agents. Refreshing downloads the index from github.com."),
-    btn("Refresh index", () => act(() => api("skill", {action: "refresh"}))),
-    r.run.length > 0 && h("h3", {}, "This run"),
-    r.run.length > 0 && table(["skill", "status", "tasks", "reason / scan", ""], r.run.map(s => [s.id, s.status, s.tasks, h("div", {}, s.reason, h("div", {class: "muted"}, s.scan || "")),
-      s.status === "proposed" ? h("span", {}, btn("approve", () => act(() => api("skill", {action: "approve", id: s.id}))), " ", btn("reject", () => act(() => api("skill", {action: "reject", id: s.id})))) : ""])),
-    h("h3", {}, "Index (" + r.index.length + ")"),
-    table(["id", "description"], r.index.map(s => [s.id, s.description])));
+    h("p", {class: "prose muted"}, "API keys for agents that use them (e.g. ZAI_API_KEY for claude@zai, OPENAI_API_KEY for codex). Stored encrypted with Windows DPAPI for your user; each agent only receives the keys its adapter declares; values are masked here and redacted from logs."),
+    table(["Name", "Value", ""], Object.entries(v).map(([k, m]) => [
+      h("span", {class: "mono bold"}, k),
+      h("span", {class: "mono muted"}, m),
+      btn("Delete", () => confirm("Delete API key " + k + "? Agents needing it will fail authentication.") && act(() => api("vault", {name: k, value: null})), "danger")
+    ])),
+    h("div", {class: "card"},
+      h("h3", {}, "Add or update key"),
+      h("div", {class: "row"},
+        h("div", {class: "field"},
+          h("label", {htmlFor: "vname-input"}, "Key name"),
+          draft("vname", {id: "vname-input", type: "text", placeholder: "e.g. OPENAI_API_KEY"})
+        ),
+        h("div", {class: "field"},
+          h("label", {htmlFor: "vval"}, "Key value"),
+          h("input", {type: "password", id: "vval", placeholder: "e.g. sk-...", autocomplete: "off"})
+        ),
+        h("div", {class: "field-action"},
+          btn("Save key", () => act(async () => {
+            const r = await api("vault", {name: drafts.vname || "", value: document.getElementById("vval").value});
+            drafts.vname = "";
+            return r;
+          }, "saved"), "primary")
+        )
+      )
+    )
+  );
 }
 
 async function Models() {
   const r = await api("models");
   return h("div", {},
-    h("p", {class: "muted"}, "Benchmarks: Epoch AI (CC-BY); prices/context: OpenRouter list prices (a reference: subscription CLIs do not bill per token). Data as of " + (r.as_of || "never") + "."),
-    btn("Refresh from public sources", () => act(() => api("models", {refresh: true}))),
-    table(["model", "card"], Object.entries(r.cards)));
+    h("p", {class: "prose muted"}, "Benchmarks: Epoch AI (CC-BY); prices/context: OpenRouter list prices (a reference: subscription CLIs do not bill per token). Data as of " + (r.as_of || "never") + "."),
+    btn("Refresh from public sources", () => act(() => api("models", {refresh: true})), "primary"),
+    table(["Model", "Card"], Object.entries(r.cards).map(([m, card]) => [
+      h("span", {class: "mono bold"}, m),
+      h("span", {class: "mono"}, card)
+    ]))
+  );
 }
 
-const TABS = {Run, Events, Agents, Vault, Team, Knowledge, Skills, Models};
-async function render(auto) {  // auto refresh never clobbers a field the user is typing in, or a plan edit
-  clearTimeout(timer);
-  const typing = auto && (drafts.plan || /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || ""));
-  if (!typing) {
-    document.getElementById("tabs").replaceChildren(...Object.keys(TABS).map(n => h("button", {class: n === tab ? "on" : "", onclick: () => { tab = n; render(); }}, n)));
-    try { document.getElementById("main").replaceChildren(await TABS[tab]()); } catch (e) { document.getElementById("main").replaceChildren(h("p", {class: "err"}, e.message)); }
+async function Skills() {
+  const r = await api("skills");
+  return h("div", {},
+    h("p", {class: "prose muted"}, "Curated sources (pinned commits): " + r.sources.join(", ") + " + skills installed for your local agents. Refreshing downloads the index from github.com."),
+    btn("Refresh index", () => act(() => api("skill", {action: "refresh"})), "primary"),
+    r.run.length > 0 && h("h3", {}, "This run"),
+    r.run.length > 0 && table(["Skill", "Status", "Tasks", "Reason / Scan", ""], r.run.map(s => [
+      h("span", {class: "mono bold"}, s.id),
+      STATUSES[s.status] ? badge(s.status) : h("span", {class: "mono muted"}, s.status),
+      h("span", {class: "mono"}, s.tasks || ""),
+      h("div", {}, h("div", {}, s.reason), h("div", {class: "muted mono"}, s.scan || "")),
+      s.status === "proposed" ? h("div", {class: "row"},
+        btn("Approve", () => act(() => api("skill", {action: "approve", id: s.id})), "secondary"),
+        btn("Reject", () => act(() => api("skill", {action: "reject", id: s.id})), "danger")
+      ) : ""
+    ])),
+    h("h3", {}, "Index (" + r.index.length + ")"),
+    table(["Id", "Description"], r.index.map(s => [
+      h("span", {class: "mono bold"}, s.id),
+      h("div", {class: "truncate", title: s.description}, s.description)
+    ]))
+  );
+}
+
+const TABS = {Run, Events, Knowledge, Agents, Team, Vault, Models, Skills};
+
+function renderNav() {
+  const tabsEl = document.getElementById("tabs");
+  const tabNames = Object.keys(TABS);
+  tabsEl.replaceChildren(...tabNames.map(n => {
+    const isCur = n === tab;
+    return h("button", {
+      class: (isCur ? "on " : "") + (n === "Agents" ? "tab-gap" : ""),
+      ariaCurrent: isCur ? "page" : null,
+      onclick: () => { tab = n; render(); }
+    }, n);
+  }));
+
+  const rightEl = document.getElementById("header-right");
+  if (rightEl) {
+    rightEl.replaceChildren(
+      pendingCount > 0 ? h("button", {
+        class: "pending-pill",
+        title: `${pendingCount} task(s) waiting for you`,
+        onclick: () => { tab = "Run"; render(); }
+      }, `! Needs you ${pendingCount}`) : null
+    );
   }
-  if (tab === "Run" || tab === "Events") timer = setTimeout(() => render(true), 3000);
 }
+
+// Auto refresh never clobbers a field the user is typing in or a plan edit, and leaves the page alone when the data did not
+// change: selection, focus and scroll positions survive. User actions always redraw.
+async function render(auto) {
+  clearTimeout(timer);
+  const name = tab, live = name === "Run" || name === "Events", main = document.getElementById("main");
+  const again = () => { if (live && tab === name) timer = setTimeout(() => render(true), 3000); };
+  if (auto && (drafts.plan || /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || ""))) return again();
+  try {
+    const data = live ? await api(name === "Run" ? "state" : "events") : null, json = JSON.stringify(data);
+    if (tab !== name || (auto && tabCache[name] === json)) return again();
+    tabCache[name] = json;
+    if (name === "Run") pendingCount = data.tasks.filter(t => t.status === "pending_user").length;
+    const view = await TABS[name](data);
+    if (tab !== name) return;
+    main.replaceChildren(view);
+  } catch (e) {
+    delete tabCache[name];
+    if (tab === name) main.replaceChildren(h("p", {class: "err"}, e.message));
+  }
+  renderNav();
+  again();
+}
+
 function start() {  // the token lives in the URL fragment: it is never sent to a server or written to logs
-  if (location.hash.length < 2) return say("Missing access token: open the link printed by python -m orch ui", "err");
-  say(""); render();
+  if (location.hash.length < 2) return document.getElementById("main").replaceChildren(h("div", {class: "card card-err", role: "alert"},
+    h("h3", {}, "Missing access token"),
+    h("p", {class: "prose"}, "Open the link printed by ", h("code", {}, "python -m orch ui"), ": it carries this session's access token.")));
+  render();
 }
+
 window.addEventListener("hashchange", start);
 start();
 </script>
-</body></html>
+</body>
+</html>

@@ -41,6 +41,8 @@ def api_state(ws, b, q):
                     "tasks": [{k: t[k] for k in ("id", "title", "assignee", "deps")} for t in p["plan"]["tasks"]]}
     return {"project": str(ws.project), "run": run, "goal": run and ws.meta(f"{run}:goal"), "status": run and ws.meta(f"{run}:status"),
             "engine": EngineLock(ws).held_elsewhere(), "has_team": team, "tasks": tasks, "edit": edit,
+            "attempts": ws.q("SELECT task, kind, agent, model, started, ended, outcome, failure, tokens_in, tokens_out, cost, dir"
+                             " FROM attempts WHERE run=? ORDER BY id", run) if run else [],  # task panel and the score (UIUX §9)
             "plan": _file(rdir / "plan.md"), "report": _file(rdir / "report.md"), "log": _file(ws.dir / "engine.log", 4000)}
 
 
