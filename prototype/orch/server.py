@@ -132,7 +132,8 @@ def api_skill(ws, b, q):
 def api_models(ws, b, q):
     if b.get("refresh"):
         models.refresh()
-    return {"as_of": models.load().get("as_of"), "cards": {m: models.card(m) for m in sorted({m for _, m in agents.candidates(agents.load_resources())})}}
+    db, ids = models.load(), sorted({m for _, m in agents.candidates(agents.load_resources())})
+    return {"as_of": db.get("as_of"), "cards": {m: models.card(m, db) for m in ids}, "info": {m: models.info(m, db) for m in ids}}
 
 
 GET = {"state": api_state, "events": api_events, "agents": api_agents, "vault": api_vault, "team": api_team, "kg": api_kg,
