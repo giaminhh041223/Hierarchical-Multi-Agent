@@ -19,7 +19,7 @@ Bối cảnh cho Claude Code (local hoặc cloud) khi làm việc trong repo nà
 cd prototype && PYTHONIOENCODING=utf-8 PYTHONPATH=. python tests/test_e2e.py
 ```
 
-- 24 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 40 giây, Windows khoảng 2–3 phút.
+- 25 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 40 giây, Windows khoảng 2–3 phút.
 - Lọc theo tên: thêm một phần tên test vào cuối lệnh, ví dụ `pool`.
 - Cần Python 3.11+ và git. Test tự truyền danh tính git, không cần `git config`.
 - Test 9router dựng router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router đó.
@@ -45,7 +45,7 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 | `engine.py` | Scheduler tất định quanh bốn điểm quyết định của LLM (plan, review, triage, skills). Định tuyến lỗi, xoay vòng tài khoản khi hết quota, verify, merge. |
 | `agents.py` | Agent CLI: discovery, probe, chạy headless trong cây tiến trình (Job Object / process group), parse output, login, đọc quota. |
 | `pool.py` | Resource planner: dự báo quota; xếp hạng và pre-test backup pool; ba preset `steady`, `match`, `precise`. |
-| `core.py` | Đường dẫn, SQLite của workspace (`.orch/orch.db`), khoá engine, vault, JSON strict. |
+| `core.py` | Đường dẫn, SQLite của workspace (`.orch/orch.db`), knowledge graph (`kg_search`: FTS5 + vector trigram, hoặc endpoint embeddings nếu `team.json` có `"embeddings"`), khoá engine, vault, JSON strict. |
 | `models.py` | Cơ sở dữ liệu model: benchmark Epoch AI, giá OpenRouter, lịch sử run; gợi ý đội hình (`suggest`). |
 | `skills.py` | Skill catalog (repo GitHub ghim commit, skill đã cài) và skill architect. |
 | `server.py`, `ui.html` | Web UI local (`python -m orch ui`): chỉ 127.0.0.1, có token. Tab Run có sơ đồ DAG (`dag()`); plan đang chờ duyệt sửa được bằng kéo-thả (`planEditor()` → `POST /api/plan` → `Engine.edit_plan`). |
@@ -92,4 +92,4 @@ Xem `prototype/PLAN.md` §0 và §16.
 2. Nối 9router: người dùng tự kiểm tra cấu hình an toàn (§13), login dashboard và provider, `vault set NINEROUTER_API_KEY`, rồi `discover --only opencode@9router`.
 3. Tự chạy `models refresh`, `skills refresh` và `login claude`.
 
-P1 ở §16 đã xong. P2: đã có sơ đồ DAG, sửa plan bằng kéo-thả và MCP server; đang làm embeddings cho knowledge graph và worker chạy từ xa (xem §16).
+P1 ở §16 đã xong. P2: đã có sơ đồ DAG, sửa plan bằng kéo-thả, MCP server và embeddings cho knowledge graph; đang làm worker chạy từ xa (xem §16).

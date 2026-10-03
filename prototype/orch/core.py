@@ -1,5 +1,6 @@
 """Shared state: paths, workspace DB (tasks / attempts / events / knowledge graph), engine lock, vault, strict JSON."""
-import base64, contextlib, functools, json, math, os, re, sqlite3, threading, time
+import array, base64, collections, contextlib, functools, hashlib, json, math, os, re, sqlite3, sys, threading, time, unicodedata
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS skills(
   path TEXT, digest TEXT, scan TEXT, updated REAL, PRIMARY KEY(run, id));
 CREATE VIRTUAL TABLE IF NOT EXISTS facts USING fts5(entity, fact, task UNINDEXED, actor UNINDEXED, sha UNINDEXED, run UNINDEXED);
 CREATE TABLE IF NOT EXISTS links(src TEXT, rel TEXT, dst TEXT, task TEXT, UNIQUE(src, rel, dst));
+CREATE TABLE IF NOT EXISTS vectors(digest TEXT PRIMARY KEY, vec BLOB);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 """
 
@@ -143,13 +145,29 @@ class Workspace:
         self.q("INSERT OR IGNORE INTO links VALUES(?,?,?,?)", src, rel, dst, task)
 
     def kg_search(self, text, k=8):
-        """Top-k facts for free text. ponytail: FTS5/BM25 keywords; add embeddings once lexical misses are measured."""
+        """Top-k facts for free text: two rankings fused by reciprocal rank. FTS5/BM25 keywords, and vectors that also find
+        near spellings and words typed without accents (local trigrams) or, with team.json "embeddings", the meaning (any
+        OpenAI-compatible /embeddings endpoint; the facts are sent there)."""
+        facts = self.q("SELECT rowid, entity, fact, task, actor, sha, run FROM facts")
+        if not facts or not text.strip():
+            return []
         words = re.findall(r"\w{3,}", text.lower())
         words = ([w for w in words if w not in STOP] or words)[:24]  # a query of only common words still searches them
-        if not words:
-            return []
-        return self.q("SELECT entity, fact, task, actor, sha, run FROM facts WHERE facts MATCH ? ORDER BY rank LIMIT ?",
-                      " OR ".join(f'"{w}"' for w in words), k)
+        lexical = [r["rowid"] for r in self.q("SELECT rowid FROM facts WHERE facts MATCH ? ORDER BY rank LIMIT ?",
+                                               " OR ".join(f'"{w}"' for w in words), k * 3)] if words else []
+        docs, cfg, ranked = [f["fact"] for f in facts], (self.read_json("team.json") or {}).get("embeddings"), None
+        if cfg:
+            try:
+                ranked = remote_rank(self, cfg, text, docs)
+            except Exception as e:  # the optional endpoint must never break search
+                print(f"embeddings: {e}; ranking locally", file=sys.stderr)
+        vector = [facts[i]["rowid"] for i in (local_rank(text, docs) if ranked is None else ranked)[:k * 3]]
+        score = {}
+        for ranking in (lexical, vector):
+            for n, rowid in enumerate(ranking):
+                score[rowid] = score.get(rowid, 0) + 1 / (60 + n)
+        by_id = {f.pop("rowid"): f for f in facts}
+        return [by_id[i] for i in sorted(score, key=score.get, reverse=True)[:k]]
 
     def kg_neighbors(self, node):
         return self.q("SELECT * FROM links WHERE src=? OR dst=?", node, node)
@@ -157,6 +175,64 @@ class Workspace:
 
 STOP = set("the and for with that this from into must should will are was have has not you your task file files use using "
            "add make create implement update when then than all any each".split())
+
+
+def fold(text):
+    """'Đăng nhập' -> 'dang nhap': case and accents do not matter to the local vectors."""
+    return "".join(c for c in unicodedata.normalize("NFKD", text.casefold().replace("đ", "d")) if not unicodedata.combining(c))
+
+
+@functools.lru_cache(4096)
+def grams(text):
+    return collections.Counter(p[i:i + 3] for w in re.findall(r"\w+", fold(text)) for p in [f" {w} "] for i in range(len(p) - 2))
+
+
+def local_rank(query, docs, floor=0.1):
+    """Indexes of docs by cosine of TF-IDF character-trigram vectors, best first, those under `floor` dropped.
+    ponytail: brute force with document frequencies recomputed per query; keep an index past ~10k facts."""
+    bags = [grams(d) for d in docs]
+    df = collections.Counter(g for b in bags for g in b)
+
+    def unit(bag):
+        v = {g: (1 + math.log(c)) * (math.log((len(bags) + 1) / (df[g] + 1)) + 1) for g, c in bag.items()}
+        n = math.sqrt(sum(x * x for x in v.values())) or 1
+        return {g: x / n for g, x in v.items()}
+    q = unit(grams(query))
+    sims = [(sum(q.get(g, 0) * x for g, x in unit(b).items()), i) for i, b in enumerate(bags)]
+    return [i for s, i in sorted(sims, reverse=True) if s >= floor]
+
+
+def remote_rank(ws, cfg, query, docs):
+    """Indexes of docs by cosine of the endpoint's embeddings, best first, those under cfg "min" (default 0.3) dropped.
+    Vectors are cached in the workspace by sha256(model, fact): each fact is sent once per model."""
+    if not (isinstance(cfg, dict) and str(cfg.get("url", "")).startswith(("http://", "https://")) and cfg.get("model")):
+        raise ValueError('team.json "embeddings" needs {"url": "http(s)://host/v1", "model": "..."}')
+    digests = [hashlib.sha256(f"{cfg['model']}\0{d}".encode()).hexdigest() for d in docs]
+    have = {r["digest"]: r["vec"] for r in ws.q("SELECT digest, vec FROM vectors")}  # ponytail: all in memory, fine below ~10k facts
+    missing = [i for i, g in enumerate(digests) if g not in have]
+    for s in range(0, len(missing), 64):
+        batch = missing[s:s + 64]
+        new = {digests[i]: array.array("f", v).tobytes() for i, v in zip(batch, embed(cfg, [docs[i] for i in batch]), strict=True)}
+        have.update(new)
+        with contextlib.suppress(sqlite3.OperationalError), ws.tx():  # read-only (the agents' MCP server): sent again next time
+            ws.db.executemany("INSERT OR REPLACE INTO vectors VALUES(?,?)", new.items())
+    q = embed(cfg, [query])[0]
+    sims = [(cosine(q, array.array("f", have[g])), i) for i, g in enumerate(digests)]
+    return [i for s, i in sorted(sims, reverse=True) if s >= cfg.get("min", 0.3)]
+
+
+def embed(cfg, texts):
+    """POST {url}/embeddings, OpenAI style. cfg "key" names the env var or vault entry holding the API key (optional).
+    ponytail: failures are not remembered, a hung endpoint costs up to 30 s per search; add a cool-down if that bites."""
+    key = cfg.get("key") and (os.environ.get(cfg["key"]) or vault().get(cfg["key"]))
+    req = urllib.request.Request(cfg["url"].rstrip("/") + "/embeddings", json.dumps({"model": cfg["model"], "input": texts}).encode(),
+                                 {"Content-Type": "application/json", "User-Agent": "orchestra", **({"Authorization": f"Bearer {key}"} if key else {})})
+    data = json.loads(urllib.request.urlopen(req, timeout=30).read())["data"]
+    return [d["embedding"] for d in sorted(data, key=lambda d: d["index"])]
+
+
+def cosine(a, b):  # not math.sumprod: Python 3.11 is supported
+    return sum(x * y for x, y in zip(a, b)) / ((math.hypot(*a) * math.hypot(*b)) or 1)
 
 
 # --- one engine per workspace ------------------------------------------------------------------------

@@ -7,17 +7,17 @@
 
 Hướng dẫn sử dụng nằm ở [README.md](README.md).
 
-## 0. Trạng thái (2026-10-03)
+## 0. Trạng thái (2026-10-04)
 
 | Hạng mục | Trạng thái |
 |---|---|
 | Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+, không cần `pip install`. |
-| Test end-to-end | 24/24 PASS với mock agent (không tốn token). Đã chạy trên Windows (Python 3.13) và Linux/WSL (Python 3.14). |
+| Test end-to-end | 25/25 PASS với mock agent (không tốn token). Đã chạy trên Windows (Python 3.13) và Linux/WSL (Python 3.14). |
 | Adapter đã kiểm chứng cờ dòng lệnh trên máy này | <ul><li>`codex` 0.153.4.</li><li>`agy` 1.2.15.</li><li>`opencode` 1.18.34, profile `opencode@free`:<ul><li>8/10 model free trả lời được;</li><li>`big-pickle` và `fledge-alpha-free` qua pre-test code.</li></ul></li></ul> |
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
 | Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả. 9router đã có trên máy nhưng chưa nối (§16 P0).</li></ul> |
 | Chưa chạy | <ul><li>`models refresh` / `skills refresh`: tải dữ liệu từ Internet, bạn tự chạy.</li><li>Nối 9router: cần bạn thao tác (§16 P0).</li></ul> |
-| Cố ý chưa làm | Embeddings cho knowledge graph, worker chạy từ xa. |
+| Cố ý chưa làm | Worker chạy từ xa. |
 
 ## 1. Ý tưởng cốt lõi
 
@@ -47,7 +47,7 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | 6 | Khu vực nhập API key, môi trường kết nối, đăng nhập tài khoản agent | <ul><li>Vault mã hoá bằng DPAPI (`orch vault`, tab Vault).</li><li>`orch login <agent>` mở luồng đăng nhập của chính CLI đó.</li></ul> |
 | 7 | (tuỳ chọn) DB benchmark model, mạng thông tin model riêng | <ul><li>`catalog/models.json` lấy từ Epoch AI và OpenRouter.</li><li>`~/.orchestra/history.db` ghi kết quả từng lần gọi, để thẻ model có số liệu "của mình".</li></ul> |
 | 8 | Skill architect trên mọi task: tìm skill/plugin GitHub, cài, phân phối | Task SKILLS mỗi run:<ul><li>Chọn tối đa 3 skill từ chỉ mục curated.</li><li>Cài theo commit đã ghim, kèm sha256 và quét tĩnh.</li><li>Đặt vào worktree của đúng task.</li><li>Repo ngoài danh sách phải chờ bạn duyệt.</li></ul> |
-| 9 | (tuỳ chọn) Knowledge graph nhanh, dùng chung | <ul><li>Bảng SQLite FTS5 `facts` và bảng `links`.</li><li>Agent tra bằng `python -m orch kg search`.</li></ul> |
+| 9 | (tuỳ chọn) Knowledge graph nhanh, dùng chung | <ul><li>Bảng SQLite FTS5 `facts` và bảng `links`; tìm bằng từ khoá kết hợp vector (§10).</li><li>Agent tra bằng `python -m orch kg search`.</li></ul> |
 | 10 | Resource determine: lên kế hoạch tài nguyên trước, gồm:<ul><li>usage còn bao nhiêu, bao giờ hồi;</li><li>model tương đương nằm sẵn trong pool backup đã test trước;</li><li>hẹn giờ bật lại model chính.</li></ul> | Resource planner (`orch/pool.py`, §6.1):<ul><li>Đầu mỗi run: đọc quota, ghi mục Resources trong `plan.md`, khoá trước tài khoản đã hết.</li><li>`orch pool plan`: xếp hạng theo tiêu chí bạn tick hoặc 3 preset, pre-test, lưu backup riêng cho từng worker.</li><li>Hết usage giữa chừng: backup làm tiếp ngay trong worktree đó; tới giờ reset thì trả task về model chính.</li></ul> |
 | — | Trao đổi với Codex, lập plan chi tiết, làm thử như một dự án | §14 và [docs/codex/](docs/codex/) |
 
@@ -356,6 +356,13 @@ Xếp theo mức tác động (thống nhất với Codex ở vòng 1):
 
 **Knowledge graph tối thiểu.** Codex khuyên chưa dùng Graphiti hay LightRAG ở giai đoạn này.
 - `facts` (FTS5/BM25) chỉ nhận facts từ task **đã tích hợp**, và gắn với commit.
+- `kg_search` gộp hai bảng xếp hạng bằng reciprocal rank fusion:
+  - từ khoá: FTS5/BM25. FTS5 không stem và giữ dấu tiếng Việt, nên "parsing" không thấy "Parser", "dang nhap" không thấy "Đăng nhập";
+  - vector: mặc định là trigram ký tự TF-IDF tính tại chỗ, bỏ dấu và chữ hoa, nên bắt được hai trường hợp trên mà không gửi gì ra ngoài.
+- Tìm theo nghĩa là opt-in: `"embeddings": {"url", "model", "key", "min"}` trong `team.json` trỏ tới một endpoint `/embeddings` kiểu OpenAI (Ollama, LM Studio, OpenAI …). Khi đó vector lấy từ endpoint thay cho trigram.
+  - Nội dung fact được gửi tới endpoint đó.
+  - Vector lưu trong bảng `vectors`, khoá là sha256(model, fact), nên mỗi fact chỉ gửi một lần cho mỗi model. Workspace chỉ đọc (MCP server của agent) không lưu được, nên gửi lại ở lần sau.
+  - Endpoint lỗi thì quay về trigram và ghi một dòng ra stderr; tìm kiếm không bao giờ hỏng vì endpoint.
 - `links` nối task với file đã sửa, và task với dependency.
 - Agent tra cứu: `python -m orch kg search "<từ khoá>"` và `kg links <node>`, hoặc qua MCP server (dưới đây).
 - Bạn thêm fact: `orch kg add <entity> <fact>`.
@@ -584,6 +591,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `ui_server_security` | Token, Host, Origin, CSP; vault được che; kiểm tra input. |
 | `plan_edit_from_the_ui` | <ul><li>Sửa dependency và worker của plan đang chờ duyệt qua `POST /api/plan`, lưu thành v2.</li><li>Từ chối chu trình, worker lạ, bản sửa thiếu task, phiên bản cũ, và khi đã có câu trả lời.</li><li>Một `yes` đọc trước bản sửa không hiện thực hoá v1. Run chạy theo bản sửa.</li></ul> |
 | `mcp_server_read_only_tools` | <ul><li>Với `"mcp": true`, agent của T2 tự khởi động server từ cấu hình được truyền, trong môi trường tối thiểu, và tìm thấy fact mà T1 công bố.</li><li>Giao thức: echo phiên bản, notification không được trả lời, chỉ có tool chỉ đọc, các mã lỗi JSON-RPC.</li><li>Lệnh gọi codex, claude, opencode khi bật và khi tắt MCP.</li></ul> |
+| `kg_search_vectors` | <ul><li>FTS5 bỏ sót "parsing brackets" và "dang nhap"; trigram tìm ra.</li><li>Endpoint embeddings giả: tìm theo nghĩa, key trong vault đi qua header Bearer, kết quả trả về lộn thứ tự vẫn khớp.</li><li>Mỗi fact chỉ gửi một lần; workspace chỉ đọc vẫn tìm được, không lưu.</li><li>Endpoint chết thì quay về trigram, có thông báo.</li></ul> |
 | `scope_and_plan_checks` | Các kiểm tra plan, scope, allowlist lệnh verify và repo map ở dạng hàm thuần. |
 
 ## 16. Lộ trình
@@ -607,7 +615,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 - Canvas DAG kiểu n8n: đã có.
   - Tab Run có sơ đồ: mỗi cột một độ sâu phụ thuộc, màu theo trạng thái, nét đứt là thứ tự ngầm (work chạy sau PLAN và SKILLS).
   - Plan đang chờ duyệt sửa được bằng kéo-thả (§4, bước 4).
-- Embeddings cho knowledge graph, khi đo được FTS bỏ sót.
+- Embeddings cho knowledge graph: đã có (§10). Trigram tại chỗ mặc định; endpoint embeddings là opt-in.
 - MCP server cho board và knowledge graph: đã có (§10).
 - Worker chạy từ xa; khi đó mới cần lease/heartbeat.
 - Thiết kế lại giao diện web UI: kế hoạch, token màu đã kiểm tra tương phản, lộ trình 4 pha và plugin hỗ trợ ở [docs/UIUX.md](docs/UIUX.md).
@@ -617,7 +625,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 - Sơ đồ DAG xếp hàng theo thứ tự board, chưa giảm cạnh cắt nhau; cạnh nhảy cột có thể chạy sau node ở giữa.
 - Gợi ý đội hình: prior cố định nặng bằng k = 5 lời gọi; chưa tính thời gian và token.
 - Tài khoản at risk bị nhân hệ số cố định 0,75, không theo thời gian còn lại trước khi hết.
-- Knowledge graph chỉ tìm theo từ khoá.
+- Knowledge graph so vector bằng brute force, tính lại tần suất trigram ở mỗi lần tìm: ổn dưới khoảng 10k fact. Endpoint embeddings treo thì mỗi lần tìm chờ tối đa 30 giây (chưa nhớ lỗi).
 - Chỉ mục skill bị cắt nếu cây repo có hơn 100k mục.
 - Một engine mỗi workspace.
 - Ưu tiên Windows (DPAPI, Job Object). Nhánh POSIX đã qua bộ test trên Linux/WSL, nhưng chưa chạy với agent thật.

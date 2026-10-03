@@ -17,7 +17,7 @@ YES = {"y", "yes", "ok", "okay", "approve", "approved", "accept", "lgtm", "go", 
 HARD_CAP = 6  # attempts per task before the user is asked
 TEAM_DEFAULTS = {"max_parallel": 4, "timeout": 1800, "verify_timeout": 600, "budget_tokens": 0, "max_amend": 1,
                  "skills": True, "auto_approve": False, "wait_reset": 600, "cooldown": 3600, "account_max": {},
-                 "verify_allow": None, "mcp": False}
+                 "verify_allow": None, "mcp": False, "embeddings": None}
 
 RULES = {
     "common": """You are one agent in Orchestra, a local multi-agent coding team. The engine (a program, not an LLM) owns git, scheduling and integration.
