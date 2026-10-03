@@ -6,719 +6,187 @@
 <title>Orchestra</title>
 <style>
 :root {
-  --paper: #F3F4F1;
-  --surface: #FFFFFF;
-  --ink: #1C2024;
-  --muted: #545B63;
-  --line: #DADDD8;
-  --control: #7E858C;
-  --running: #1F5FBF;
-  --done: #1D7443;
-  --waiting: #8F5300;
-  --failed: #B3261E;
-
+  --paper: #F3F4F1; --surface: #FFFFFF; --ink: #1C2024; --muted: #545B63; --line: #DADDD8;
+  --control: #7E858C; --running: #1F5FBF; --done: #1D7443; --waiting: #8F5300; --failed: #B3261E;
   color-scheme: light dark;
   font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Noto Sans", sans-serif;
-  font-size: 14px;
-  line-height: 1.45;
-  font-weight: 400;
-  background-color: var(--paper);
-  color: var(--ink);
+  font-size: 14px; line-height: 1.45; font-weight: 400; background-color: var(--paper); color: var(--ink);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #16191C;
-    --surface: #1E2226;
-    --ink: #E4E6E3;
-    --muted: #A0A8B0;
-    --line: #2A2F34;
-    --control: #69717A;
-    --running: #7DAAF0;
-    --done: #5CC489;
-    --waiting: #F0AE4C;
-    --failed: #FF8A80;
+    --paper: #16191C; --surface: #1E2226; --ink: #E4E6E3; --muted: #A0A8B0; --line: #2A2F34;
+    --control: #69717A; --running: #7DAAF0; --done: #5CC489; --waiting: #F0AE4C; --failed: #FF8A80;
   }
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
-}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background-color: var(--paper); color: var(--ink); font-family: inherit; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
-body {
-  margin: 0;
-  background-color: var(--paper);
-  color: var(--ink);
-  font-family: inherit;
-}
-
-:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-}
-
-header {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-  flex-wrap: wrap;
-}
-
-.header-brand {
-  font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--ink);
-  margin-right: 4px;
-}
-
-nav#tabs {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
+header { display: flex; gap: 12px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--surface); flex-wrap: wrap; }
+.header-brand { font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; font-size: 16px; font-weight: 600; color: var(--ink); margin-right: 4px; }
+nav#tabs { display: flex; gap: 4px; align-items: center; overflow-x: auto; scrollbar-width: thin; white-space: nowrap; max-width: 100%; }
 nav button {
   flex: none;  /* a narrow window scrolls the tab bar instead of squeezing the labels into each other */
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--muted);
-  padding: 6px 12px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 400;
-  border-radius: 4px;
-  min-height: 32px;
-  min-width: 32px;
-}
-
-nav button:hover {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-}
-
-nav button.on {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
-  font-weight: 600;
-  border-color: var(--line);
-}
-
-.tab-gap {
-  margin-left: 20px;
-}
-
-@media (max-width: 640px) {
-  .tab-gap {
-    margin-left: 8px;
-  }
-}
-
-#header-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.pending-pill {
-  background: color-mix(in srgb, var(--waiting) 14%, var(--surface));
-  color: var(--waiting);
-  border: 1px solid color-mix(in srgb, var(--waiting) 40%, var(--surface));
-  font-weight: 600;
-  font-size: 13px;
-  padding: 4px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 32px;
-}
-
-.pending-pill:hover {
-  background: color-mix(in srgb, var(--waiting) 22%, var(--surface));
-}
-
-main {
-  padding: 16px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-h1, h2, h3, .heading {
-  font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 20px 0 8px;
-}
-
-h1, h2 {
-  font-size: 20px;
-  line-height: 1.25;
-}
-
-h3 {
-  font-size: 16px;
-  line-height: 1.25;
-}
-
-p, .prose {
-  max-width: 75ch;
-  margin: 6px 0 12px;
-}
-
-.question {
-  white-space: pre-wrap;
-}
-
-.mono, pre, code {
-  font-family: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", Menlo, monospace;
-}
-
-.tabular {
-  font-variant-numeric: tabular-nums;
-}
-
-.bold {
-  font-weight: 600;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.ok {
-  color: var(--done);
-}
-
-.err {
-  color: var(--failed);
-}
-
-.run-meta {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 8px 12px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  margin-bottom: 12px;
-  font-size: 13px;
-}
-
-.meta-sep {
-  color: var(--line);
-  user-select: none;
-}
-
-.card {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin: 12px 0;
-  background: var(--surface);
-}
-
-.card-waiting {
-  border-left: 4px solid var(--waiting);
-  background: color-mix(in srgb, var(--waiting) 4%, var(--surface));
-}
-
-.card-goal {
-  border-left: 4px solid var(--control);
-  background: color-mix(in srgb, var(--ink) 2%, var(--surface));
-}
-
-.card-err {
-  border-left: 4px solid var(--failed);
-  background: color-mix(in srgb, var(--failed) 6%, var(--surface));
-}
-
-.goal-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  margin-bottom: 4px;
-}
-
-.row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin: 8px 0;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 8px 0;
-}
-
-.field-grow {
-  flex: 1;
-  min-width: 200px;
-}
-
-.field-action {
-  display: flex;
-  align-items: flex-end;
-  padding-bottom: 8px;
-}
-
-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.checkbox-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 400;
-  cursor: pointer;
-  user-select: none;
-}
-
-input[type=checkbox] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--ink);
-  cursor: pointer;
-}
-
-textarea, input[type=text], input[type=password], input[type=search], select {
-  box-sizing: border-box;
-  font: inherit;
-  font-size: 13px;
-  padding: 6px 10px;
-  border: 1px solid var(--control);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--ink);
-  min-height: 32px;
-}
-
-textarea {
-  width: 100%;
-  resize: vertical;
-  line-height: 1.45;
-}
-
-#team-input {
-  font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
-  font-size: 13px;
-}
-
-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  min-height: 32px;
-  min-width: 32px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 4px;
-  cursor: pointer;
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--control);
-  text-decoration: none;
-  line-height: 1.2;
-}
-
-button:hover {
-  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
-}
-
-button.primary {
-  background: var(--ink);
-  color: var(--paper);
-  border-color: var(--ink);
-}
-
-button.primary:hover {
-  background: color-mix(in srgb, var(--paper) 15%, var(--ink));
-}
-
-button.secondary {
-  background: var(--surface);
-  color: var(--ink);
-  border-color: var(--control);
-}
-
-button.danger {
-  color: var(--failed);
-  border-color: var(--control);
-  background: var(--surface);
-}
-
-button.danger:hover {
-  border-color: var(--failed);
-  background: color-mix(in srgb, var(--failed) 8%, var(--surface));
-}
-
-.table-wrap {
-  overflow: auto;
-  max-height: 70vh;
-  max-width: 100%;
-  margin: 8px 0 16px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--surface);
-}
-
-table {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 13px;
-}
-
-th {
-  position: sticky;
-  top: 0;
-  background: var(--surface);
-  color: var(--muted);
-  font-weight: 600;
-  font-size: 12px;
-  border-bottom: 1px solid var(--line);
-  padding: 8px 10px;
-  text-align: left;
-  z-index: 1;
-}
-
-td {
-  border-bottom: 1px solid var(--line);
-  padding: 8px 10px;
-  text-align: left;
-  vertical-align: middle;
-  color: var(--ink);
-}
-
-tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-tbody tr:hover td {
-  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
-}
-
-.truncate {
-  max-width: 380px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.badge.todo {
-  color: var(--muted);
-  background: color-mix(in srgb, var(--control) 12%, var(--surface));
-  border: 1px solid var(--line);
-}
-
-.badge.running, .badge.verifying, .badge.integrating {
-  color: var(--running);
-  background: color-mix(in srgb, var(--running) 12%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--running) 30%, transparent);
-}
-
-.badge.done {
-  color: var(--done);
-  background: color-mix(in srgb, var(--done) 12%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--done) 30%, transparent);
-}
-
-.badge.pending_user, .badge.needs_lead {
-  color: var(--waiting);
-  background: color-mix(in srgb, var(--waiting) 15%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--waiting) 30%, transparent);
-}
-
-.badge.failed, .badge.cancelled {
-  color: var(--failed);
-  background: color-mix(in srgb, var(--failed) 12%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--failed) 30%, transparent);
-}
-
-.badge.unknown {
-  color: var(--muted);
-  background: color-mix(in srgb, var(--control) 12%, var(--surface));
-  border: 1px solid var(--line);
-}
-
-.badge-sym {
-  font-size: 11px;
-}
-
-@keyframes badge-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
-}
-
-.pulse {
-  animation: badge-pulse 2s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pulse {
-    animation: none;
-  }
-}
-
-details {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  margin: 12px 0;
-  overflow: hidden;
-}
-
-summary {
-  padding: 10px 14px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 14px;
-  user-select: none;
-  background: color-mix(in srgb, var(--ink) 2%, var(--surface));
-  border-bottom: 1px solid transparent;
-  color: var(--ink);
-}
-
-details[open] > summary {
-  border-bottom: 1px solid var(--line);
-}
-
-summary:hover {
-  background: color-mix(in srgb, var(--ink) 5%, var(--surface));
-}
-
-details pre {
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  max-height: 45vh;
-}
-
-pre {
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: color-mix(in srgb, var(--ink) 4%, var(--surface));
-  padding: 10px 12px;
-  max-height: 45vh;
-  overflow: auto;
-  border-radius: 4px;
-  margin: 8px 0 12px;
-  border: 1px solid var(--line);
-}
-
-.dag {
-  overflow-x: auto;
-  margin: 12px 0 16px;
-  padding: 4px 0;
-  max-width: 100%;
-}
-
-.dag rect.dag-node-bg {
-  fill: var(--surface);
-  stroke: var(--line);
-  stroke-width: 1.5;
-}
-
-.dag path.dag-stripe {
-  fill: var(--control);
-}
-
-.dag g.running path.dag-stripe,
-.dag g.verifying path.dag-stripe,
-.dag g.integrating path.dag-stripe {
-  fill: var(--running);
-}
-
-.dag g.done path.dag-stripe {
-  fill: var(--done);
-}
-
-.dag g.pending_user path.dag-stripe,
-.dag g.needs_lead path.dag-stripe {
-  fill: var(--waiting);
-}
-
-.dag g.failed path.dag-stripe,
-.dag g.cancelled path.dag-stripe {
-  fill: var(--failed);
-}
-
-.dag path.dag-stripe.edit {
-  fill: var(--control);
-}
-
-.dag g.running rect.dag-node-bg,
-.dag g.verifying rect.dag-node-bg,
-.dag g.integrating rect.dag-node-bg {
-  stroke: var(--running);
-}
-
-.dag g.done rect.dag-node-bg {
-  stroke: var(--done);
-}
-
-.dag g.pending_user rect.dag-node-bg,
-.dag g.needs_lead rect.dag-node-bg {
-  stroke: var(--waiting);
-}
-
-.dag g.failed rect.dag-node-bg,
-.dag g.cancelled rect.dag-node-bg {
-  stroke: var(--failed);
-}
-
-.dag text {
-  fill: var(--ink);
-  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  font-size: 12px;
-}
-
-.dag text.head {
-  fill: var(--ink);
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.dag text.dag-title {
-  fill: var(--muted);
-  font-size: 12px;
-}
-
-.dag path.edge {
-  fill: none;
-  stroke: var(--control);
-  stroke-width: 1.2;
-}
-
-.dag path.hit {
-  fill: none;
-  stroke: transparent;
-  stroke-width: 14;
-  cursor: pointer;
-}
-
-.dag path.hit:hover {
-  stroke: color-mix(in srgb, var(--failed) 30%, transparent);
-}
-
-.dag [data-id] {
-  cursor: crosshair;
-  touch-action: none;
-  user-select: none;
-}
-
-.dag line.drag {
-  stroke: var(--ink);
-  stroke-width: 1.5;
-  stroke-dasharray: 4 3;
-  pointer-events: none;
-}
-
-.plan-editor {
-  margin: 12px 0;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ink) 2%, var(--surface));
-}
-
-#toasts {
-  position: fixed;
-  bottom: 16px;
-  right: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 1000;
-  max-width: 400px;
-  pointer-events: none;
-}
-
-.toast {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--ink) 16%, transparent);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.toast.ok {
-  border-color: var(--done);
-  background: color-mix(in srgb, var(--done) 10%, var(--surface));
-  color: var(--done);
-}
-
-.toast.err {
-  border-color: var(--failed);
-  background: color-mix(in srgb, var(--failed) 10%, var(--surface));
-  color: var(--failed);
-}
-
-.toast-msg {
-  flex: 1;
-}
-
-.toast-close {
-  background: transparent;
-  border: 0;
-  color: currentColor;
-  cursor: pointer;
-  padding: 4px 6px;
-  min-height: 24px;
-  min-width: 24px;
-  font-size: 14px;
-  line-height: 1;
-  border-radius: 4px;
-  opacity: 0.8;
-}
-
-.toast-close:hover {
-  opacity: 1;
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
-}
+  border: 1px solid transparent; background: transparent; color: var(--muted); padding: 6px 12px; cursor: pointer; font: inherit; font-size: 14px; font-weight: 400; border-radius: 4px; min-height: 32px; min-width: 32px;
+}
+nav button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+nav button.on { color: var(--ink); background: color-mix(in srgb, var(--ink) 10%, transparent); font-weight: 600; border-color: var(--line); }
+.tab-gap { margin-left: 20px; }
+@media (max-width: 640px) { .tab-gap { margin-left: 8px; } }
+#header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.pending-pill { background: color-mix(in srgb, var(--waiting) 14%, var(--surface)); color: var(--waiting); border: 1px solid color-mix(in srgb, var(--waiting) 40%, var(--surface)); font-weight: 600; font-size: 13px; padding: 4px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; }
+.pending-pill:hover { background: color-mix(in srgb, var(--waiting) 22%, var(--surface)); }
+
+main { padding: 16px; max-width: 1200px; margin: 0 auto; }
+h1, h2, h3, .heading { font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; font-weight: 600; color: var(--ink); margin: 20px 0 8px; }
+h1, h2 { font-size: 20px; line-height: 1.25; }
+h3 { font-size: 16px; line-height: 1.25; }
+p, .prose { max-width: 75ch; margin: 6px 0 12px; }
+.question { white-space: pre-wrap; }
+.mono, pre, code { font-family: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", Menlo, monospace; }
+.tabular { font-variant-numeric: tabular-nums; }
+.bold { font-weight: 600; }
+.muted { color: var(--muted); }
+.ok { color: var(--done); }
+.err { color: var(--failed); }
+
+.run-header { margin: 4px 0 16px; }
+.run-header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
+.run-title { font-size: 20px; line-height: 1.25; font-weight: 600; margin: 0; color: var(--ink); word-break: break-word; }
+.run-meta-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; font-size: 13px; color: var(--muted); }
+.run-progress-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 8px 0; font-size: 13px; }
+.run-progress-wrap { display: flex; align-items: center; gap: 4px 12px; flex: 1; min-width: 240px; flex-wrap: wrap; }
+.progress-bar { display: flex; height: 8px; flex: 1; max-width: 320px; min-width: 120px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.progress-seg { height: 100%; }
+.progress-seg.done { background: var(--done); }
+.progress-seg.running { background: var(--running); }
+.progress-seg.waiting { background: var(--waiting); }
+.progress-seg.failed { background: var(--failed); }
+.progress-seg.todo { background: var(--control); }
+.progress-text { font-size: 13px; color: var(--muted); }
+.token-stat { font-size: 13px; color: var(--muted); white-space: nowrap; margin-left: auto; }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin: 12px 0; background: var(--surface); }
+.card-waiting { border-left: 4px solid var(--waiting); background: color-mix(in srgb, var(--waiting) 4%, var(--surface)); }
+.card-goal { border-left: 4px solid var(--control); background: color-mix(in srgb, var(--ink) 2%, var(--surface)); }
+.card-err { border-left: 4px solid var(--failed); background: color-mix(in srgb, var(--failed) 6%, var(--surface)); }
+.goal-label { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.field-grow { flex: 1; min-width: 200px; }
+.field-action { display: flex; align-items: flex-end; padding-bottom: 8px; }
+label { font-size: 13px; font-weight: 600; color: var(--ink); }
+.checkbox-label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 400; cursor: pointer; user-select: none; }
+input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--ink); cursor: pointer; }
+textarea, input[type=text], input[type=password], input[type=search], select { box-sizing: border-box; font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--control); border-radius: 4px; background: var(--surface); color: var(--ink); min-height: 32px; }
+textarea { width: 100%; resize: vertical; line-height: 1.45; }
+#team-input { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 13px; }
+button { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 32px; min-width: 32px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 600; border-radius: 4px; cursor: pointer; background: var(--surface); color: var(--ink); border: 1px solid var(--control); text-decoration: none; line-height: 1.2; }
+
+button:hover { background: color-mix(in srgb, var(--ink) 4%, var(--surface)); }
+button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+button.primary:hover { background: color-mix(in srgb, var(--paper) 15%, var(--ink)); }
+button.secondary { background: var(--surface); color: var(--ink); border-color: var(--control); }
+button.danger { color: var(--failed); border-color: var(--control); background: var(--surface); }
+button.danger:hover { border-color: var(--failed); background: color-mix(in srgb, var(--failed) 8%, var(--surface)); }
+.table-wrap { overflow: auto; max-height: 70vh; max-width: 100%; margin: 8px 0 16px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-weight: 600; font-size: 12px; border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; z-index: 1; }
+td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: middle; color: var(--ink); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: color-mix(in srgb, var(--ink) 4%, var(--surface)); }
+.truncate { max-width: 380px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.badge.todo { color: var(--muted); background: color-mix(in srgb, var(--control) 12%, var(--surface)); border: 1px solid var(--line); }
+.badge.running, .badge.verifying, .badge.integrating { color: var(--running); background: color-mix(in srgb, var(--running) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--running) 30%, transparent); }
+.badge.done { color: var(--done); background: color-mix(in srgb, var(--done) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--done) 30%, transparent); }
+.badge.pending_user, .badge.needs_lead { color: var(--waiting); background: color-mix(in srgb, var(--waiting) 15%, var(--surface)); border: 1px solid color-mix(in srgb, var(--waiting) 30%, transparent); }
+.badge.failed, .badge.cancelled { color: var(--failed); background: color-mix(in srgb, var(--failed) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--failed) 30%, transparent); }
+.badge.unknown { color: var(--muted); background: color-mix(in srgb, var(--control) 12%, var(--surface)); border: 1px solid var(--line); }
+.badge-sym { font-size: 11px; }
+@keyframes badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.pulse { animation: badge-pulse 2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+details { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); margin: 12px 0; overflow: hidden; }
+summary { padding: 10px 14px; cursor: pointer; font-weight: 600; font-size: 14px; user-select: none; background: color-mix(in srgb, var(--ink) 2%, var(--surface)); border-bottom: 1px solid transparent; color: var(--ink); }
+details[open] > summary { border-bottom: 1px solid var(--line); }
+summary:hover { background: color-mix(in srgb, var(--ink) 5%, var(--surface)); }
+details pre { margin: 0; border: 0; border-radius: 0; max-height: 45vh; }
+pre { white-space: pre-wrap; word-break: break-word; background: color-mix(in srgb, var(--ink) 4%, var(--surface)); padding: 10px 12px; max-height: 45vh; overflow: auto; border-radius: 4px; margin: 8px 0 12px; border: 1px solid var(--line); }
+
+.run-grid { margin: 12px 0; }
+@media (min-width: 1100px) {
+  .run-grid.has-waiting { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 20px; align-items: start; }
+}
+.waiting-col { display: flex; flex-direction: column; gap: 12px; }
+.waiting-col h3 { margin: 0 0 4px; }
+.quick-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.reassign-group { display: inline-flex; align-items: center; gap: 6px; }
+.dag-area { display: flex; flex-direction: column; min-width: 0; }
+.dag-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px; }
+.dag-header h3 { margin: 0; }
+.dag-controls { display: flex; align-items: center; gap: 4px; }
+.dag-btn { min-width: 32px; min-height: 32px; padding: 4px 8px; font-size: 13px; }
+.dag-wrap { overflow: auto; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 12px; }
+.dag-node { cursor: pointer; }
+.dag-node:focus-visible rect.dag-node-bg, .dag-node.selected rect.dag-node-bg { stroke: var(--ink); stroke-width: 2.5; }
+.dag rect.dag-node-bg { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.dag path.dag-stripe { fill: var(--control); }
+.dag g.running .dag-stripe, .dag g.verifying .dag-stripe, .dag g.integrating .dag-stripe { fill: var(--running); }
+.dag g.running .dag-node-bg, .dag g.verifying .dag-node-bg, .dag g.integrating .dag-node-bg { stroke: var(--running); }
+.dag g.done .dag-stripe { fill: var(--done); }
+.dag g.done .dag-node-bg { stroke: var(--done); }
+.dag g.pending_user .dag-stripe, .dag g.needs_lead .dag-stripe { fill: var(--waiting); }
+.dag g.pending_user .dag-node-bg, .dag g.needs_lead .dag-node-bg { stroke: var(--waiting); }
+.dag g.failed .dag-stripe, .dag g.cancelled .dag-stripe { fill: var(--failed); }
+.dag g.failed .dag-node-bg, .dag g.cancelled .dag-node-bg { stroke: var(--failed); }
+.dag path.dag-stripe.edit { fill: var(--control); }
+.dag text { fill: var(--ink); font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; font-size: 12px; }
+.dag text.head { fill: var(--ink); font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; font-weight: 600; }
+.dag text.dag-title { fill: var(--ink); font-size: 12px; }
+.dag text.dag-worker { fill: var(--muted); font-size: 11px; font-family: "Cascadia Mono", Consolas, monospace; }
+.dag path.edge { fill: none; stroke: var(--control); stroke-width: 1.2; }
+.dag path.edge.highlighted { stroke: var(--ink); stroke-width: 2.5; }
+.dag path.hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
+.dag path.hit:hover { stroke: color-mix(in srgb, var(--failed) 30%, transparent); }
+.dag [data-id] { cursor: crosshair; touch-action: none; user-select: none; }
+.dag line.drag { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
+.plan-editor { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--ink) 2%, var(--surface)); }
+.task-panel { border: 2px solid var(--ink); border-radius: 8px; padding: 16px; margin: 16px 0; background: var(--surface); }
+.task-panel:focus-visible { outline: none; }
+.task-panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.task-panel-title { font-size: 16px; line-height: 1.3; margin: 4px 0 0; }
+.task-panel-meta { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 13px; margin: 6px 0 12px; }
+.task-panel-section { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.task-panel-section h4 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 4px 0 6px; }
+.spec-list { margin: 4px 0 8px 18px; padding: 0; }
+.spec-list li { margin: 2px 0; }
+.spec-row { margin: 4px 0; }
+.spec-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.selectable-dir { user-select: all; cursor: text; background: color-mix(in srgb, var(--ink) 4%, var(--surface)); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); font-size: 12px; display: inline-block; }
+.score-card { margin: 16px 0; }
+.score-card h3 { margin: 0 0 8px; }
+.score-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 12px; }
+.score-svg { display: block; min-width: 600px; width: 100%; }
+.score-svg text.muted { fill: var(--muted); }
+.score-bar { cursor: pointer; }
+.score-bar:focus-visible rect { stroke: var(--ink); stroke-width: 2; }
+.score-bar:hover rect { opacity: 0.85; }
+.task-link-btn { background: transparent; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--ink); text-decoration: underline; text-decoration-color: var(--control); cursor: pointer; min-height: auto; min-width: auto; }
+.task-link-btn:hover { color: var(--running); text-decoration-color: var(--running); }
+.nowrap { white-space: nowrap; }
+.align-right { text-align: right; display: block; }
+th:has(.align-right) { text-align: right; }
+
+#toasts { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 1000; max-width: 400px; pointer-events: none; }
+.toast { pointer-events: auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-radius: 4px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 4px 12px color-mix(in srgb, var(--ink) 16%, transparent); font-size: 13px; line-height: 1.4; }
+.toast.ok { border-color: var(--done); background: color-mix(in srgb, var(--done) 10%, var(--surface)); color: var(--done); }
+.toast.err { border-color: var(--failed); background: color-mix(in srgb, var(--failed) 10%, var(--surface)); color: var(--failed); }
+.toast-msg { flex: 1; }
+.toast-close { background: transparent; border: 0; color: currentColor; cursor: pointer; padding: 4px 6px; min-height: 24px; min-width: 24px; font-size: 14px; line-height: 1; border-radius: 4px; opacity: 0.8; }
+.toast-close:hover { opacity: 1; background: color-mix(in srgb, var(--ink) 8%, transparent); }
 </style>
 </head>
 <body>
@@ -733,6 +201,8 @@ pre {
 "use strict";
 const drafts = {}, openBlocks = {}, tabCache = {};
 let tab = "Run", timer = null, pendingCount = 0;
+let selectedTaskId = null, panelOpener = null;
+let dagZoom = 1.0, dagScroll = { left: 0, top: 0 };
 
 const STATUSES = {
   todo: { sym: "○", text: "waiting", cls: "todo" },
@@ -762,6 +232,7 @@ function h(tag, props, ...kids) {
     if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
     else if (k === "class") e.className = v;
     else if (k === "role" || k.startsWith("aria")) { if (v != null && v !== false) e.setAttribute(k.replace(/^aria(?=[A-Z])/, "aria-").toLowerCase(), v); }
+    else if (k === "style" && typeof v === "object") Object.assign(e.style, v);
     else e[k] = v;
   }
   for (const k of kids.flat(Infinity)) if (k !== null && k !== undefined && k !== false) e.append(k instanceof Node ? k : String(k));
@@ -821,7 +292,9 @@ const time = ts => new Date(ts * 1000).toLocaleTimeString();
 
 const svg = (tag, attrs, ...kids) => {
   const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  for (const [k, v] of Object.entries(attrs)) if (typeof v === "function") e.addEventListener(k.slice(2), v); else if (v !== null) e.setAttribute(k, v);
+  for (const [k, v] of Object.entries(attrs))
+    if (typeof v === "function") e.addEventListener(k.slice(2), v);
+    else if (v !== null) e.setAttribute(/^aria[A-Z]/.test(k) ? "aria-" + k.slice(4).toLowerCase() : k, v);
   e.append(...kids);
   return e;
 };
@@ -837,43 +310,355 @@ function detailsBlock(key, title, content) {
   return d;
 }
 
+function selectTask(id, opener) {  // opener = id of the node, row button or bar to focus again on close (renders replace elements)
+  selectedTaskId = id;
+  panelOpener = opener;
+  render().then(() => {
+    const p = document.getElementById("task-panel");
+    if (p) {
+      const b = p.querySelector("button");
+      if (b) b.focus();
+      else p.focus();
+    }
+  });
+}
+
+function closeTaskPanel() {
+  selectedTaskId = null;
+  render().then(() => {
+    const o = panelOpener && document.getElementById(panelOpener);
+    if (o) o.focus();
+    panelOpener = null;
+  });
+}
+
+function taskPanel(t, s) {
+  const pJ = (x, d) => { try { return typeof x === "string" ? JSON.parse(x || "null") : x; } catch { return d; } };
+  const spec = pJ(t.spec, {}) || {}, handoff = pJ(t.handoff, null);
+  const attempts = (s.attempts || []).filter(a => a.task === t.id);
+
+  return h("div", {id: "task-panel", class: "card task-panel", tabIndex: -1, role: "region", ariaLabel: `Task details for ${t.id}`},
+    h("div", {class: "task-panel-header"},
+      h("div", {},
+        h("div", {class: "row"}, h("b", {class: "mono"}, t.id), badge(t.status)),
+        h("h3", {class: "task-panel-title"}, t.title)
+      ),
+      h("button", {class: "secondary dag-btn", ariaLabel: "Close task details", onclick: closeTaskPanel}, "✕")
+    ),
+    h("div", {class: "task-panel-meta"},
+      h("span", {}, "Worker: ", h("b", {class: "mono"}, t.assignee || "none")),
+      h("span", {}, "Tries: ", h("b", {class: "tabular"}, t.attempts)),
+      h("span", {}, "Deps: ", h("b", {class: "mono"}, t.deps && t.deps.length ? t.deps.join(", ") : "none"))
+    ),
+    (spec.acceptance || spec.scope_paths || spec.verify) ? h("div", {class: "task-panel-section"},
+      h("h4", {}, "Specification"),
+      spec.acceptance && spec.acceptance.length ? h("div", {class: "spec-row"},
+        h("div", {class: "spec-label"}, "Acceptance:"),
+        h("ul", {class: "spec-list"}, spec.acceptance.map(a => h("li", {}, a)))
+      ) : null,
+      spec.scope_paths && spec.scope_paths.length ? h("div", {class: "spec-row"},
+        h("span", {class: "spec-label"}, "Scope: "),
+        h("span", {class: "mono"}, spec.scope_paths.join(", "))
+      ) : null,
+      spec.verify && spec.verify.length ? h("div", {class: "spec-row"},
+        h("div", {class: "spec-label"}, "Verify:"),
+        spec.verify.map(cmd => h("div", {class: "mono"}, Array.isArray(cmd) ? cmd.join(" ") : String(cmd)))
+      ) : null
+    ) : null,
+    (t.question || t.answer || t.note) ? h("div", {class: "task-panel-section"},
+      t.question ? h("div", {class: "spec-row"}, h("div", {class: "spec-label"}, "Question:"), h("p", {class: "prose question"}, t.question)) : null,
+      t.answer ? h("div", {class: "spec-row"}, h("div", {class: "spec-label"}, "Answer:"), h("p", {class: "prose"}, t.answer)) : null,
+      t.note ? h("div", {class: "spec-row"}, h("div", {class: "spec-label"}, "Note:"), h("p", {class: "prose"}, t.note)) : null
+    ) : null,
+    attempts.length ? h("div", {class: "task-panel-section"},
+      h("h4", {}, `Attempts (${attempts.length})`),
+      table(["Agent / Model", "Result", "Failure", "Tokens (in / out)", "Duration", "Started", "Evidence dir"], attempts.map(a => {
+        const isOk = a.outcome === "ok" || a.outcome === "integrated", isRunning = a.ended == null;
+        const resEl = isOk ? h("span", {class: "ok bold"}, a.outcome)
+          : (isRunning ? h("span", {class: "badge running pulse"}, "running")
+          : h("span", {class: "err bold"}, a.outcome || a.failure || "failed"));
+        const dur = a.started ? (a.ended ? `${Math.round(a.ended - a.started)}s` : `${Math.round(Date.now() / 1000 - a.started)}s`) : "";
+        return [
+          h("span", {class: "mono"}, `${a.agent} / ${a.model}`),
+          resEl,
+          h("span", {class: "err mono"}, a.failure || ""),
+          h("span", {class: "tabular mono"}, `${(a.tokens_in || 0).toLocaleString()} / ${(a.tokens_out || 0).toLocaleString()}`),
+          h("span", {class: "tabular"}, dur),
+          h("span", {class: "tabular mono"}, a.started ? time(a.started) : ""),
+          a.dir ? h("code", {class: "selectable-dir mono"}, a.dir) : ""
+        ];
+      }))
+    ) : null,
+    handoff ? h("div", {class: "task-panel-section"},
+      h("h4", {}, "Handoff"),
+      handoff.status ? h("div", {class: "spec-row"}, h("span", {class: "spec-label"}, "Status: "), h("b", {}, handoff.status)) : null,
+      handoff.summary ? h("div", {class: "spec-row"}, h("span", {class: "spec-label"}, "Summary: "), h("div", {class: "prose"}, handoff.summary)) : null,
+      handoff.files && handoff.files.length ? h("div", {class: "spec-row"},
+        h("span", {class: "spec-label"}, "Files: "),
+        h("span", {class: "mono"}, Array.isArray(handoff.files) ? handoff.files.join(", ") : String(handoff.files))
+      ) : null,
+      handoff.decisions && handoff.decisions.length ? h("div", {class: "spec-row"},
+        h("div", {class: "spec-label"}, "Decisions:"),
+        h("ul", {class: "spec-list"}, (Array.isArray(handoff.decisions) ? handoff.decisions : [handoff.decisions]).map(d => h("li", {}, d)))
+      ) : null,
+      handoff.facts && handoff.facts.length ? h("div", {class: "spec-row"},
+        h("div", {class: "spec-label"}, "Facts:"),
+        h("ul", {class: "spec-list"}, (Array.isArray(handoff.facts) ? handoff.facts : [handoff.facts]).map(f => h("li", {}, typeof f === "object" ? `${f.entity}: ${f.fact}` : String(f))))
+      ) : null,
+      handoff.question ? h("div", {class: "spec-row"}, h("div", {class: "spec-label"}, "Question:"), h("p", {class: "prose question"}, handoff.question)) : null
+    ) : null
+  );
+}
+
+function scoreView(s) {
+  const attempts = s.attempts || [];
+  if (!attempts.length) return h("div", {class: "card score-card"}, h("h3", {}, "Score"), h("p", {class: "muted"}, "No attempts yet."));
+
+  const now = Date.now() / 1000;
+  const startedTimes = attempts.map(a => a.started).filter(t => t > 0);
+  const tMin = startedTimes.length ? Math.min(...startedTimes) : now;
+  const endedTimes = attempts.map(a => a.ended || now);
+  const tMax = Math.max(...endedTimes, tMin + 10);
+  const totalDur = Math.max(10, tMax - tMin);
+  const lane = a => `${a.agent} / ${a.model}`, lanes = [...new Set(attempts.map(lane))].sort();
+  const ends = Object.fromEntries(lanes.map(l => [l, []])), row = attempts.map(a => {  // first free sub-row of its lane
+    const e = ends[lane(a)];
+    let r = e.findIndex(end => end <= a.started);
+    if (r < 0) r = e.length;
+    e[r] = a.ended || now;
+    return r;
+  });
+
+  const candidateSteps = [5, 10, 15, 30, 60, 120, 150, 300, 600, 900, 1800, 3600];
+  let step = candidateSteps[0];
+  for (const cs of candidateSteps) { step = cs; if (totalDur / cs <= 8) break; }
+  const ticks = [];
+  for (let t = 0; t <= totalDur; t += step) ticks.push(t);
+
+  const fmtTick = sec => { const m = Math.floor(sec / 60), r = Math.floor(sec % 60); return `${m}:${r < 10 ? "0" : ""}${r}`; };
+  const LW = 180, RH = 32, TH = 24, chartW = 760, top = {};
+  let H = TH;
+  for (const l of lanes) { top[l] = H; H += ends[l].length * RH; }
+  H += 16;
+  const totalMin = Math.max(1, Math.round(totalDur / 60));
+  const ariaSummary = `Score: ${attempts.length} attempt${attempts.length > 1 ? "s" : ""} by ${lanes.length} agent${lanes.length > 1 ? "s" : ""} over ${totalMin} minute${totalMin > 1 ? "s" : ""}`;
+
+  const tickElements = ticks.flatMap(t => {
+    const x = LW + (t / totalDur) * (chartW - LW - 24);
+    return [
+      svg("line", {x1: x, y1: TH, x2: x, y2: H - 8, stroke: "var(--line)", "stroke-width": 1, "stroke-dasharray": "2 2"}),
+      svg("text", {x: x, y: TH - 6, class: "mono muted tabular", "font-size": "11px", "text-anchor": "middle"}, fmtTick(t))
+    ];
+  });
+
+  const laneElements = lanes.flatMap(lane => {
+    const y = top[lane];
+    return [
+      svg("line", {x1: 0, y1: y, x2: chartW, y2: y, stroke: "var(--line)", "stroke-width": "0.5"}),
+      svg("text", {x: 8, y: y + RH / 2 + 4, class: "mono muted", "font-size": "11px"}, lane.length > 22 ? lane.slice(0, 21) + "…" : lane)
+    ];
+  });
+
+  const barElements = attempts.map((a, i) => {
+    const aEnd = a.ended || now;
+    const x1 = LW + ((a.started - tMin) / totalDur) * (chartW - LW - 24);
+    const x2 = LW + ((aEnd - tMin) / totalDur) * (chartW - LW - 24);
+    const w = Math.max(4, x2 - x1), y = top[lane(a)] + row[i] * RH + 4, h = RH - 8;
+    const isOk = a.outcome === "ok" || a.outcome === "integrated", isRunning = a.ended == null, isFailed = !isOk && !isRunning;
+    const color = isOk ? "var(--done)" : (isRunning ? "var(--running)" : "var(--failed)");
+    const durSec = Math.round(aEnd - a.started), tokIn = a.tokens_in || 0, tokOut = a.tokens_out || 0;
+    const titleText = `${a.task} (${a.agent} / ${a.model})\nResult: ${a.outcome || (isRunning ? "running" : "failed")}${a.failure ? " (" + a.failure + ")" : ""}\nDuration: ${durSec}s\nTokens: ${tokIn.toLocaleString()} in, ${tokOut.toLocaleString()} out`;
+    const label = `${a.task}${isFailed ? " ✕" : ""}`;
+
+    return svg("g", {
+      class: "score-bar",
+      id: "bar-" + i,
+      tabindex: "0",
+      role: "button",
+      ariaLabel: `Attempt on ${a.task}, ${a.agent}/${a.model}, ${isOk ? "done" : (isRunning ? "running" : "failed")}`,
+      onclick: () => selectTask(a.task, "bar-" + i),
+      onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectTask(a.task, "bar-" + i); } }
+    },
+      svg("title", {}, titleText),
+      svg("rect", {x: x1, y: y, width: w, height: h, rx: 3, fill: color}),
+      w >= 26 ? svg("text", {x: x1 + 4, y: y + h / 2 + 4, fill: "var(--paper)", "font-family": "Cascadia Mono, monospace", "font-size": "11px", "font-weight": "600", "pointer-events": "none"}, label) : null
+    );
+  });
+
+  return h("div", {class: "card score-card"},
+    h("h3", {}, "Score"),
+    h("div", {class: "score-wrap"},
+      svg("svg", {class: "score-svg", role: "img", ariaLabel: ariaSummary, width: "100%", height: H, viewBox: `0 0 ${chartW} ${H}`},
+        ...tickElements, ...laneElements, ...barElements
+      )
+    )
+  );
+}
+
 // The run's task graph, left to right: one column per dependency depth. Dashed = implicit order (work starts after PLAN and
 // SKILLS). edit = the plan editor's graph: lines can be clicked away, tasks dragged onto each other (connect).
-// ponytail: rows in board order, no crossing reduction; add a barycenter pass if plans get tangled.
+// ponytail: one barycenter pass done; remaining: more passes (backward/iterative), edge routing around intermediate nodes.
 function dag(tasks, edit) {
-  const by = Object.fromEntries(tasks.map(t => [t.id, t])), depth = {}, rows = [], pos = {}, W = 180, H = 46, GX = 48, GY = 14;
+  const by = Object.fromEntries(tasks.map(t => [t.id, t])), depth = {}, pos = {}, W = 200, H = 56, GX = 48, GY = 14;
   const up = t => (t.deps.length ? t.deps : t.kind === "work" ? [by.SKILLS ? "SKILLS" : "PLAN"] : t.kind === "skills" ? ["PLAN"] : [])
     .filter(d => by[d] && d !== t.id);
   const col = t => {
     if (!(t.id in depth)) { depth[t.id] = 0; depth[t.id] = Math.max(0, ...up(t).map(d => col(by[d]) + 1)); }  // 0 first: a cycle cannot loop
     return depth[t.id];
   };
-  for (const t of tasks) { const c = col(t); rows[c] = (rows[c] || 0) + 1; pos[t.id] = [c * (W + GX), (rows[c] - 1) * (H + GY)]; }
-  const width = rows.length * (W + GX) - GX, height = Math.max(...rows.map(n => n || 0)) * (H + GY) - GY;
+
+  const cols = [];
+  tasks.forEach((t, i) => {
+    const c = col(t);
+    while (cols.length <= c) cols.push([]);
+    cols[c].push({t, orig: i});
+  });
+
+  const rowOf = {};
+  if (cols.length > 0) {
+    cols[0].forEach((item, r) => { rowOf[item.t.id] = r; });
+    for (let c = 1; c < cols.length; c++) {
+      cols[c].forEach(item => {
+        const earlierDeps = up(item.t).filter(d => col(by[d]) < c && rowOf[d] !== undefined);
+        item.mean = earlierDeps.length > 0
+          ? earlierDeps.reduce((acc, d) => acc + rowOf[d], 0) / earlierDeps.length
+          : item.orig;
+      });
+      cols[c].sort((a, b) => a.mean !== b.mean ? a.mean - b.mean : a.orig - b.orig);
+      cols[c].forEach((item, r) => { rowOf[item.t.id] = r; });
+    }
+  }
+
+  cols.forEach((colItems, c) => {
+    colItems.forEach((item, r) => {
+      pos[item.t.id] = [c * (W + GX), r * (H + GY)];
+    });
+  });
+
+  const maxRows = Math.max(...cols.map(c => c.length), 0);
+  const width = Math.max(1, cols.length * (W + GX) - GX);
+  const height = Math.max(1, maxRows * (H + GY) - GY);
+
   const edges = tasks.flatMap(t => up(t).flatMap(d => {
+    if (!pos[d] || !pos[t.id]) return [];
     const [x1, y1] = pos[d], [x2, y2] = pos[t.id], a = x1 + W, b = y1 + H / 2, c = y2 + H / 2;
-    const p = `M${a},${b} C${a + GX / 2},${b} ${x2 - GX / 2},${c} ${x2},${c}`, line = svg("path", {d: p, class: "edge", "stroke-dasharray": t.deps.length ? null : "4 3"});
+    const p = `M${a},${b} C${a + GX / 2},${b} ${x2 - GX / 2},${c} ${x2},${c}`;
+    const isSelectedEdge = !edit && selectedTaskId && (d === selectedTaskId || t.id === selectedTaskId);
+    const line = svg("path", {
+      d: p,
+      class: "edge" + (isSelectedEdge ? " highlighted" : ""),
+      "stroke-dasharray": t.deps.length ? null : "4 3"
+    });
     return edit ? [line, svg("path", {d: p, class: "hit", onclick: () => { t.deps = t.deps.filter(x => x !== d); render(); }},
       svg("title", {}, `${t.id} waits for ${d}: click to remove`))] : [line];
   }));
+
   const nodes = tasks.map(t => {
     const s = STATUSES[t.status] || { sym: "•", text: t.status };
-    const headText = edit ? `${t.id} · ${t.assignee || ""}` : `${t.id}  ${s.sym} ${s.text}`;
-    return svg("g", {class: (edit ? "" : t.status), transform: `translate(${pos[t.id]})`, "data-id": edit ? t.id : null,
-        onpointerdown: edit ? e => connect(e, t.id) : null},
-      svg("title", {}, edit ? `${t.id}: ${t.title}\n${t.assignee}. Drag onto another task to make that one wait for this one.`
+    const isSel = !edit && selectedTaskId === t.id;
+    const truncTitle = t.title.length > 24 ? t.title.slice(0, 23) + "…" : t.title;
+    const headText = edit ? t.id : `${t.id}  ${s.sym} ${s.text}`;
+    const aria = `${t.id}, ${t.title}, ${s.text}`;
+    return svg("g", {
+      class: "dag-node " + (edit ? "" : t.status) + (isSel ? " selected" : ""),
+      transform: `translate(${pos[t.id]})`,
+      id: edit ? null : "node-" + t.id,
+      "data-id": edit ? t.id : null,
+      tabindex: edit ? null : "0",
+      role: edit ? null : "button",
+      ariaLabel: edit ? null : aria,
+      onclick: edit ? null : () => selectTask(t.id, "node-" + t.id),
+      onkeydown: edit ? null : e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectTask(t.id, "node-" + t.id); } },
+      onpointerdown: edit ? e => connect(e, t.id) : null
+    },
+      svg("title", {}, edit ? `${t.id}: ${t.title}\n${t.assignee || ""}. Drag onto another task to make that one wait for this one.`
         : `${t.id}: ${t.title}\n${t.status}${t.assignee ? ", " + t.assignee : ""}${t.attempts ? ", try " + t.attempts : ""}`),
       svg("rect", {width: W, height: H, rx: 6, class: "dag-node-bg"}),
       svg("path", {d: `M0,6 A6,6 0 0,1 6,0 L6,${H} A6,6 0 0,1 0,${H - 6} Z`, class: "dag-stripe " + (edit ? "edit" : t.status)}),
-      svg("text", {x: 12, y: 18, class: "head"}, headText),
-      svg("text", {x: 12, y: 36, class: "dag-title"}, t.title.length > 25 ? t.title.slice(0, 24) + "…" : t.title));
+      svg("text", {x: 14, y: 18, class: "head"}, headText),
+      svg("text", {x: 14, y: 34, class: "dag-title"}, truncTitle),
+      svg("text", {x: 14, y: 48, class: "dag-worker"}, t.assignee || "")
+    );
   });
-  return h("div", {class: "dag"}, svg("svg", {width, height, viewBox: `0 0 ${width} ${height}`}, ...edges, ...nodes));
+
+  const nDone = tasks.filter(x => x.status === "done").length;
+  const nRun = tasks.filter(x => ["running", "verifying", "integrating"].includes(x.status)).length;
+  const graphSummary = `Task graph: ${tasks.length} task${tasks.length > 1 ? "s" : ""}, ${nDone} done${nRun ? ", " + nRun + " running" : ""}`;
+
+  const svgW = Math.round(width * dagZoom);
+  const svgH = Math.round(height * dagZoom);
+  const svgEl = svg("svg", {
+    width: svgW,
+    height: svgH,
+    viewBox: `0 0 ${width} ${height}`,
+    role: "group",
+    ariaLabel: graphSummary
+  }, ...edges, ...nodes);
+
+  const wrap = h("div", {
+    class: "dag-wrap",
+    onscroll: e => {
+      dagScroll.left = e.currentTarget.scrollLeft;
+      dagScroll.top = e.currentTarget.scrollTop;
+    },
+    onwheel: e => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.1 : -0.1;
+        dagZoom = Math.min(2.0, Math.max(0.4, +(dagZoom + delta).toFixed(2)));
+        render();
+      }
+    }
+  }, svgEl);
+
+  setTimeout(() => {  // runs once render() has attached the view (a frame callback never comes while the window is hidden)
+    wrap.scrollLeft = dagScroll.left;
+    wrap.scrollTop = dagScroll.top;
+  });
+
+  const controls = h("div", {class: "dag-controls"},
+    h("button", {
+      class: "secondary dag-btn",
+      ariaLabel: "Zoom out",
+      onclick: () => { dagZoom = Math.max(0.4, +(dagZoom - 0.2).toFixed(1)); render(); }
+    }, "−"),
+    h("button", {
+      class: "secondary dag-btn",
+      ariaLabel: "Zoom in",
+      onclick: () => { dagZoom = Math.min(2.0, +(dagZoom + 0.2).toFixed(1)); render(); }
+    }, "+"),
+    h("button", {
+      class: "secondary dag-btn",
+      ariaLabel: "Fit graph to view",
+      onclick: () => {
+        const wrapW = wrap.clientWidth || 800;
+        dagZoom = Math.min(2.0, Math.max(0.4, +((wrapW - 24) / width).toFixed(2)));
+        dagScroll.left = 0;
+        dagScroll.top = 0;
+        render();
+      }
+    }, "Fit")
+  );
+
+  return h("div", {class: "dag-area dag"},
+    h("div", {class: "dag-header"},
+      h("h3", {}, edit ? "Plan editor" : "Task graph"),
+      controls
+    ),
+    wrap
+  );
 }
 
 function connect(e, from) {  // a line follows the pointer; dropped on another task, that task waits for `from`
   e.preventDefault();
-  const root = e.currentTarget.ownerSVGElement, at = ev => { const b = root.getBoundingClientRect(); return [ev.clientX - b.left, ev.clientY - b.top]; };
+  const root = e.currentTarget.ownerSVGElement;
+  const at = ev => {
+    const b = root.getBoundingClientRect();
+    const vb = root.viewBox.baseVal;
+    const sx = vb && vb.width ? vb.width / b.width : 1;
+    const sy = vb && vb.height ? vb.height / b.height : 1;
+    return [(ev.clientX - b.left) * sx, (ev.clientY - b.top) * sy];
+  };
   const [x, y] = at(e), line = svg("line", {class: "drag", x1: x, y1: y, x2: x, y2: y}), on = [["pointermove", ev => {
     const [x2, y2] = at(ev);
     line.setAttribute("x2", x2);
@@ -932,22 +717,148 @@ async function Run(data) {
   if (drafts.plan && !s.edit) { delete drafts.plan; say("The plan is not waiting for approval any more: your edit was dropped", "err"); }
   const pending = s.tasks.filter(t => t.status === "pending_user");
 
-  return h("div", {},
-    h("div", {class: "run-meta"},
+  const totalTasks = s.tasks.length;
+  const nDone = s.tasks.filter(t => t.status === "done").length;
+  const nActive = s.tasks.filter(t => ["running", "verifying", "integrating"].includes(t.status)).length;
+  const nWaiting = s.tasks.filter(t => ["pending_user", "needs_lead"].includes(t.status)).length, nLead = nWaiting - pending.length;
+  const nFailed = s.tasks.filter(t => ["failed", "cancelled"].includes(t.status)).length, nCancelled = s.tasks.filter(t => t.status === "cancelled").length;
+  const nTodo = s.tasks.filter(t => t.status === "todo").length;
+
+  const countParts = [nDone && `${nDone} done`, nActive && `${nActive} running`, pending.length && `${pending.length} needs you`, nLead && `${nLead} with lead`, nFailed - nCancelled && `${nFailed - nCancelled} failed`, nCancelled && `${nCancelled} cancelled`, nTodo && `${nTodo} todo`].filter(Boolean);
+  const countsText = countParts.length > 0 ? countParts.join(", ") : `${totalTasks} tasks`;
+
+  const tokensUsed = (s.attempts || []).reduce((acc, a) => acc + (a.tokens_in || 0) + (a.tokens_out || 0), 0);
+  const fmtK = n => n >= 1e6 ? (n / 1e6).toFixed(n % 1e6 === 0 ? 0 : 1) + "m" : (n >= 1e3 ? (n / 1e3).toFixed(n % 1e3 === 0 ? 0 : 1) + "k" : String(n));
+  const tokenText = s.budget > 0 ? `${fmtK(tokensUsed)} / ${fmtK(s.budget)} tokens` : `${fmtK(tokensUsed)} tokens`;
+
+  const headerEl = h("div", {class: "run-header"},
+    h("div", {class: "run-header-top"},
+      h("h1", {class: "run-title"}, s.goal || (s.run ? `Run ${s.run}` : "Orchestra")),
+      s.tasks.some(live) ? btn("Cancel all", () => confirm("Cancel every unfinished task? Running and queued work will be stopped.") && act(() => api("cancel", {task: "all"})), "danger") : null
+    ),
+    h("div", {class: "run-meta-row"},
       h("span", {class: "mono muted"}, s.project),
-      h("span", {class: "meta-sep"}, "·"),
       h("span", {}, "run ", h("b", {class: "mono"}, s.run || "none")),
-      h("span", {class: "meta-sep"}, "·"),
       s.status && STATUSES[s.status] ? badge(s.status) : h("span", {class: "mono muted"}, s.status || (s.run ? "open" : "idle")),
-      h("span", {class: "meta-sep"}, "·"),
       h("span", {}, "engine ", h("b", {class: s.engine ? "ok" : "muted"}, s.engine ? "running" : "stopped"))
     ),
-    s.goal && h("div", {class: "card card-goal"},
-      h("div", {class: "goal-label"}, "Goal"),
-      h("div", {class: "prose"}, s.goal)
-    ),
-    !s.has_team && h("p", {class: "err"}, "No team yet: pick one in the Team tab (or run python -m orch init)."),
-    !s.engine && h("div", {class: "card"},
+    totalTasks > 0 ? h("div", {class: "run-progress-row"},
+      h("div", {class: "run-progress-wrap"},
+        h("div", {class: "progress-bar", role: "progressbar", ariaValuemin: 0, ariaValuemax: totalTasks, ariaValuenow: nDone, ariaLabel: `Task progress: ${countsText}`},
+          ...[["done", nDone], ["running", nActive], ["waiting", nWaiting], ["failed", nFailed], ["todo", nTodo]]
+            .filter(([, n]) => n > 0).map(([c, n]) => h("div", {class: "progress-seg " + c, style: {width: `${n / totalTasks * 100}%`}}))
+        ),
+        h("span", {class: "progress-text"}, countsText)
+      ),
+      h("span", {class: "token-stat tabular", title: `${tokensUsed.toLocaleString()} tokens${s.budget ? " (budget: " + s.budget.toLocaleString() + ")" : ""}`}, tokenText)
+    ) : null
+  );
+
+  const waitingCards = pending.map(t => {
+    const isPlan = t.kind === "plan" || t.id === "PLAN";
+    const isReview = t.kind === "review" || t.id.startsWith("REVIEW");
+    const isGate = t.kind === "gate" || t.id.startsWith("BUDGET");
+    const isSkills = t.kind === "skills" || t.id === "SKILLS";
+
+    const otherWorkers = (s.workers || []).filter(w => w !== t.assignee);
+    const reassignId = `reassign-${t.id}`;
+    const ans = text => act(async () => { const r = await api("answer", {task: t.id, text}); delete drafts["ans:" + t.id]; return r; });
+
+    const quickBtns = [];
+    if (isPlan) {
+      quickBtns.push(btn("Approve plan", () => ans("yes"), "primary"));
+      if (s.edit) quickBtns.push(btn("Edit plan", () => {
+        drafts.plan = {version: s.edit.version, tasks: s.edit.tasks.map(x => ({...x, deps: [...x.deps]}))};
+        render();
+      }, "secondary"));
+    } else if (isReview) {
+      quickBtns.push(btn("Accept", () => ans("accept"), "primary"), btn("Review again", () => ans("retry"), "secondary"));
+    } else if (isGate) {
+      if (s.budget > 0) quickBtns.push(btn("Continue with double budget", () => ans(String(s.budget * 2)), "primary"));
+      quickBtns.push(btn("Stop run", () => confirm("Stop run? Every unfinished task will be cancelled.") && ans("stop"), "danger"));
+    } else if (isSkills) {
+      quickBtns.push(btn("Install", () => ans("yes"), "primary"), btn("Skip", () => ans("no"), "secondary"));
+    } else {
+      quickBtns.push(btn("Yes", () => ans("yes"), "primary"), btn("Retry", () => ans("retry"), "secondary"));
+      if (otherWorkers.length > 0) {
+        quickBtns.push(h("div", {class: "reassign-group"},
+          h("label", {htmlFor: reassignId, class: "muted"}, "Worker:"),
+          h("select", {id: reassignId, onchange: e => drafts[reassignId] = e.target.value},
+            otherWorkers.map(w => h("option", {value: w, selected: w === drafts[reassignId]}, w))),
+          btn("Reassign", () => ans(`reassign ${otherWorkers.includes(drafts[reassignId]) ? drafts[reassignId] : otherWorkers[0]}`), "secondary")
+        ));
+      }
+      quickBtns.push(btn("Cancel task", () => confirm(`Cancel task ${t.id}?`) && ans("cancel"), "danger"));
+    }
+
+    const freeTextLabel = isPlan ? "Feedback for a new plan"
+      : (isGate ? "New budget or instruction"
+      : (isReview ? "Instructions for review" : "Your answer"));
+
+    return h("div", {class: "card card-waiting", id: `wait-${t.id}`},
+      h("div", {class: "row"}, h("b", {class: "mono"}, t.id + ":"), h("span", {class: "bold"}, t.title), badge(t.status)),
+      t.question ? h("p", {class: "prose question"}, t.question) : null,
+      h("div", {class: "quick-actions"}, ...quickBtns),
+      h("div", {class: "field"},
+        h("label", {htmlFor: "ans-" + t.id}, freeTextLabel),
+        draft("ans:" + t.id, {
+          id: "ans-" + t.id,
+          rows: 2,
+          placeholder: isPlan ? "e.g. split T2 into two tasks" : (isGate ? "e.g. 500k or stop" : "yes / retry / cancel / reassign <worker> / instructions")
+        })
+      ),
+      h("div", {class: "row"},
+        btn(isPlan ? "Send feedback" : "Send answer", () => (drafts["ans:" + t.id] || "").trim()
+          ? ans(drafts["ans:" + t.id].trim()) : say("Type an answer first, or use a button above", "err"), "secondary")
+      )
+    );
+  });
+
+  const waitingColumn = pending.length > 0 ? h("div", {class: "waiting-col"},
+    h("h3", {}, `Waiting for you (${pending.length})`),
+    ...waitingCards
+  ) : null;
+
+  let dagSection;
+  if (drafts.plan) {
+    dagSection = planEditor(s);
+  } else if (s.tasks.length > 0) {
+    dagSection = dag(s.tasks);
+  } else {
+    dagSection = null;
+  }
+
+  const gridSection = (waitingColumn || dagSection) ? h("div", {
+    class: "run-grid" + (waitingColumn ? " has-waiting" : "")
+  },
+    waitingColumn,
+    dagSection
+  ) : null;
+
+  const selectedTask = selectedTaskId ? s.tasks.find(t => t.id === selectedTaskId) : null;
+  const panelSection = selectedTask ? taskPanel(selectedTask, s) : null;
+
+  const scoreSection = s.run ? scoreView(s) : null;
+
+  const boardSection = s.tasks.length > 0 ? h("div", {},
+    h("h3", {}, "Board"),
+    table(["Task", "Status", "Worker", h("span", {class: "align-right"}, "Try"), "Deps", "Title", ""], s.tasks.map(t => [
+      h("button", {
+        class: "task-link-btn mono bold",
+        id: "row-" + t.id,
+        ariaLabel: `Open details for task ${t.id}`,
+        onclick: () => selectTask(t.id, "row-" + t.id)
+      }, t.id),
+      badge(t.status),
+      h("span", {class: "mono"}, t.assignee || ""),
+      h("span", {class: "tabular align-right"}, t.attempts),
+      h("span", {class: "mono nowrap"}, t.deps.join(", ")),
+      h("div", {class: "truncate", title: t.title}, t.title),
+      live(t) ? btn("Cancel", () => act(() => api("cancel", {task: t.id})), "danger") : ""
+    ]))
+  ) : null;
+
+  const startCard = !s.engine ? h("div", {class: "card"},
       h("div", {class: "field"},
         h("label", {htmlFor: "goal-box"}, "Goal"),
         draft("goal", {id: "goal-box", rows: 3, placeholder: "What should the team build or fix? (the lead plans it, the reviewer checks the plan)"})
@@ -958,45 +869,19 @@ async function Run(data) {
           " Auto-approve the reviewed plan"
         ),
         btn("Start run", () => act(() => api("run", {goal: drafts.goal || "", yes: !!drafts.yes})), "primary"),
-        s.run && !["done", "failed", "cancelled"].includes(s.status) && btn("Resume run " + s.run, () => act(() => api("resume", {})), "secondary")
+        s.run && !["done", "failed", "cancelled"].includes(s.status) ? btn("Resume run " + s.run, () => act(() => api("resume", {})), "secondary") : null
       )
-    ),
-    pending.length > 0 && h("h3", {}, `Waiting for you (${pending.length})`),
-    pending.map(t => h("div", {class: "card card-waiting"},
-      h("div", {class: "row"},
-        h("b", {class: "mono"}, t.id + ":"),
-        h("span", {class: "bold"}, t.title),
-        badge(t.status)
-      ),
-      t.question && h("p", {class: "prose question"}, t.question),
-      t.id === "PLAN" && drafts.plan ? planEditor(s) : [
-        h("div", {class: "field"},
-          h("label", {htmlFor: "ans-" + t.id}, "Your answer"),
-          draft("ans:" + t.id, {id: "ans-" + t.id, rows: 2, placeholder: "yes / retry / cancel / reassign <worker> / any instruction"})
-        ),
-        h("div", {class: "row"},
-          btn("Send answer", () => act(() => api("answer", {task: t.id, text: drafts["ans:" + t.id] || "yes"})), "primary"),
-          t.id === "PLAN" && s.edit && btn("Edit plan", () => {
-            drafts.plan = {version: s.edit.version, tasks: s.edit.tasks.map(x => ({...x, deps: [...x.deps]}))};
-            render();
-          }, "secondary")
-        )
-      ]
-    )),
-    s.tasks.length > 0 && h("h3", {}, "Board"),
-    s.tasks.length > 0 && dag(s.tasks),
-    s.tasks.length > 0 && table(["Task", "Status", "Worker", "Try", "Deps", "Title", ""], s.tasks.map(t => [
-      h("span", {class: "mono bold"}, t.id),
-      badge(t.status),
-      h("span", {class: "mono"}, t.assignee || ""),
-      h("span", {class: "tabular"}, t.attempts),
-      h("span", {class: "mono"}, t.deps.join(", ")),
-      h("div", {class: "truncate", title: t.title}, t.title),
-      live(t) ? btn("Cancel", () => act(() => api("cancel", {task: t.id})), "danger") : ""
-    ])),
-    s.tasks.some(live) && h("div", {class: "row"},
-      btn("Cancel all", () => confirm("Cancel every unfinished task? Running and queued work will be stopped.") && act(() => api("cancel", {task: "all"})), "danger")
-    ),
+    ) : null;
+
+  return h("div", {},
+    headerEl,
+    !s.has_team ? h("p", {class: "err"}, "No team yet: pick one in the Team tab (or run python -m orch init).") : null,
+    pending.length ? null : startCard,
+    gridSection,
+    panelSection,
+    pending.length ? startCard : null,
+    scoreSection,
+    boardSection,
     s.report ? detailsBlock("report", "Report", s.report) : null,
     s.plan ? detailsBlock("plan", "Plan", s.plan) : null,
     s.log ? detailsBlock("log", "Engine console", s.log) : null
@@ -1172,7 +1057,16 @@ function renderNav() {
       pendingCount > 0 ? h("button", {
         class: "pending-pill",
         title: `${pendingCount} task(s) waiting for you`,
-        onclick: () => { tab = "Run"; render(); }
+        onclick: async () => {
+          tab = "Run";
+          await render();
+          const first = document.querySelector(".card-waiting");
+          if (first) {
+            first.scrollIntoView({behavior: "smooth", block: "start"});
+            const focusable = first.querySelector("button, input, textarea, select");
+            if (focusable) focusable.focus();
+          }
+        }
       }, `! Needs you ${pendingCount}`) : null
     );
   }
@@ -1208,6 +1102,12 @@ function start() {  // the token lives in the URL fragment: it is never sent to 
   render();
 }
 
+window.addEventListener("keydown", e => {
+  if (e.key === "Escape" && selectedTaskId) {
+    e.preventDefault();
+    closeTaskPanel();
+  }
+});
 window.addEventListener("hashchange", start);
 start();
 </script>
