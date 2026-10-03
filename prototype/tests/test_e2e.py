@@ -605,8 +605,10 @@ def test_plan_edit_from_the_ui():
     assert r.status() == {"PLAN": "done", "T1": "done", "T2": "done", "REVIEW": "done"}, r.status()
     assert r.q("SELECT assignee, deps FROM tasks WHERE id='T2'") == [("w1", '["T1"]')] and r.outcomes("T2") == ["integrated"]
     with ui_server(r.repo) as call:  # the task panel and the score read the attempts: no session ids, no pids
-        att = json.loads(call("/api/state")[1])["attempts"]
+        st = json.loads(call("/api/state")[1])
+    att = st["attempts"]
     assert {"T1", "T2"} <= {a["task"] for a in att} and not {"session", "pid"} & set(att[0]), att
+    assert {"w1", "w2"} <= set(st["workers"]) and st["budget"] == 0, st  # quick answers: reassign <worker>, budget gate
 
 
 def test_mcp_server_read_only_tools():

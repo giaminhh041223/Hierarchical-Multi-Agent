@@ -32,7 +32,7 @@ def spawn_engine(ws, *args):
 
 
 def api_state(ws, b, q):
-    run, team = ws.run, bool(ws.read_json("team.json"))
+    run, team = ws.run, ws.read_json("team.json") or {}
     rdir, tasks, edit = ws.dir / "runs" / str(run), ws.tasks() if run else [], None
     if team and any(t["id"] == "PLAN" and t["status"] == "pending_user" and t["answer"] is None for t in tasks):
         e = Engine(ws)  # the plan waiting for approval, for the editor (api_plan)
@@ -40,7 +40,8 @@ def api_state(ws, b, q):
             edit = {"version": p["version"], "workers": [*e.primaries()],
                     "tasks": [{k: t[k] for k in ("id", "title", "assignee", "deps")} for t in p["plan"]["tasks"]]}
     return {"project": str(ws.project), "run": run, "goal": run and ws.meta(f"{run}:goal"), "status": run and ws.meta(f"{run}:status"),
-            "engine": EngineLock(ws).held_elsewhere(), "has_team": team, "tasks": tasks, "edit": edit,
+            "engine": EngineLock(ws).held_elsewhere(), "has_team": bool(team), "tasks": tasks, "edit": edit,
+            "workers": [*team.get("workers", {})], "budget": int(float(run and ws.meta(f"{run}:budget") or 0)),  # 0 = no budget
             "attempts": ws.q("SELECT task, kind, agent, model, started, ended, outcome, failure, tokens_in, tokens_out, cost, dir"
                              " FROM attempts WHERE run=? ORDER BY id", run) if run else [],  # task panel and the score (UIUX §9)
             "plan": _file(rdir / "plan.md"), "report": _file(rdir / "report.md"), "log": _file(ws.dir / "engine.log", 4000)}
