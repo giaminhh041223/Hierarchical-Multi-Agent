@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "task_id": "G00",
+  "revision": 1,
+  "task_status": "PENDING_REVIEW",
+  "scope_summary": "TEMPLATE ONLY: replace after actual research; not a completed task.",
+  "requirement_ids": [],
+  "input_refs": [],
+  "output_files": [
+    "docs/research/reports/G00.md",
+    "docs/research/results/G00.json"
+  ],
+  "claims": [],
+  "unknowns": [],
+  "conflicts": [],
+  "commands": [],
+  "acceptance_selfcheck": [],
+  "runtime_tests": "NOT_RUN",
+  "schema_status": {
+    "validated": false,
+    "validator": null,
+    "errors": []
+  }
+}

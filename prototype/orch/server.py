@@ -1,0 +1,200 @@
+"""Local web UI (python -m orch ui): run / inbox / board, events, agents + logins, API-key vault, team, knowledge graph,
+skills, models. Binds 127.0.0.1 only. Every /api call needs the per-launch token (kept in the URL fragment, sent as
+X-Orch-Token) and a local Host / Origin: other web pages and DNS-rebinding sites cannot drive it. The page renders all
+data as text (no innerHTML) under a nonce CSP; vault values never leave the process unmasked."""
+import hmac, json, os, secrets, subprocess, sys, webbrowser
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+from . import agents, models, skills
+from .core import ROOT, EngineLock, mask, redact, vault, vault_set
+from .engine import load_team, save_team
+
+UI = Path(__file__).with_name("ui.html")
+MAX_BODY = 100_000
+
+
+def _file(path, limit=60_000):
+    return path.read_text(encoding="utf-8", errors="replace")[-limit:] if path.exists() else ""
+
+
+def spawn_engine(ws, *args):
+    """The engine runs as its own process (survives the UI); its console output goes to .orch/engine.log."""
+    load_team(ws)
+    if EngineLock(ws).held_elsewhere():
+        raise ValueError("an engine is already running on this workspace")
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    with open(ws.dir / "engine.log", "a", encoding="utf-8") as log:
+        subprocess.Popen([sys.executable, "-m", "orch", "--ws", str(ws.project), *args], cwd=ROOT, stdin=subprocess.DEVNULL,
+                         stdout=log, stderr=subprocess.STDOUT, creationflags=flags, start_new_session=os.name != "nt")
+    return {"ok": f"engine started: {args[0]}"}
+
+
+def api_state(ws, b, q):
+    run = ws.run
+    rdir = ws.dir / "runs" / str(run)
+    return {"project": str(ws.project), "run": run, "goal": run and ws.meta(f"{run}:goal"), "status": run and ws.meta(f"{run}:status"),
+            "engine": EngineLock(ws).held_elsewhere(), "has_team": bool(ws.read_json("team.json")), "tasks": ws.tasks() if run else [],
+            "plan": _file(rdir / "plan.md"), "report": _file(rdir / "report.md"), "log": _file(ws.dir / "engine.log", 4000)}
+
+
+def api_events(ws, b, q):
+    return ws.q("SELECT ts, task, actor, kind, body FROM events WHERE run=? ORDER BY id DESC LIMIT 300", ws.run)
+
+
+def api_run(ws, b, q):
+    goal = str(b.get("goal") or "").strip()
+    if not goal or len(goal) > 8000:  # passed on a command line (Windows tops out at 32767 chars)
+        raise ValueError("the goal must be 1-8000 characters")
+    return spawn_engine(ws, "run", goal, *(["--yes"] if b.get("yes") else []))
+
+
+def api_resume(ws, b, q):
+    return spawn_engine(ws, "resume")
+
+
+def api_answer(ws, b, q):
+    if not ws.update(str(b.get("task")), _expect="pending_user", answer=str(b.get("text") or "").strip() or "yes"):
+        raise ValueError("that task is not waiting for an answer any more")
+    return {"ok": "recorded" + ("" if EngineLock(ws).held_elsewhere() else "; press Resume to continue")}
+
+
+def api_cancel(ws, b, q):
+    return {"ok": f"{ws.cancel(str(b.get('task')))} task(s) flagged"}
+
+
+def api_agents(ws, b, q):
+    cat = {k: a for k, a in agents.catalog().items() if not a.get("hidden")}
+    return {"agents": {k: v for k, v in agents.load_resources().items() if k in cat},
+            "keys": {k: sorted(set(a.get("auth_env", []) + a.get("needs_vault", []))) for k, a in cat.items()}}
+
+
+def api_discover(ws, b, q):
+    agents.discover(bool(b.get("probe")))
+    return api_agents(ws, b, q)
+
+
+def api_login(ws, b, q):
+    if b.get("agent") not in agents.catalog():
+        raise ValueError("unknown agent")
+    return {"ok": agents.launch_login(b["agent"])}
+
+
+def api_vault(ws, b, q):
+    if b:
+        vault_set(b.get("name"), b.get("value") or None)
+    return {k: mask(v) for k, v in vault().items()}
+
+
+def api_team(ws, b, q):
+    cands = agents.candidates(agents.load_resources())
+    s = models.suggest(cands)
+    return {"team": ws.read_json("team.json"), "suggested": s and models.team_of(s),
+            "candidates": [[a, m, models.card(m)] for a, m in cands]}
+
+
+def api_save_team(ws, b, q):
+    return {"ok": "team saved", "team": save_team(ws, b.get("team"))}
+
+
+def api_kg(ws, b, q):
+    text = q.get("q", "")
+    return {"facts": ws.kg_search(text, 30), "links": ws.kg_neighbors(text)} if text.strip() else {"facts": [], "links": []}
+
+
+def api_skills(ws, b, q):
+    return {"index": skills.load_index(), "sources": [s["repo"] for s in skills.sources()],
+            "run": ws.q("SELECT id, status, tasks, reason, scan FROM skills WHERE run=?", ws.run) if ws.run else []}
+
+
+def api_skill(ws, b, q):
+    if b.get("action") == "refresh":
+        return {"ok": f"{len(skills.refresh())} skills indexed"}
+    return {"ok": skills.decide(ws, str(b.get("id")), b.get("action"))}
+
+
+def api_models(ws, b, q):
+    if b.get("refresh"):
+        models.refresh()
+    return {"as_of": models.load().get("as_of"), "cards": {m: models.card(m) for m in sorted({m for _, m in agents.candidates(agents.load_resources())})}}
+
+
+GET = {"state": api_state, "events": api_events, "agents": api_agents, "vault": api_vault, "team": api_team, "kg": api_kg,
+       "skills": api_skills, "models": api_models}
+POST = {"run": api_run, "resume": api_resume, "answer": api_answer, "cancel": api_cancel, "discover": api_discover,
+        "login": api_login, "vault": api_vault, "team": api_save_team, "skill": api_skill, "models": api_models}
+
+
+class Handler(BaseHTTPRequestHandler):
+    timeout = 30  # a stalled client cannot pin a thread
+    server_version = "orchestra"
+
+    def reply(self, code, body, ctype="application/json; charset=utf-8", nonce=None):
+        data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False, default=str).encode()
+        self.send_response(code)
+        for k, v in (("Content-Type", ctype), ("Content-Length", str(len(data))), ("Cache-Control", "no-store"),
+                     ("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "no-referrer"),
+                     ("Content-Security-Policy", f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
+                                                 "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                      if nonce else "default-src 'none'; frame-ancestors 'none'")):
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def serve(self, routes):
+        srv, url = self.server, urlsplit(self.path)
+        if self.headers.get("Host") not in srv.hosts:
+            return self.reply(403, {"error": "bad Host"})
+        if url.path == "/" and routes is GET:
+            nonce = secrets.token_urlsafe(16)
+            page = UI.read_text(encoding="utf-8").replace("<script>", f'<script nonce="{nonce}">').replace("<style>", f'<style nonce="{nonce}">')
+            return self.reply(200, page.encode(), "text/html; charset=utf-8", nonce)
+        origin, token = self.headers.get("Origin"), self.headers.get("X-Orch-Token", "")
+        if (origin and origin not in srv.origins) or not hmac.compare_digest(token.encode(), srv.token.encode()):
+            return self.reply(403, {"error": "forbidden: open the UI from the link printed by `python -m orch ui`"})
+        fn = url.path.startswith("/api/") and routes.get(url.path[5:])
+        if not fn:
+            return self.reply(404, {"error": "not found"})
+        try:
+            body = {}
+            if routes is POST:
+                n = int(self.headers.get("Content-Length") or 0)
+                if n > MAX_BODY or not (self.headers.get("Content-Type") or "").startswith("application/json"):
+                    return self.reply(413, {"error": f"JSON bodies up to {MAX_BODY} bytes only"})
+                body = json.loads(self.rfile.read(n) or b"{}")
+                if not isinstance(body, dict):
+                    raise ValueError("a JSON object is expected")
+            self.reply(200, fn(srv.ws, body, {k: v[0] for k, v in parse_qs(url.query).items()}))
+        except (ValueError, RuntimeError, OSError, KeyError, SystemExit) as e:  # load_team raises SystemExit
+            self.reply(400, {"error": redact(str(e))[:2000]})
+
+    def do_GET(self):
+        self.serve(GET)
+
+    def do_POST(self):
+        self.serve(POST)
+
+    def log_message(self, *args):  # quiet: the console belongs to the user; URLs carry no secrets anyway
+        pass
+
+
+def make_server(ws, port=8765):
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    except OSError:  # port taken (another app): any free port will do, the printed link carries it
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    srv.daemon_threads, srv.ws, srv.token = True, ws, secrets.token_urlsafe(24)
+    port = srv.server_address[1]  # port 0 = any free port (tests)
+    srv.hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    srv.origins = {f"http://{h}" for h in srv.hosts}
+    srv.url = f"http://127.0.0.1:{port}/#{srv.token}"
+    return srv
+
+
+def serve(ws, port=8765, browser=True):
+    srv = make_server(ws, port)
+    print(f"Orchestra UI for {ws.project}:\n  {srv.url}\n(the link holds this session's access token; Ctrl+C stops the UI, not a running engine)")
+    if browser:
+        webbrowser.open(srv.url)
+    srv.serve_forever()

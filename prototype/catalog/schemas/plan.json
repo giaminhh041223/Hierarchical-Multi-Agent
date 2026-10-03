@@ -1,0 +1,7 @@
+{"type":"object","additionalProperties":false,"required":["tasks"],
+ "properties":{"tasks":{"type":"array","items":{"type":"object","additionalProperties":false,
+  "required":["id","title","assignee","deps","acceptance","scope_paths","verify"],
+  "properties":{"id":{"type":"string"},"title":{"type":"string"},"assignee":{"type":"string"},
+   "deps":{"$ref":"#/$defs/strings"},"acceptance":{"$ref":"#/$defs/strings"},"scope_paths":{"$ref":"#/$defs/strings"},
+   "verify":{"type":"array","items":{"$ref":"#/$defs/strings"}}}}}},
+ "$defs":{"strings":{"type":"array","items":{"type":"string"}}}}

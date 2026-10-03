@@ -1,0 +1,3 @@
+{"type":"object","additionalProperties":false,"required":["action","note","assignee","question"],
+ "properties":{"action":{"type":"string","enum":["retry","reassign","ask_user","fail","cancel"]},"note":{"type":"string"},
+  "assignee":{"type":["string","null"]},"question":{"type":["string","null"]}}}

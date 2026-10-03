@@ -1,0 +1,10 @@
+.orchestra/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.venv/
+*.log
+.research/
+

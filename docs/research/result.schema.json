@@ -1,0 +1,432 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agent-orchestra:research-result:1.0",
+  "title": "Gemini research result; independent acceptance is a separate artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "revision",
+    "task_status",
+    "scope_summary",
+    "requirement_ids",
+    "input_refs",
+    "output_files",
+    "claims",
+    "unknowns",
+    "conflicts",
+    "commands",
+    "acceptance_selfcheck",
+    "runtime_tests",
+    "schema_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^G[0-2][0-9]$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "task_status": {
+      "enum": [
+        "PENDING_REVIEW",
+        "PARTIAL",
+        "WAITING_INPUT"
+      ]
+    },
+    "scope_summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requirement_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^RQ(0[1-9]|1[0-8])$"
+      }
+    },
+    "input_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "revision",
+          "content_hash"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "output_files": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "statement",
+          "evidence_level",
+          "scope",
+          "locators",
+          "derived_from",
+          "limitations"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^G[0-2][0-9]-C[0-9]{2,}$"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_level": {
+            "enum": [
+              "DOCUMENTED",
+              "CODE_TRACED",
+              "TEST_DEFINED",
+              "OBSERVED",
+              "INFERRED",
+              "PROPOSED",
+              "UNKNOWN"
+            ]
+          },
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "project",
+              "version",
+              "platform"
+            ],
+            "properties": {
+              "project": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "platform": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "locators": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "source_id",
+                "url",
+                "revision",
+                "file_path",
+                "symbol",
+                "line_start",
+                "line_end",
+                "section",
+                "retrieved_at",
+                "content_hash",
+                "observation_log"
+              ],
+              "properties": {
+                "source_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "revision": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "file_path": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "symbol": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "line_start": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1
+                },
+                "line_end": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1
+                },
+                "section": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retrieved_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "content_hash": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "observation_log": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "derived_from": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "question",
+          "impact",
+          "blocks_decision",
+          "next_verification"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "blocks_decision": {
+            "type": "boolean"
+          },
+          "next_verification": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "claim_refs",
+          "description",
+          "resolution",
+          "followup"
+        ],
+        "properties": {
+          "claim_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "resolution": {
+            "enum": [
+              "UNRESOLVED",
+              "VERSION_SCOPED",
+              "RESOLVED_WITH_EVIDENCE"
+            ]
+          },
+          "followup": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command_redacted",
+          "executed",
+          "executed_at",
+          "exit_code",
+          "log_ref"
+        ],
+        "properties": {
+          "command_redacted": {
+            "type": "string"
+          },
+          "executed": {
+            "type": "boolean"
+          },
+          "executed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "log_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "acceptance_selfcheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "criterion_id",
+          "covered",
+          "evidence_refs",
+          "gap"
+        ],
+        "properties": {
+          "criterion_id": {
+            "type": "string",
+            "pattern": "^G[0-2][0-9]-A[1-9][0-9]*$"
+          },
+          "covered": {
+            "type": "boolean"
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "gap": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "runtime_tests": {
+      "const": "NOT_RUN"
+    },
+    "schema_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validated",
+        "validator",
+        "errors"
+      ],
+      "properties": {
+        "validated": {
+          "type": "boolean"
+        },
+        "validator": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

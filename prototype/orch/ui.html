@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orchestra</title>
+<style>
+:root { color-scheme: light dark; font: 14px/1.45 system-ui, sans-serif; }
+body { margin: 0; }
+header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #8885; flex-wrap: wrap; }
+nav button { border: 0; background: none; padding: 6px 10px; cursor: pointer; font: inherit; border-bottom: 2px solid transparent; }
+nav button.on { border-bottom-color: currentColor; font-weight: 600; }
+main { padding: 12px; max-width: 1200px; }
+table { border-collapse: collapse; width: 100%; margin: 6px 0 14px; }
+td, th { border-bottom: 1px solid #8883; padding: 4px 6px; text-align: left; vertical-align: top; }
+pre { white-space: pre-wrap; word-break: break-word; background: #8881; padding: 8px; max-height: 45vh; overflow: auto; margin: 4px 0 12px; }
+textarea, input[type=text], input[type=password], input[type=search] { box-sizing: border-box; font: inherit; padding: 4px 6px; }
+textarea { width: 100%; }
+.card { border: 1px solid #8885; border-radius: 6px; padding: 8px 10px; margin: 8px 0; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.muted { opacity: .7; } .err { color: #d33; } .ok { color: #2a2; }
+.done { color: #2a2; } .failed, .cancelled { color: #d33; } .pending_user, .needs_lead { color: #c80; font-weight: 600; }
+.running, .verifying, .integrating { color: #27c; }
+</style></head>
+<body>
+<header><strong>Orchestra</strong><nav id="tabs"></nav><span id="msg" class="muted"></span></header>
+<main id="main"></main>
+<script>
+"use strict";
+const drafts = {};
+let tab = "Run", timer = null;
+
+async function api(path, body) {
+  const r = await fetch("/api/" + path, {method: body ? "POST" : "GET",
+    headers: Object.assign({"X-Orch-Token": location.hash.slice(1)}, body ? {"Content-Type": "application/json"} : {}),
+    body: body ? JSON.stringify(body) : undefined});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+// Every string becomes a text node: nothing coming from agents, repos or the DB is ever parsed as HTML.
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "class") e.className = v;
+    else e[k] = v;
+  }
+  for (const k of kids.flat(Infinity)) if (k !== null && k !== undefined && k !== false) e.append(k instanceof Node ? k : String(k));
+  return e;
+}
+function say(text, cls) { const m = document.getElementById("msg"); m.className = cls || "muted"; m.textContent = text; }
+async function act(fn, ok) {
+  try { const r = await fn(); say(ok || (r && r.ok) || "done", "ok"); } catch (e) { say(e.message, "err"); }
+  render();
+}
+const draft = (key, props) => h(props.rows ? "textarea" : "input", Object.assign({value: drafts[key] || "", oninput: e => drafts[key] = e.target.value}, props));
+const table = (head, rows) => h("table", {}, h("tr", {}, head.map(x => h("th", {}, x))), rows.map(r => h("tr", {}, r.map(c => h("td", {}, c)))));
+const btn = (label, fn) => h("button", {onclick: fn}, label);
+const time = ts => new Date(ts * 1000).toLocaleTimeString();
+
+async function Run() {
+  const s = await api("state"), live = t => !["done", "failed", "cancelled"].includes(t.status);
+  const pending = s.tasks.filter(t => t.status === "pending_user");
+  return h("div", {},
+    h("div", {class: "row"}, h("span", {class: "muted"}, s.project), " | run ", h("b", {}, s.run || "none"),
+      " | ", h("span", {class: s.status || ""}, s.status || (s.run ? "open" : "")), " | engine ", h("b", {}, s.engine ? "running" : "stopped")),
+    s.goal && h("div", {class: "card"}, h("b", {}, "Goal: "), s.goal),
+    !s.has_team && h("p", {class: "err"}, "No team yet: pick one in the Team tab (or run python -m orch init)."),
+    !s.engine && h("div", {class: "card"},
+      draft("goal", {rows: 3, placeholder: "What should the team build or fix? (the lead plans it, the reviewer checks the plan)"}),
+      h("div", {class: "row"},
+        h("label", {}, h("input", {type: "checkbox", checked: !!drafts.yes, onchange: e => drafts.yes = e.target.checked}), " auto-approve the reviewed plan"),
+        btn("Start run", () => act(() => api("run", {goal: drafts.goal || "", yes: !!drafts.yes}))),
+        s.run && !["done", "failed", "cancelled"].includes(s.status) && btn("Resume run " + s.run, () => act(() => api("resume", {}))))),
+    pending.length > 0 && h("h3", {}, "Waiting for you"),
+    pending.map(t => h("div", {class: "card"}, h("b", {}, t.id + ": " + t.title), h("pre", {}, t.question || ""),
+      draft("ans:" + t.id, {rows: 2, placeholder: "yes / retry / cancel / reassign <worker> / any instruction"}),
+      h("div", {class: "row"}, btn("Send answer", () => act(() => api("answer", {task: t.id, text: drafts["ans:" + t.id] || "yes"})))))),
+    s.tasks.length > 0 && h("h3", {}, "Board"),
+    s.tasks.length > 0 && table(["id", "status", "worker", "try", "deps", "title", ""], s.tasks.map(t => [
+      t.id, h("span", {class: t.status}, t.status), t.assignee || "", t.attempts, t.deps.join(", "), t.title,
+      live(t) ? btn("cancel", () => act(() => api("cancel", {task: t.id}))) : ""])),
+    s.tasks.some(live) && btn("Cancel all", () => confirm("Cancel every unfinished task?") && act(() => api("cancel", {task: "all"}))),
+    s.report && [h("h3", {}, "Report"), h("pre", {}, s.report)],
+    s.plan && [h("h3", {}, "Plan"), h("pre", {}, s.plan)],
+    s.log && [h("h3", {}, "Engine console"), h("pre", {}, s.log)]);
+}
+
+async function Events() {
+  const ev = await api("events");
+  return table(["time", "kind", "task", "actor", "message"], ev.map(e => [time(e.ts), h("span", {class: e.kind}, e.kind), e.task || "", e.actor, e.body]));
+}
+
+async function Agents() {
+  const r = await api("agents");
+  return h("div", {},
+    h("p", {class: "muted"}, "Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orchestra never sees passwords. A probe sends one tiny prompt per agent to prove the account works."),
+    h("div", {class: "row"}, btn("Discover", () => act(() => api("discover", {}))), btn("Discover + probe", () => act(() => api("discover", {probe: true})))),
+    Object.keys(r.agents).length === 0 && h("p", {}, "Nothing discovered yet: press Discover."),
+    table(["agent", "installed", "auth", "probe", "models", "keys it can use", ""], Object.entries(r.agents).map(([id, a]) => [
+      h("div", {}, h("b", {}, id), h("div", {class: "muted"}, a.name)),
+      a.installed ? (a.version || "yes") : h("span", {class: "muted"}, "no " + (a.install ? "(" + a.install + ")" : "")),
+      a.auth || "", a.probe ? (a.probe.ok ? h("span", {class: "ok"}, "ok " + a.probe.model) : h("span", {class: "err"}, a.probe.class + ": " + (a.probe.error || ""))) : "",
+      (a.models || []).slice(0, 12).join(", ") + ((a.models || []).length > 12 ? " ..." : ""),
+      (r.keys[id] || []).join(", "),
+      a.installed && a.login ? btn("Log in", () => act(() => api("login", {agent: id}))) : ""])));
+}
+
+async function Vault() {
+  const v = await api("vault");
+  return h("div", {},
+    h("p", {class: "muted"}, "API keys for agents that use them (e.g. ZAI_API_KEY for claude@zai, OPENAI_API_KEY for codex). Stored encrypted with Windows DPAPI for your user; each agent only receives the keys its adapter declares; values are masked here and redacted from logs."),
+    table(["name", "value", ""], Object.entries(v).map(([k, m]) => [k, m, btn("delete", () => confirm("Delete " + k + "?") && act(() => api("vault", {name: k, value: null})))])),
+    h("div", {class: "row"}, draft("vname", {type: "text", placeholder: "NAME_LIKE_THIS"}),
+      h("input", {type: "password", id: "vval", placeholder: "value", autocomplete: "off"}),
+      btn("Save key", () => act(async () => { const r = await api("vault", {name: drafts.vname || "", value: document.getElementById("vval").value}); drafts.vname = ""; return r; }, "saved"))));
+}
+
+async function Team() {
+  const t = await api("team");
+  if (drafts.team === undefined) drafts.team = JSON.stringify(t.team || t.suggested || {}, null, 2);
+  return h("div", {},
+    h("p", {class: "muted"}, "lead = strongest model (plans, triages); reviewer = a different vendor if possible; workers = one per agent CLI. Edit the JSON, then save. Worker rule files are created in .orch/rules/."),
+    draft("team", {rows: 18, spellcheck: false}),
+    h("div", {class: "row"}, btn("Save team", () => act(() => api("team", {team: JSON.parse(drafts.team)}))),
+      t.suggested && btn("Use suggested team", () => { drafts.team = JSON.stringify(t.suggested, null, 2); render(); })),
+    h("h3", {}, "Usable models (agent / model / what we know)"),
+    t.candidates.length === 0 && h("p", {}, "None found yet: press Discover in the Agents tab (or log in to an agent first)."),
+    table(["agent", "model", "benchmarks, API reference price, our own run history"], t.candidates));
+}
+
+async function Knowledge() {
+  const r = drafts.kq ? await api("kg?q=" + encodeURIComponent(drafts.kq)) : {facts: [], links: []};
+  return h("div", {},
+    h("p", {class: "muted"}, "Facts published by integrated tasks (only from work that passed verification), searchable by every agent."),
+    h("div", {class: "row"}, draft("kq", {type: "search", placeholder: "search facts, e.g. auth api", onkeydown: e => e.key === "Enter" && render()}), btn("Search", () => render())),
+    table(["entity", "fact", "task"], r.facts.map(f => [f.entity, f.fact, f.task])),
+    r.links.length > 0 && table(["from", "relation", "to"], r.links.map(l => [l.src, l.rel, l.dst])));
+}
+
+async function Skills() {
+  const r = await api("skills");
+  return h("div", {},
+    h("p", {class: "muted"}, "Curated sources (pinned commits): " + r.sources.join(", ") + " + skills installed for your local agents. Refreshing downloads the index from github.com."),
+    btn("Refresh index", () => act(() => api("skill", {action: "refresh"}))),
+    r.run.length > 0 && h("h3", {}, "This run"),
+    r.run.length > 0 && table(["skill", "status", "tasks", "reason / scan", ""], r.run.map(s => [s.id, s.status, s.tasks, h("div", {}, s.reason, h("div", {class: "muted"}, s.scan || "")),
+      s.status === "proposed" ? h("span", {}, btn("approve", () => act(() => api("skill", {action: "approve", id: s.id}))), " ", btn("reject", () => act(() => api("skill", {action: "reject", id: s.id})))) : ""])),
+    h("h3", {}, "Index (" + r.index.length + ")"),
+    table(["id", "description"], r.index.map(s => [s.id, s.description])));
+}
+
+async function Models() {
+  const r = await api("models");
+  return h("div", {},
+    h("p", {class: "muted"}, "Benchmarks: Epoch AI (CC-BY); prices/context: OpenRouter list prices (a reference: subscription CLIs do not bill per token). Data as of " + (r.as_of || "never") + "."),
+    btn("Refresh from public sources", () => act(() => api("models", {refresh: true}))),
+    table(["model", "card"], Object.entries(r.cards)));
+}
+
+const TABS = {Run, Events, Agents, Vault, Team, Knowledge, Skills, Models};
+async function render(auto) {  // auto refresh never clobbers a field the user is typing in
+  clearTimeout(timer);
+  const typing = auto && /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || "");
+  if (!typing) {
+    document.getElementById("tabs").replaceChildren(...Object.keys(TABS).map(n => h("button", {class: n === tab ? "on" : "", onclick: () => { tab = n; render(); }}, n)));
+    try { document.getElementById("main").replaceChildren(await TABS[tab]()); } catch (e) { document.getElementById("main").replaceChildren(h("p", {class: "err"}, e.message)); }
+  }
+  if (tab === "Run" || tab === "Events") timer = setTimeout(() => render(true), 3000);
+}
+function start() {  // the token lives in the URL fragment: it is never sent to a server or written to logs
+  if (location.hash.length < 2) return say("Missing access token: open the link printed by python -m orch ui", "err");
+  say(""); render();
+}
+window.addEventListener("hashchange", start);
+start();
+</script>
+</body></html>

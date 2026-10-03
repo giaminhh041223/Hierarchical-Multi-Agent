@@ -1,0 +1,991 @@
+{
+  "schema_version": "1.0",
+  "created_date": "2026-10-02",
+  "mode": "RESEARCH_ONLY",
+  "execution_policy": "LEAD_ASSIGN_ONE_TASK_AFTER_INDEPENDENT_REVIEW",
+  "critical_unknown_policy": "DO_NOT_PROMOTE_TO_CAPABILITY_TRUE",
+  "tasks": [
+    {
+      "id": "G00",
+      "title": "Chốt yêu cầu và ranh giới nghiên cứu",
+      "phase": 0,
+      "definition": "tasks/G00-baseline.md",
+      "status": "REVISE",
+      "depends_on": [],
+      "source_ids": [],
+      "requirement_ids": [
+        "RQ01",
+        "RQ02",
+        "RQ03",
+        "RQ04",
+        "RQ05",
+        "RQ06",
+        "RQ07",
+        "RQ08",
+        "RQ09",
+        "RQ10",
+        "RQ11",
+        "RQ12",
+        "RQ13",
+        "RQ14",
+        "RQ15",
+        "RQ16",
+        "RQ17",
+        "RQ18"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G00.md",
+        "docs/research/results/G00.json"
+      ],
+      "review_output": "docs/research/reviews/G00.json",
+      "acceptance_ids": [
+        "G00-A1",
+        "G00-A2",
+        "G00-A3",
+        "G00-A4",
+        "G00-A5"
+      ]
+    },
+    {
+      "id": "G01",
+      "title": "Xác minh và khóa nguồn tham khảo",
+      "phase": 0,
+      "definition": "tasks/G01-source-lock.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G00"
+      ],
+      "source_ids": [
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05",
+        "S06",
+        "S07",
+        "S08",
+        "S09",
+        "S10",
+        "S11",
+        "S12",
+        "S13",
+        "S14",
+        "S15",
+        "S16",
+        "S17",
+        "S18",
+        "S19",
+        "S20",
+        "S21",
+        "S22",
+        "S23",
+        "S24",
+        "S25",
+        "S26",
+        "S27",
+        "S28",
+        "S29",
+        "S30",
+        "S31",
+        "S32",
+        "S33",
+        "S34",
+        "S35",
+        "S36",
+        "S37",
+        "S38",
+        "S39",
+        "S40",
+        "S41",
+        "S42",
+        "S43",
+        "S44",
+        "S45",
+        "S46",
+        "S47",
+        "S48",
+        "S49"
+      ],
+      "requirement_ids": [
+        "RQ17",
+        "RQ18"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G01.md",
+        "docs/research/results/G01.json",
+        "docs/research/results/G01-source-lock.json"
+      ],
+      "review_output": "docs/research/reviews/G01.json",
+      "acceptance_ids": [
+        "G01-A1",
+        "G01-A2",
+        "G01-A3",
+        "G01-A4",
+        "G01-A5"
+      ]
+    },
+    {
+      "id": "G02",
+      "title": "Truy vết engine và recovery của Orkestra",
+      "phase": 1,
+      "definition": "tasks/G02-orkestra-engine.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01"
+      ],
+      "source_ids": [
+        "S01",
+        "S02"
+      ],
+      "requirement_ids": [
+        "RQ05",
+        "RQ08",
+        "RQ09"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G02.md",
+        "docs/research/results/G02.json"
+      ],
+      "review_output": "docs/research/reviews/G02.json",
+      "acceptance_ids": [
+        "G02-A1",
+        "G02-A2",
+        "G02-A3",
+        "G02-A4",
+        "G02-A5"
+      ]
+    },
+    {
+      "id": "G03",
+      "title": "Bóc tách adapter, workspace và review gates Orkestra",
+      "phase": 1,
+      "definition": "tasks/G03-orkestra-boundaries.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01",
+        "G02"
+      ],
+      "source_ids": [
+        "S01",
+        "S03"
+      ],
+      "requirement_ids": [
+        "RQ04",
+        "RQ06",
+        "RQ08",
+        "RQ12"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G03.md",
+        "docs/research/results/G03.json"
+      ],
+      "review_output": "docs/research/reviews/G03.json",
+      "acceptance_ids": [
+        "G03-A1",
+        "G03-A2",
+        "G03-A3",
+        "G03-A4",
+        "G03-A5"
+      ]
+    },
+    {
+      "id": "G04",
+      "title": "Truy vết điều phối và sessions của Agent Orchestrator",
+      "phase": 1,
+      "definition": "tasks/G04-ao-engine.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01"
+      ],
+      "source_ids": [
+        "S04"
+      ],
+      "requirement_ids": [
+        "RQ01",
+        "RQ02",
+        "RQ05",
+        "RQ09"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G04.md",
+        "docs/research/results/G04.json"
+      ],
+      "review_output": "docs/research/reviews/G04.json",
+      "acceptance_ids": [
+        "G04-A1",
+        "G04-A2",
+        "G04-A3",
+        "G04-A4",
+        "G04-A5"
+      ]
+    },
+    {
+      "id": "G05",
+      "title": "Đánh giá AO trên Windows và discovery tài nguyên",
+      "phase": 1,
+      "definition": "tasks/G05-ao-platform.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01",
+        "G04"
+      ],
+      "source_ids": [
+        "S04",
+        "S32",
+        "S37"
+      ],
+      "requirement_ids": [
+        "RQ03",
+        "RQ04",
+        "RQ11",
+        "RQ12"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G05.md",
+        "docs/research/results/G05.json"
+      ],
+      "review_output": "docs/research/reviews/G05.json",
+      "acceptance_ids": [
+        "G05-A1",
+        "G05-A2",
+        "G05-A3",
+        "G05-A4",
+        "G05-A5"
+      ]
+    },
+    {
+      "id": "G06",
+      "title": "Bóc tách roles, dispatch và persistent knowledge Stoneforge",
+      "phase": 1,
+      "definition": "tasks/G06-stoneforge-engine.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01"
+      ],
+      "source_ids": [
+        "S05"
+      ],
+      "requirement_ids": [
+        "RQ02",
+        "RQ05",
+        "RQ06",
+        "RQ09",
+        "RQ15"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G06.md",
+        "docs/research/results/G06.json"
+      ],
+      "review_output": "docs/research/reviews/G06.json",
+      "acceptance_ids": [
+        "G06-A1",
+        "G06-A2",
+        "G06-A3",
+        "G06-A4",
+        "G06-A5"
+      ]
+    },
+    {
+      "id": "G07",
+      "title": "Bóc tách provider, review và permissions Stoneforge",
+      "phase": 1,
+      "definition": "tasks/G07-stoneforge-policy.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01",
+        "G06"
+      ],
+      "source_ids": [
+        "S05",
+        "S06"
+      ],
+      "requirement_ids": [
+        "RQ04",
+        "RQ08",
+        "RQ11",
+        "RQ12"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G07.md",
+        "docs/research/results/G07.json"
+      ],
+      "review_output": "docs/research/reviews/G07.json",
+      "acceptance_ids": [
+        "G07-A1",
+        "G07-A2",
+        "G07-A3",
+        "G07-A4",
+        "G07-A5"
+      ]
+    },
+    {
+      "id": "G08",
+      "title": "Audit chéo bằng chứng và khoảng trống các sản phẩm",
+      "phase": 1,
+      "definition": "tasks/G08-reference-audit.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G02",
+        "G03",
+        "G04",
+        "G05",
+        "G06",
+        "G07"
+      ],
+      "source_ids": [
+        "S01",
+        "S04",
+        "S05",
+        "S07",
+        "S08"
+      ],
+      "requirement_ids": [
+        "RQ01",
+        "RQ03",
+        "RQ09",
+        "RQ10",
+        "RQ13",
+        "RQ17"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G08.md",
+        "docs/research/results/G08.json"
+      ],
+      "review_output": "docs/research/reviews/G08.json",
+      "acceptance_ids": [
+        "G08-A1",
+        "G08-A2",
+        "G08-A3",
+        "G08-A4",
+        "G08-A5"
+      ]
+    },
+    {
+      "id": "G09",
+      "title": "Contract tích hợp Codex local",
+      "phase": 2,
+      "definition": "tasks/G09-codex-contract.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01",
+        "G08"
+      ],
+      "source_ids": [
+        "S19",
+        "S20",
+        "S21"
+      ],
+      "requirement_ids": [
+        "RQ03",
+        "RQ04",
+        "RQ11"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G09.md",
+        "docs/research/results/G09.json",
+        "docs/research/results/G09-codex-contract.json"
+      ],
+      "review_output": "docs/research/reviews/G09.json",
+      "acceptance_ids": [
+        "G09-A1",
+        "G09-A2",
+        "G09-A3",
+        "G09-A4",
+        "G09-A5"
+      ]
+    },
+    {
+      "id": "G10",
+      "title": "Contract Antigravity cho Claude và Gemini",
+      "phase": 2,
+      "definition": "tasks/G10-antigravity-contract.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01",
+        "G08"
+      ],
+      "source_ids": [
+        "S22",
+        "S23",
+        "S24",
+        "S25",
+        "S26"
+      ],
+      "requirement_ids": [
+        "RQ03",
+        "RQ04",
+        "RQ08",
+        "RQ11"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G10.md",
+        "docs/research/results/G10.json",
+        "docs/research/results/G10-antigravity-contract.json"
+      ],
+      "review_output": "docs/research/reviews/G10.json",
+      "acceptance_ids": [
+        "G10-A1",
+        "G10-A2",
+        "G10-A3",
+        "G10-A4",
+        "G10-A5"
+      ]
+    },
+    {
+      "id": "G11",
+      "title": "Contract OpenCode CLI và server",
+      "phase": 2,
+      "definition": "tasks/G11-opencode-contract.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01",
+        "G08"
+      ],
+      "source_ids": [
+        "S27",
+        "S28",
+        "S29",
+        "S46"
+      ],
+      "requirement_ids": [
+        "RQ03",
+        "RQ04",
+        "RQ10",
+        "RQ11"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G11.md",
+        "docs/research/results/G11.json",
+        "docs/research/results/G11-opencode-contract.json"
+      ],
+      "review_output": "docs/research/reviews/G11.json",
+      "acceptance_ids": [
+        "G11-A1",
+        "G11-A2",
+        "G11-A3",
+        "G11-A4",
+        "G11-A5"
+      ]
+    },
+    {
+      "id": "G12",
+      "title": "Bóc tách contract API model độc lập",
+      "phase": 2,
+      "definition": "tasks/G12-api-contracts.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01",
+        "G08"
+      ],
+      "source_ids": [
+        "S41",
+        "S42",
+        "S43",
+        "S44",
+        "S45",
+        "S46",
+        "S48",
+        "S49"
+      ],
+      "requirement_ids": [
+        "RQ04",
+        "RQ10"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G12.md",
+        "docs/research/results/G12.json",
+        "docs/research/results/G12-provider-api-contracts.json"
+      ],
+      "review_output": "docs/research/reviews/G12.json",
+      "acceptance_ids": [
+        "G12-A1",
+        "G12-A2",
+        "G12-A3",
+        "G12-A4",
+        "G12-A5"
+      ]
+    },
+    {
+      "id": "G13",
+      "title": "Phân tích Dify cho API credentials và human workflow",
+      "phase": 2,
+      "definition": "tasks/G13-dify-workflow.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01",
+        "G08"
+      ],
+      "source_ids": [
+        "S09",
+        "S10",
+        "S11"
+      ],
+      "requirement_ids": [
+        "RQ09",
+        "RQ10",
+        "RQ16"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G13.md",
+        "docs/research/results/G13.json"
+      ],
+      "review_output": "docs/research/reviews/G13.json",
+      "acceptance_ids": [
+        "G13-A1",
+        "G13-A2",
+        "G13-A3",
+        "G13-A4",
+        "G13-A5"
+      ]
+    },
+    {
+      "id": "G14",
+      "title": "Phân tích gateway, routing và budgets LiteLLM",
+      "phase": 2,
+      "definition": "tasks/G14-litellm-gateway.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01",
+        "G08"
+      ],
+      "source_ids": [
+        "S16",
+        "S17",
+        "S18"
+      ],
+      "requirement_ids": [
+        "RQ07",
+        "RQ10"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G14.md",
+        "docs/research/results/G14.json"
+      ],
+      "review_output": "docs/research/reviews/G14.json",
+      "acceptance_ids": [
+        "G14-A1",
+        "G14-A2",
+        "G14-A3",
+        "G14-A4",
+        "G14-A5"
+      ]
+    },
+    {
+      "id": "G15",
+      "title": "Đánh giá hẹp LangGraph và CrewAI",
+      "phase": 2,
+      "definition": "tasks/G15-framework-choice.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G01",
+        "G08"
+      ],
+      "source_ids": [
+        "S12",
+        "S13",
+        "S14",
+        "S15"
+      ],
+      "requirement_ids": [
+        "RQ05",
+        "RQ08",
+        "RQ09"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G15.md",
+        "docs/research/results/G15.json"
+      ],
+      "review_output": "docs/research/reviews/G15.json",
+      "acceptance_ids": [
+        "G15-A1",
+        "G15-A2",
+        "G15-A3",
+        "G15-A4",
+        "G15-A5"
+      ]
+    },
+    {
+      "id": "G16",
+      "title": "Thiết kế contract adapter chung và capability registry",
+      "phase": 3,
+      "definition": "tasks/G16-common-adapter.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G09",
+        "G10",
+        "G11",
+        "G12"
+      ],
+      "source_ids": [],
+      "requirement_ids": [
+        "RQ03",
+        "RQ04",
+        "RQ06",
+        "RQ10",
+        "RQ11"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G16.md",
+        "docs/research/results/G16.json",
+        "docs/research/results/G16-adapter-contract.json"
+      ],
+      "review_output": "docs/research/reviews/G16.json",
+      "acceptance_ids": [
+        "G16-A1",
+        "G16-A2",
+        "G16-A3",
+        "G16-A4",
+        "G16-A5"
+      ]
+    },
+    {
+      "id": "G17",
+      "title": "Thiết kế state machine, DAG và recovery",
+      "phase": 3,
+      "definition": "tasks/G17-scheduler-design.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G02",
+        "G04",
+        "G06",
+        "G08",
+        "G15",
+        "G16"
+      ],
+      "source_ids": [
+        "S33",
+        "S47"
+      ],
+      "requirement_ids": [
+        "RQ05",
+        "RQ08",
+        "RQ09"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G17.md",
+        "docs/research/results/G17.json",
+        "docs/research/results/G17-scheduler-design.json"
+      ],
+      "review_output": "docs/research/reviews/G17.json",
+      "acceptance_ids": [
+        "G17-A1",
+        "G17-A2",
+        "G17-A3",
+        "G17-A4",
+        "G17-A5"
+      ]
+    },
+    {
+      "id": "G18",
+      "title": "Thiết kế workspace, process policy và credential vault Windows",
+      "phase": 3,
+      "definition": "tasks/G18-windows-isolation.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G03",
+        "G05",
+        "G07",
+        "G09",
+        "G10",
+        "G11",
+        "G16"
+      ],
+      "source_ids": [
+        "S32",
+        "S35",
+        "S36",
+        "S37"
+      ],
+      "requirement_ids": [
+        "RQ01",
+        "RQ08",
+        "RQ10",
+        "RQ11",
+        "RQ12"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G18.md",
+        "docs/research/results/G18.json",
+        "docs/research/results/G18-windows-boundaries.json"
+      ],
+      "review_output": "docs/research/reviews/G18.json",
+      "acceptance_ids": [
+        "G18-A1",
+        "G18-A2",
+        "G18-A3",
+        "G18-A4",
+        "G18-A5"
+      ]
+    },
+    {
+      "id": "G19",
+      "title": "Thiết kế context, kênh trao đổi và knowledge tối thiểu",
+      "phase": 3,
+      "definition": "tasks/G19-context-knowledge.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G06",
+        "G16",
+        "G17"
+      ],
+      "source_ids": [
+        "S34"
+      ],
+      "requirement_ids": [
+        "RQ06",
+        "RQ07",
+        "RQ15"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G19.md",
+        "docs/research/results/G19.json",
+        "docs/research/results/G19-context-knowledge-design.json"
+      ],
+      "review_output": "docs/research/reviews/G19.json",
+      "acceptance_ids": [
+        "G19-A1",
+        "G19-A2",
+        "G19-A3",
+        "G19-A4",
+        "G19-A5"
+      ]
+    },
+    {
+      "id": "G20",
+      "title": "Thiết kế Skill Architect và phân phối skills/plugins",
+      "phase": 3,
+      "definition": "tasks/G20-skill-architect.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G00",
+        "G01",
+        "G16",
+        "G18"
+      ],
+      "source_ids": [
+        "S30",
+        "S31"
+      ],
+      "requirement_ids": [
+        "RQ06",
+        "RQ13"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G20.md",
+        "docs/research/results/G20.json",
+        "docs/research/results/G20-skill-manifest-proposal.json"
+      ],
+      "review_output": "docs/research/reviews/G20.json",
+      "acceptance_ids": [
+        "G20-A1",
+        "G20-A2",
+        "G20-A3",
+        "G20-A4",
+        "G20-A5"
+      ]
+    },
+    {
+      "id": "G21",
+      "title": "Thiết kế registry benchmark và lựa chọn model",
+      "phase": 3,
+      "definition": "tasks/G21-model-intelligence.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G00",
+        "G01",
+        "G16"
+      ],
+      "source_ids": [
+        "S38",
+        "S39",
+        "S40"
+      ],
+      "requirement_ids": [
+        "RQ02",
+        "RQ03",
+        "RQ07",
+        "RQ14"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G21.md",
+        "docs/research/results/G21.json",
+        "docs/research/results/G21-model-registry-proposal.json"
+      ],
+      "review_output": "docs/research/reviews/G21.json",
+      "acceptance_ids": [
+        "G21-A1",
+        "G21-A2",
+        "G21-A3",
+        "G21-A4",
+        "G21-A5"
+      ]
+    },
+    {
+      "id": "G22",
+      "title": "Thiết kế budgets, resource pools và telemetry",
+      "phase": 3,
+      "definition": "tasks/G22-budget-observability.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G14",
+        "G16",
+        "G17",
+        "G19",
+        "G21"
+      ],
+      "source_ids": [],
+      "requirement_ids": [
+        "RQ07",
+        "RQ08",
+        "RQ09",
+        "RQ10"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G22.md",
+        "docs/research/results/G22.json",
+        "docs/research/results/G22-budget-observability-design.json"
+      ],
+      "review_output": "docs/research/reviews/G22.json",
+      "acceptance_ids": [
+        "G22-A1",
+        "G22-A2",
+        "G22-A3",
+        "G22-A4",
+        "G22-A5"
+      ]
+    },
+    {
+      "id": "G23",
+      "title": "Lập quyết định dùng lại, fork hoặc tự xây có bằng chứng",
+      "phase": 4,
+      "definition": "tasks/G23-reuse-decision.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G08",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17",
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22"
+      ],
+      "source_ids": [],
+      "requirement_ids": [
+        "RQ01",
+        "RQ04",
+        "RQ09",
+        "RQ10",
+        "RQ13",
+        "RQ17"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G23.md",
+        "docs/research/results/G23.json"
+      ],
+      "review_output": "docs/research/reviews/G23.json",
+      "acceptance_ids": [
+        "G23-A1",
+        "G23-A2",
+        "G23-A3",
+        "G23-A4",
+        "G23-A5"
+      ]
+    },
+    {
+      "id": "G24",
+      "title": "Bản thiết kế kỹ thuật và backlog triển khai sau nghiên cứu",
+      "phase": 4,
+      "definition": "tasks/G24-implementation-plan.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G23",
+        "G16",
+        "G17",
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22"
+      ],
+      "source_ids": [],
+      "requirement_ids": [
+        "RQ01",
+        "RQ02",
+        "RQ03",
+        "RQ04",
+        "RQ05",
+        "RQ06",
+        "RQ07",
+        "RQ08",
+        "RQ09",
+        "RQ10",
+        "RQ11",
+        "RQ12",
+        "RQ13"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G24.md",
+        "docs/research/results/G24.json",
+        "docs/research/results/G24-implementation-backlog.json"
+      ],
+      "review_output": "docs/research/reviews/G24.json",
+      "acceptance_ids": [
+        "G24-A1",
+        "G24-A2",
+        "G24-A3",
+        "G24-A4",
+        "G24-A5"
+      ]
+    },
+    {
+      "id": "G25",
+      "title": "Audit bàn giao và ma trận truy xuất bằng chứng",
+      "phase": 4,
+      "definition": "tasks/G25-handoff-audit.md",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "G24",
+        "G00",
+        "G01",
+        "G08",
+        "G09",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17",
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23"
+      ],
+      "source_ids": [],
+      "requirement_ids": [
+        "RQ17",
+        "RQ18"
+      ],
+      "allowed_outputs": [
+        "docs/research/reports/G25.md",
+        "docs/research/results/G25.json",
+        "docs/research/results/G25-traceability.json"
+      ],
+      "review_output": "docs/research/reviews/G25.json",
+      "acceptance_ids": [
+        "G25-A1",
+        "G25-A2",
+        "G25-A3",
+        "G25-A4",
+        "G25-A5"
+      ]
+    }
+  ]
+}

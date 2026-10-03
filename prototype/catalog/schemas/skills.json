@@ -1,0 +1,4 @@
+{"type":"object","additionalProperties":false,"required":["skills"],
+ "properties":{"skills":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","tasks","reason"],
+  "properties":{"id":{"type":"string"},"tasks":{"$ref":"#/$defs/strings"},"reason":{"type":"string"}}}}},
+ "$defs":{"strings":{"type":"array","items":{"type":"string"}}}}
