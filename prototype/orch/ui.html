@@ -22,6 +22,9 @@ textarea { width: 100%; }
 .dag rect { fill: Canvas; stroke: currentColor; stroke-width: 1.5; }
 .dag text { fill: CanvasText; font-size: 12px; } .dag text.head { fill: currentColor; font-weight: 600; }
 .dag path { fill: none; stroke: #888; stroke-width: 1.2; }
+.dag path.hit { stroke: transparent; stroke-width: 12; cursor: pointer; } .dag path.hit:hover { stroke: #d334; }
+.dag [data-id] { cursor: crosshair; touch-action: none; user-select: none; }
+.dag line.drag { stroke: currentColor; stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
 </style></head>
 <body>
 <header><strong>Orchestra</strong><nav id="tabs"></nav><span id="msg" class="muted"></span></header>
@@ -61,14 +64,15 @@ const btn = (label, fn) => h("button", {onclick: fn}, label);
 const time = ts => new Date(ts * 1000).toLocaleTimeString();
 const svg = (tag, attrs, ...kids) => {
   const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
-  for (const [k, v] of Object.entries(attrs)) if (v !== null) e.setAttribute(k, v);
+  for (const [k, v] of Object.entries(attrs)) if (typeof v === "function") e.addEventListener(k.slice(2), v); else if (v !== null) e.setAttribute(k, v);
   e.append(...kids);
   return e;
 };
 
-// The run's task graph, read-only, left to right: one column per dependency depth. Dashed = implicit order (work starts
-// after PLAN and SKILLS). ponytail: rows in board order, no crossing reduction; add a barycenter pass if plans get tangled.
-function dag(tasks) {
+// The run's task graph, left to right: one column per dependency depth. Dashed = implicit order (work starts after PLAN and
+// SKILLS). edit = the plan editor's graph: lines can be clicked away, tasks dragged onto each other (connect).
+// ponytail: rows in board order, no crossing reduction; add a barycenter pass if plans get tangled.
+function dag(tasks, edit) {
   const by = Object.fromEntries(tasks.map(t => [t.id, t])), depth = {}, rows = [], pos = {}, W = 180, H = 46, GX = 48, GY = 14;
   const up = t => (t.deps.length ? t.deps : t.kind === "work" ? [by.SKILLS ? "SKILLS" : "PLAN"] : t.kind === "skills" ? ["PLAN"] : [])
     .filter(d => by[d] && d !== t.id);
@@ -78,20 +82,73 @@ function dag(tasks) {
   };
   for (const t of tasks) { const c = col(t); rows[c] = (rows[c] || 0) + 1; pos[t.id] = [c * (W + GX), (rows[c] - 1) * (H + GY)]; }
   const width = rows.length * (W + GX) - GX, height = Math.max(...rows.map(n => n || 0)) * (H + GY) - GY;
-  const edges = tasks.flatMap(t => up(t).map(d => {
+  const edges = tasks.flatMap(t => up(t).flatMap(d => {
     const [x1, y1] = pos[d], [x2, y2] = pos[t.id], a = x1 + W, b = y1 + H / 2, c = y2 + H / 2;
-    return svg("path", {d: `M${a},${b} C${a + GX / 2},${b} ${x2 - GX / 2},${c} ${x2},${c}`, "stroke-dasharray": t.deps.length ? null : "4 3"});
+    const p = `M${a},${b} C${a + GX / 2},${b} ${x2 - GX / 2},${c} ${x2},${c}`, line = svg("path", {d: p, "stroke-dasharray": t.deps.length ? null : "4 3"});
+    return edit ? [line, svg("path", {d: p, class: "hit", onclick: () => { t.deps = t.deps.filter(x => x !== d); render(); }},
+      svg("title", {}, `${t.id} waits for ${d}: click to remove`))] : [line];
   }));
-  const nodes = tasks.map(t => svg("g", {class: t.status, transform: `translate(${pos[t.id]})`},
-    svg("title", {}, `${t.id}: ${t.title}\n${t.status}${t.assignee ? ", " + t.assignee : ""}${t.attempts ? ", try " + t.attempts : ""}`),
+  const nodes = tasks.map(t => svg("g", {class: edit ? null : t.status, transform: `translate(${pos[t.id]})`, "data-id": edit ? t.id : null,
+      onpointerdown: edit ? e => connect(e, t.id) : null},
+    svg("title", {}, edit ? `${t.id}: ${t.title}\n${t.assignee}. Drag onto another task to make that one wait for this one.`
+      : `${t.id}: ${t.title}\n${t.status}${t.assignee ? ", " + t.assignee : ""}${t.attempts ? ", try " + t.attempts : ""}`),
     svg("rect", {width: W, height: H, rx: 6}),
-    svg("text", {x: 8, y: 18, class: "head"}, `${t.id} · ${t.status}`),
+    svg("text", {x: 8, y: 18, class: "head"}, `${t.id} · ${edit ? t.assignee : t.status}`),
     svg("text", {x: 8, y: 36}, t.title.length > 27 ? t.title.slice(0, 26) + "…" : t.title)));
   return h("div", {class: "dag"}, svg("svg", {width, height, viewBox: `0 0 ${width} ${height}`}, ...edges, ...nodes));
 }
 
+function connect(e, from) {  // a line follows the pointer; dropped on another task, that task waits for `from`
+  e.preventDefault();
+  const root = e.currentTarget.ownerSVGElement, at = ev => { const b = root.getBoundingClientRect(); return [ev.clientX - b.left, ev.clientY - b.top]; };
+  const [x, y] = at(e), line = svg("line", {class: "drag", x1: x, y1: y, x2: x, y2: y}), on = [["pointermove", ev => {
+    const [x2, y2] = at(ev);
+    line.setAttribute("x2", x2);
+    line.setAttribute("y2", y2);
+  }], ["pointerup", ev => end(ev)], ["pointercancel", ev => end(ev)]];
+  const end = ev => {
+    for (const [k, f] of on) removeEventListener(k, f);
+    line.remove();
+    const hit = ev.type === "pointerup" && document.elementFromPoint(ev.clientX, ev.clientY), g = hit && hit.closest("[data-id]");
+    if (g && g.getAttribute("data-id") !== from) addDep(drafts.plan.tasks.find(t => t.id === g.getAttribute("data-id")), from);
+  };
+  root.append(line);
+  for (const [k, f] of on) addEventListener(k, f);
+}
+function addDep(t, d) {  // t waits for d; refused when d already waits for t, directly or not (a cycle)
+  const by = Object.fromEntries(drafts.plan.tasks.map(x => [x.id, x])), seen = new Set(), todo = [d];
+  while (todo.length) {
+    const x = todo.pop();
+    if (x === t.id) { say(`${d} already waits for ${t.id}: that would be a cycle`, "err"); return render(); }
+    if (!seen.has(x) && by[x]) { seen.add(x); todo.push(...by[x].deps); }
+  }
+  if (!t.deps.includes(d)) t.deps.push(d);
+  render();
+}
+// Edit the plan waiting for approval (drafts.plan): who does each task and what it waits for. The table is the keyboard route.
+function planEditor(s) {
+  const p = drafts.plan, drop = (t, d) => { t.deps = t.deps.filter(x => x !== d); render(); };
+  return h("div", {},
+    h("p", {class: "muted"}, "Drag from a task onto another: the second then waits for the first. Click a line to remove it. Saving makes a new plan version, which still needs your yes."),
+    p.version !== s.edit.version && h("p", {class: "err"}, `The plan is now v${s.edit.version}: discard this edit and start again.`),
+    dag(p.tasks, true),
+    table(["task", "worker", "waits for"], p.tasks.map(t => [h("div", {}, h("b", {}, t.id), h("div", {class: "muted"}, t.title)),
+      h("select", {ariaLabel: "worker for " + t.id, onchange: e => { t.assignee = e.target.value; render(); }},
+        [...new Set([...s.edit.workers, t.assignee])].map(w => h("option", {value: w, selected: w === t.assignee}, w))),
+      h("div", {class: "row"}, p.tasks.filter(x => x.id !== t.id).map(x => h("label", {}, h("input", {type: "checkbox", checked: t.deps.includes(x.id),
+        onchange: e => e.target.checked ? addDep(t, x.id) : drop(t, x.id)}), " " + x.id)))])),
+    h("div", {class: "row"},
+      btn("Save as plan v" + (p.version + 1), () => act(async () => {
+        const r = await api("plan", {version: p.version, tasks: p.tasks.map(t => ({id: t.id, deps: t.deps, assignee: t.assignee}))});
+        delete drafts.plan;
+        return r;
+      })),
+      btn("Discard", () => { delete drafts.plan; render(); })));
+}
+
 async function Run() {
   const s = await api("state"), live = t => !["done", "failed", "cancelled"].includes(t.status);
+  if (drafts.plan && !s.edit) { delete drafts.plan; say("The plan is not waiting for approval any more: your edit was dropped", "err"); }
   const pending = s.tasks.filter(t => t.status === "pending_user");
   return h("div", {},
     h("div", {class: "row"}, h("span", {class: "muted"}, s.project), " | run ", h("b", {}, s.run || "none"),
@@ -106,8 +163,13 @@ async function Run() {
         s.run && !["done", "failed", "cancelled"].includes(s.status) && btn("Resume run " + s.run, () => act(() => api("resume", {}))))),
     pending.length > 0 && h("h3", {}, "Waiting for you"),
     pending.map(t => h("div", {class: "card"}, h("b", {}, t.id + ": " + t.title), h("pre", {}, t.question || ""),
-      draft("ans:" + t.id, {rows: 2, placeholder: "yes / retry / cancel / reassign <worker> / any instruction"}),
-      h("div", {class: "row"}, btn("Send answer", () => act(() => api("answer", {task: t.id, text: drafts["ans:" + t.id] || "yes"})))))),
+      t.id === "PLAN" && drafts.plan ? planEditor(s) : [
+        draft("ans:" + t.id, {rows: 2, placeholder: "yes / retry / cancel / reassign <worker> / any instruction"}),
+        h("div", {class: "row"}, btn("Send answer", () => act(() => api("answer", {task: t.id, text: drafts["ans:" + t.id] || "yes"}))),
+          t.id === "PLAN" && s.edit && btn("Edit plan", () => {
+            drafts.plan = {version: s.edit.version, tasks: s.edit.tasks.map(x => ({...x, deps: [...x.deps]}))};
+            render();
+          }))])),
     s.tasks.length > 0 && h("h3", {}, "Board"),
     s.tasks.length > 0 && dag(s.tasks),
     s.tasks.length > 0 && table(["id", "status", "worker", "try", "deps", "title", ""], s.tasks.map(t => [
@@ -192,9 +254,9 @@ async function Models() {
 }
 
 const TABS = {Run, Events, Agents, Vault, Team, Knowledge, Skills, Models};
-async function render(auto) {  // auto refresh never clobbers a field the user is typing in
+async function render(auto) {  // auto refresh never clobbers a field the user is typing in, or a plan edit
   clearTimeout(timer);
-  const typing = auto && /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || "");
+  const typing = auto && (drafts.plan || /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || ""));
   if (!typing) {
     document.getElementById("tabs").replaceChildren(...Object.keys(TABS).map(n => h("button", {class: n === tab ? "on" : "", onclick: () => { tab = n; render(); }}, n)));
     try { document.getElementById("main").replaceChildren(await TABS[tab]()); } catch (e) { document.getElementById("main").replaceChildren(h("p", {class: "err"}, e.message)); }

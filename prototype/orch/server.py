@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from . import agents, models, skills
 from .core import ROOT, EngineLock, mask, redact, vault, vault_set
-from .engine import load_team, save_team
+from .engine import Engine, load_team, save_team
 
 UI = Path(__file__).with_name("ui.html")
 MAX_BODY = 100_000
@@ -32,10 +32,15 @@ def spawn_engine(ws, *args):
 
 
 def api_state(ws, b, q):
-    run = ws.run
-    rdir = ws.dir / "runs" / str(run)
+    run, team = ws.run, bool(ws.read_json("team.json"))
+    rdir, tasks, edit = ws.dir / "runs" / str(run), ws.tasks() if run else [], None
+    if team and any(t["id"] == "PLAN" and t["status"] == "pending_user" and t["answer"] is None for t in tasks):
+        e = Engine(ws)  # the plan waiting for approval, for the editor (api_plan)
+        if p := e.latest_plan():
+            edit = {"version": p["version"], "workers": [*e.primaries()],
+                    "tasks": [{k: t[k] for k in ("id", "title", "assignee", "deps")} for t in p["plan"]["tasks"]]}
     return {"project": str(ws.project), "run": run, "goal": run and ws.meta(f"{run}:goal"), "status": run and ws.meta(f"{run}:status"),
-            "engine": EngineLock(ws).held_elsewhere(), "has_team": bool(ws.read_json("team.json")), "tasks": ws.tasks() if run else [],
+            "engine": EngineLock(ws).held_elsewhere(), "has_team": team, "tasks": tasks, "edit": edit,
             "plan": _file(rdir / "plan.md"), "report": _file(rdir / "report.md"), "log": _file(ws.dir / "engine.log", 4000)}
 
 
@@ -58,6 +63,13 @@ def api_answer(ws, b, q):
     if not ws.update(str(b.get("task")), _expect="pending_user", answer=str(b.get("text") or "").strip() or "yes"):
         raise ValueError("that task is not waiting for an answer any more")
     return {"ok": "recorded" + ("" if EngineLock(ws).held_elsewhere() else "; press Resume to continue")}
+
+
+def api_plan(ws, b, q):
+    """Save the user's edit of the plan waiting for approval (deps and workers) as its next version."""
+    if not isinstance(b.get("version"), int) or not isinstance(b.get("tasks"), list):
+        raise ValueError("expected {version, tasks: [{id, deps, assignee}]}")
+    return {"ok": f"saved as plan v{Engine(ws).edit_plan(b['version'], b['tasks'])}: reply yes to start it"}
 
 
 def api_cancel(ws, b, q):
@@ -122,7 +134,7 @@ def api_models(ws, b, q):
 
 GET = {"state": api_state, "events": api_events, "agents": api_agents, "vault": api_vault, "team": api_team, "kg": api_kg,
        "skills": api_skills, "models": api_models}
-POST = {"run": api_run, "resume": api_resume, "answer": api_answer, "cancel": api_cancel, "discover": api_discover,
+POST = {"run": api_run, "resume": api_resume, "answer": api_answer, "plan": api_plan, "cancel": api_cancel, "discover": api_discover,
         "login": api_login, "vault": api_vault, "team": api_save_team, "skill": api_skill, "models": api_models}
 
 

@@ -19,7 +19,7 @@ Bối cảnh cho Claude Code (local hoặc cloud) khi làm việc trong repo nà
 cd prototype && PYTHONIOENCODING=utf-8 PYTHONPATH=. python tests/test_e2e.py
 ```
 
-- 23 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 40 giây, Windows khoảng 2–3 phút.
+- 24 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 40 giây, Windows khoảng 2–3 phút.
 - Lọc theo tên: thêm một phần tên test vào cuối lệnh, ví dụ `pool`.
 - Cần Python 3.11+ và git. Test tự truyền danh tính git, không cần `git config`.
 - Test 9router dựng router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router đó.
@@ -48,7 +48,7 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 | `core.py` | Đường dẫn, SQLite của workspace (`.orch/orch.db`), khoá engine, vault, JSON strict. |
 | `models.py` | Cơ sở dữ liệu model: benchmark Epoch AI, giá OpenRouter, lịch sử run; gợi ý đội hình (`suggest`). |
 | `skills.py` | Skill catalog (repo GitHub ghim commit, skill đã cài) và skill architect. |
-| `server.py`, `ui.html` | Web UI local (`python -m orch ui`): chỉ 127.0.0.1, có token. Tab Run có sơ đồ DAG chỉ để xem (`dag()`). |
+| `server.py`, `ui.html` | Web UI local (`python -m orch ui`): chỉ 127.0.0.1, có token. Tab Run có sơ đồ DAG (`dag()`); plan đang chờ duyệt sửa được bằng kéo-thả (`planEditor()` → `POST /api/plan` → `Engine.edit_plan`). |
 | `mcp.py` | MCP server qua stdio (`python -m orch mcp`): board và knowledge graph thành tool chỉ đọc. Team bật `"mcp": true` thì engine truyền server cho từng lời gọi agent (`agents.mcp_server`). |
 | `mock.py` | Agent giả theo kịch bản, dùng cho test. |
 | `__main__.py` | CLI `python -m orch <lệnh>`. |
@@ -92,4 +92,4 @@ Xem `prototype/PLAN.md` §0 và §16.
 2. Nối 9router: người dùng tự kiểm tra cấu hình an toàn (§13), login dashboard và provider, `vault set NINEROUTER_API_KEY`, rồi `discover --only opencode@9router`.
 3. Tự chạy `models refresh`, `skills refresh` và `login claude`.
 
-P1 ở §16 đã xong, P2 đã có sơ đồ DAG chỉ để xem. Các mục P2 còn lại chỉ làm khi có nhu cầu đo được (xem §16).
+P1 ở §16 đã xong. P2: đã có sơ đồ DAG, sửa plan bằng kéo-thả và MCP server; đang làm embeddings cho knowledge graph và worker chạy từ xa (xem §16).

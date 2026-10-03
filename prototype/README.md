@@ -70,7 +70,7 @@ Mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn 
    python -m orch --ws D:/du-an-cua-ban resume
    ```
 
-6. Hoặc làm mọi thứ trên web UI. UI chỉ mở trên 127.0.0.1, link in ra đã kèm token truy cập. Tab Run vẽ sơ đồ DAG của run: mỗi cột một độ sâu phụ thuộc, màu theo trạng thái; di chuột lên node để xem chi tiết.
+6. Hoặc làm mọi thứ trên web UI. UI chỉ mở trên 127.0.0.1, link in ra đã kèm token truy cập. Tab Run vẽ sơ đồ DAG của run: mỗi cột một độ sâu phụ thuộc, màu theo trạng thái; di chuột lên node để xem chi tiết. Khi plan chờ duyệt, nút **Edit plan** cho bạn tự sửa: kéo từ task này sang task kia để thêm dependency, bấm vào đường nối để bỏ, chọn worker cho từng task. Bản sửa được lưu thành phiên bản mới và vẫn chờ bạn `yes`.
 
    ```bash
    python -m orch --ws D:/du-an-cua-ban ui
@@ -359,7 +359,7 @@ Chi tiết ở [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
 python tests/test_e2e.py
 ```
 
-- 23 test end-to-end: Linux khoảng 40 giây, Windows khoảng 2–3 phút.
+- 24 test end-to-end: Linux khoảng 40 giây, Windows khoảng 2–3 phút.
 - Dùng mock agent theo kịch bản, không tốn token.
 - Riêng test 9router dựng một router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router giả đó.
 - Lọc theo tên: `python tests/test_e2e.py crash`.

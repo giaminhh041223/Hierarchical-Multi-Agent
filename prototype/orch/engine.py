@@ -559,7 +559,7 @@ class Engine:
                 plan = self.latest_plan()
                 if low in YES and plan:
                     self.approve([v for p in plan["plan"]["tasks"] for v in p["verify"]])  # shown in plan.md
-                    self.materialize(plan["plan"], "pending_user")
+                    self.materialize(plan["plan"], "pending_user", plan["version"])
                 else:
                     self.set(tid, "todo", "re-plan", "pending_user", question=None,
                              note="" if low in YES | {"retry"} else f"User feedback on the previous plan: {a}")
@@ -801,11 +801,12 @@ class Engine:
             return self.materialize(plan, "running")
         self.to_user("PLAN", f"Plan v{version} ({len(plan['tasks'])} tasks) is ready: {md}\nReply 'yes' to start, or write what to change.", "running")
 
-    def materialize(self, plan, expect):
-        """Plan approved: tasks + skills + final review appear atomically, exactly once."""
+    def materialize(self, plan, expect, version=None):
+        """Plan approved: tasks + skills + final review appear atomically, exactly once. version = the one the user approved; if
+        they saved an edit meanwhile (edit_plan), nothing happens and the edit's own question waits for a fresh 'yes'."""
         try:
             with self.ws.tx():
-                if not self.ws.update("PLAN", _expect=expect, status="done", question=None):
+                if (version and self.latest_plan()["version"] != version) or not self.ws.update("PLAN", _expect=expect, status="done", question=None):
                     raise _Abort
                 for p in plan["tasks"]:
                     self.ws.add_task(p["id"], "work", p["title"], {k: p[k] for k in ("acceptance", "scope_paths", "verify")}, p["assignee"], p["deps"])
@@ -1121,6 +1122,31 @@ class Engine:
     def latest_plan(self):
         r = self.ws.q("SELECT version, plan FROM plans WHERE run=? ORDER BY version DESC LIMIT 1", self.run)
         return {"version": r[0]["version"], "plan": json.loads(r[0]["plan"])} if r else None
+
+    def edit_plan(self, version, edits):
+        """The user's own edit of the plan waiting for approval (web UI): who does each task and what it waits for. Saved as the
+        next version with a fresh approval question. Refused once the plan moved on or an answer is already on its way."""
+        cur = self.latest_plan()
+        if not cur or cur["version"] != version:
+            raise ValueError("the plan changed meanwhile: reload")
+        plan, by = cur["plan"], {str(e.get("id")): e for e in edits if isinstance(e, dict) and isinstance(e.get("deps"), list)}
+        if len(by) != len(edits) or set(by) != {t["id"] for t in plan["tasks"]}:
+            raise ValueError("list every task of the plan once: {id, deps: [ids], assignee}")
+        for t in plan["tasks"]:
+            t["deps"], t["assignee"] = list(dict.fromkeys(map(str, by[t["id"]]["deps"]))), str(by[t["id"]].get("assignee"))
+        if errs := check_plan(plan, self.primaries()):
+            raise ValueError("; ".join(errs))
+        n, md = version + 1, self.rdir / "plan.md"
+        q = f"Plan v{n} ({len(plan['tasks'])} tasks, your edit of v{version}) is ready: {md}\nReply 'yes' to start, or write what to change."
+        with self.ws.tx():  # plan.md too: an answer cannot start a re-plan before this version is complete
+            if self.latest_plan()["version"] != version or not self.ws.x(
+                    "UPDATE tasks SET question=?, updated=? WHERE run=? AND id='PLAN' AND status='pending_user' AND answer IS NULL",
+                    q, time.time(), self.run):
+                raise ValueError("the plan is not waiting for approval any more, or an answer is already on its way: reload")
+            self.ws.q("INSERT INTO plans VALUES(?,?,?,?)", self.run, n, json.dumps(plan, ensure_ascii=False), "[]")
+            self.write_plan_md(plan, n, [])
+            self.ws.event("plan", f"v{n}: your edit of v{version} -> {md}", "PLAN", "user")
+        return n
 
     def write_plan_md(self, plan, version, verdicts):
         lines = [f"# Plan v{version}", "", f"Goal: {self.goal}", "", "| id | worker | deps | title |", "|---|---|---|---|"]

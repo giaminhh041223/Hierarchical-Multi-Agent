@@ -12,12 +12,12 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | Hạng mục | Trạng thái |
 |---|---|
 | Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+, không cần `pip install`. |
-| Test end-to-end | 23/23 PASS với mock agent (không tốn token). Đã chạy trên Windows (Python 3.13) và Linux/WSL (Python 3.14). |
+| Test end-to-end | 24/24 PASS với mock agent (không tốn token). Đã chạy trên Windows (Python 3.13) và Linux/WSL (Python 3.14). |
 | Adapter đã kiểm chứng cờ dòng lệnh trên máy này | <ul><li>`codex` 0.153.4.</li><li>`agy` 1.2.15.</li><li>`opencode` 1.18.34, profile `opencode@free`:<ul><li>8/10 model free trả lời được;</li><li>`big-pickle` và `fledge-alpha-free` qua pre-test code.</li></ul></li></ul> |
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
 | Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả. 9router đã có trên máy nhưng chưa nối (§16 P0).</li></ul> |
 | Chưa chạy | <ul><li>`models refresh` / `skills refresh`: tải dữ liệu từ Internet, bạn tự chạy.</li><li>Nối 9router: cần bạn thao tác (§16 P0).</li></ul> |
-| Cố ý chưa làm | Sửa plan bằng kéo-thả trên canvas (sơ đồ DAG chỉ để xem đã có), embeddings cho knowledge graph, worker chạy từ xa. |
+| Cố ý chưa làm | Embeddings cho knowledge graph, worker chạy từ xa. |
 
 ## 1. Ý tưởng cốt lõi
 
@@ -114,6 +114,9 @@ Dữ liệu được lưu ở hai nơi.
    - Còn blocker sau 2 vòng thì engine hỏi bạn.
 4. **Duyệt.** Engine ghi `plan.md`.
    - Trả lời `yes` / `có` / `duyệt` để bắt đầu, hoặc viết góp ý để lead lập lại plan.
+   - Hoặc tự sửa trên web UI (nút **Edit plan**): kéo từ task này sang task kia để thêm dependency, bấm vào đường nối để bỏ, chọn worker cho từng task. Bảng bên dưới sơ đồ làm được mọi việc đó bằng bàn phím.
+     - Bản sửa qua đúng các kiểm tra của plan do lead lập (bước 2), được lưu thành phiên bản kế tiếp và vẫn chờ `yes`.
+     - Bị từ chối nếu plan đã sang phiên bản khác hoặc đã có câu trả lời đang được xử lý. Một `yes` đọc trước khi bản sửa được lưu không hiện thực hoá phiên bản cũ.
    - `--yes` hoặc `auto_approve` bỏ qua bước này.
 5. **Hiện thực hoá.** Trong một transaction và đúng một lần, engine tạo:
    - các task công việc;
@@ -445,6 +448,7 @@ Ma trận quyền:
 - CSP với nonce; dữ liệu render bằng text node, không dùng `innerHTML`. Sơ đồ DAG cũng vậy: SVG dựng bằng DOM, chữ là text node.
 - Giới hạn kích thước request và timeout socket.
 - Vault chỉ hiện ở dạng đã che.
+- Bản sửa plan (`POST /api/plan`) chỉ đổi dependency và worker. Engine kiểm tra lại như plan của lead (§4), nên UI không thể đưa vào plan một worker lạ hay một chu trình.
 
 **Router local (9router và tương tự).** Prototype chỉ là client; việc cài đặt và đăng nhập do bạn làm.
 - Mặc định của 9router không an toàn: `REQUIRE_API_KEY=false`, `INITIAL_PASSWORD=123456`, Docker bind `0.0.0.0`, có Cloud Sync và các tính năng MITM.
@@ -578,6 +582,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `opt_in_gates_verify_allowlist_and_skill_proposals` | <ul><li>`skills: propose`: skill chờ bạn duyệt, task work chờ theo.</li><li>`verify_allow`: lệnh ngoài danh sách dừng task trước lời gọi worker, kể cả trong run auto-approve. Một `yes` thả mọi task chờ cùng lệnh.</li></ul> |
 | `skills_index_offline` | <ul><li>Lập chỉ mục từ cây GitHub (giả lập mạng).</li><li>Cài đặt dùng lại cache theo commit.</li></ul> |
 | `ui_server_security` | Token, Host, Origin, CSP; vault được che; kiểm tra input. |
+| `plan_edit_from_the_ui` | <ul><li>Sửa dependency và worker của plan đang chờ duyệt qua `POST /api/plan`, lưu thành v2.</li><li>Từ chối chu trình, worker lạ, bản sửa thiếu task, phiên bản cũ, và khi đã có câu trả lời.</li><li>Một `yes` đọc trước bản sửa không hiện thực hoá v1. Run chạy theo bản sửa.</li></ul> |
 | `mcp_server_read_only_tools` | <ul><li>Với `"mcp": true`, agent của T2 tự khởi động server từ cấu hình được truyền, trong môi trường tối thiểu, và tìm thấy fact mà T1 công bố.</li><li>Giao thức: echo phiên bản, notification không được trả lời, chỉ có tool chỉ đọc, các mã lỗi JSON-RPC.</li><li>Lệnh gọi codex, claude, opencode khi bật và khi tắt MCP.</li></ul> |
 | `scope_and_plan_checks` | Các kiểm tra plan, scope, allowlist lệnh verify và repo map ở dạng hàm thuần. |
 
@@ -599,9 +604,9 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 - Repo map gộp theo thư mục cho repo lớn (§9).
 
 **P2**
-- Canvas DAG kiểu n8n:
-  - đã có sơ đồ chỉ để xem trong tab Run: mỗi cột một độ sâu phụ thuộc, màu theo trạng thái, nét đứt là thứ tự ngầm (work chạy sau PLAN và SKILLS);
-  - còn lại: sửa plan bằng kéo-thả.
+- Canvas DAG kiểu n8n: đã có.
+  - Tab Run có sơ đồ: mỗi cột một độ sâu phụ thuộc, màu theo trạng thái, nét đứt là thứ tự ngầm (work chạy sau PLAN và SKILLS).
+  - Plan đang chờ duyệt sửa được bằng kéo-thả (§4, bước 4).
 - Embeddings cho knowledge graph, khi đo được FTS bỏ sót.
 - MCP server cho board và knowledge graph: đã có (§10).
 - Worker chạy từ xa; khi đó mới cần lease/heartbeat.

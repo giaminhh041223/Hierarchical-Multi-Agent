@@ -1,6 +1,7 @@
 """End-to-end tests driving the real engine with the scripted mock agent (zero cost).
 Run: python tests/test_e2e.py [name-filter ...]   (pytest -q tests also works)"""
-import datetime, http.server, json, os, shutil, sqlite3, stat, subprocess, sys, tempfile, threading, time, traceback
+import contextlib, datetime, http.server, json, os, shutil, sqlite3, stat, subprocess, sys, tempfile, threading, time, traceback
+import unittest.mock, urllib.error, urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -505,12 +506,11 @@ def test_skills_index_offline():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def test_ui_server_security():
-    import threading, urllib.error, urllib.request
+@contextlib.contextmanager
+def ui_server(project):
+    """The web UI in process on a free port; yields call(path, body=None, token=<its token>, **headers) -> (status, text)."""
     from orch import core, server
-    r, saved = Repo(two_tasks()), core.VAULT
-    core.VAULT = r.tmp / "vault.test"  # never the user's real vault
-    srv = server.make_server(core.Workspace(r.repo), 0)
+    srv = server.make_server(core.Workspace(project), 0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = srv.url.split("#")[0].rstrip("/")
 
@@ -523,6 +523,17 @@ def test_ui_server_security():
         except urllib.error.HTTPError as e:
             return e.code, e.read().decode()
     try:
+        yield call
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        srv.ws.db.close()  # an open handle would keep orch.db (and the temp dir) undeletable on Windows
+
+
+def test_ui_server_security():
+    from orch import core
+    r = Repo(two_tasks())
+    with ui_server(r.repo) as call, unittest.mock.patch.object(core, "VAULT", r.tmp / "vault.test"):  # never the user's real vault
         code, page = call("/", token="")
         assert code == 200 and '<script nonce="' in page and "innerHTML" not in page
         assert call("/api/state", token="wrong")[0] == 403
@@ -541,11 +552,42 @@ def test_ui_server_security():
         assert call("/api/team", {"team": {**team, "workers": {"../evil": {"agent": "mock", "model": "m"}}}})[0] == 400
         code, body = call("/api/state")
         assert code == 200 and json.loads(body)["has_team"] and json.loads(body)["run"] is None, body
-    finally:
-        srv.shutdown()
-        srv.server_close()
-        srv.ws.db.close()  # an open handle would keep orch.db (and the temp dir) undeletable on Windows
-        core.VAULT = saved
+
+
+def test_plan_edit_from_the_ui():
+    """The plan editor (web UI): deps and workers of the plan waiting for approval, saved as its next version. Cycles, unknown
+    workers, partial edits, stale versions and a plan with an answer on its way are refused; the run then follows the edit."""
+    from orch import core, engine
+    exists_a = [["python", "-c", "import os; assert os.path.exists('a.txt')"]]  # passes only once T1 is integrated
+    sc = {"plan": [task("T1", "w1", ["a.txt"], OK), task("T2", "w2", ["b.txt"], exists_a)],
+          "steps": {"worker:T1": [{"write": {"a.txt": "a\n"}}], "worker:T2": [{"write": {"b.txt": "b\n"}}]}}
+    r = Repo(sc)
+    assert r.orch("run", "demo goal", "--exit-on-wait") == 3 and r.status() == {"PLAN": "pending_user"}, r.out
+    edit = lambda v, **t: {"version": v, "tasks": [{"id": "T1", "deps": [], "assignee": "w1"}, {"id": "T2", "deps": [], "assignee": "w2", **t}]}
+    with ui_server(r.repo) as call:
+        state = lambda: json.loads(call("/api/state")[1])
+        assert state()["edit"] == {"version": 1, "workers": ["w1", "w2"], "tasks": [
+            {"id": "T1", "title": "task T1", "assignee": "w1", "deps": []}, {"id": "T2", "title": "task T2", "assignee": "w2", "deps": []}]}
+        cycle = edit(1, deps=["T1"])
+        cycle["tasks"][0]["deps"] = ["T2"]
+        for bad, why in ((cycle, "dependency cycle"), (edit(1, assignee="w9"), "unknown assignee"),
+                         ({"version": 1, "tasks": edit(1)["tasks"][:1]}, "every task"), ({"version": 1, "tasks": "T1"}, "expected")):
+            code, body = call("/api/plan", bad)
+            assert code == 400 and why in body, (code, body)
+        code, body = call("/api/plan", edit(1, deps=["T1"], assignee="w1"))
+        assert code == 200 and "plan v2" in body, body
+        assert state()["edit"]["version"] == 2 and "your edit of v1" in r.q("SELECT question FROM tasks WHERE id='PLAN'")[0][0]
+        assert "| T2 | w1 | T1 |" in state()["plan"], state()["plan"]
+        assert call("/api/plan", edit(1))[0] == 400, "a stale version must be refused"
+        ws = core.Workspace(r.repo)  # the engine approved v1 just before the edit landed: v1 must not become the run
+        engine.Engine(ws).materialize(sc["plan"], "pending_user", 1)
+        ws.db.close()
+        assert r.status() == {"PLAN": "pending_user"}
+        assert call("/api/answer", {"task": "PLAN", "text": "yes"})[0] == 200
+        assert state()["edit"] is None and call("/api/plan", edit(2))[0] == 400, "an answer is already on its way"
+    assert r.orch("resume", "--exit-on-wait") == 0, r.out
+    assert r.status() == {"PLAN": "done", "T1": "done", "T2": "done", "REVIEW": "done"}, r.status()
+    assert r.q("SELECT assignee, deps FROM tasks WHERE id='T2'") == [("w1", '["T1"]')] and r.outcomes("T2") == ["integrated"]
 
 
 def test_mcp_server_read_only_tools():
