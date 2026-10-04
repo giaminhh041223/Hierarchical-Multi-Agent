@@ -70,7 +70,13 @@ Mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn 
    python -m orch --ws D:/du-an-cua-ban resume
    ```
 
-6. Hoặc làm mọi thứ trên web UI. UI chỉ mở trên 127.0.0.1, link in ra đã kèm token truy cập. Tab Run vẽ sơ đồ DAG của run: mỗi cột một độ sâu phụ thuộc, màu theo trạng thái; di chuột lên node để xem chi tiết. Khi plan chờ duyệt, nút **Edit plan** cho bạn tự sửa: kéo từ task này sang task kia để thêm dependency, bấm vào đường nối để bỏ, chọn worker cho từng task. Bản sửa được lưu thành phiên bản mới và vẫn chờ bạn `yes`.
+6. Hoặc làm mọi thứ trên web UI (giao diện đơn file native HTML/CSS/JS, bảo mật nghiêm ngặt với CSP, không dùng thư viện ngoài hay CDN). UI chỉ mở trên 127.0.0.1, link in ra đã kèm token truy cập. Các tính năng nổi bật của Web UI:
+   - **Chuyển đổi ngôn ngữ song ngữ Tiếng Việt / Tiếng Anh**: nút chuyển đổi tức thì trên header, lưu lựa chọn trong `localStorage` và tự động đồng bộ thuộc tính `lang`.
+   - **Visual Team builder form trực quan**: biểu mẫu cấu hình tương tác chọn Lead, Reviewer, Skill Architect và thêm/bớt Worker linh hoạt; kèm tab chỉnh sửa mã JSON thô cho người dùng nâng cao.
+   - **Huy hiệu trạng thái Agent (status badges)**: hiển thị chi tiết phiên bản CLI đã cài đặt, trạng thái thông tin xác thực/auth, kết quả probe, và nút bấm kích hoạt đăng nhập trực tiếp.
+   - **Bảng Model sắp xếp linh hoạt**: 9 cột điểm chuẩn (benchmark như MMLU, GPQA, SWE-bench...) và giá thành, hỗ trợ `aria-sort`, cùng nút tải lại dữ liệu mới nhất từ nguồn công khai (Epoch AI, OpenRouter).
+   - **Sơ đồ DAG tương tác và tổng phổ thực thi (Execution Score)**: trực quan hoá tiến độ và các lần thử theo thời gian thực, hỗ trợ điều hướng hoàn toàn bằng bàn phím. Khi plan chờ duyệt, nút **Edit plan** cho phép kéo-thả hoặc chỉnh sửa dependency và worker; bản sửa lưu thành phiên bản mới và chờ duyệt.
+   - **Khả năng tiếp cận chuẩn WCAG 2.2 AA**: độ tương phản màu cao (>= 4.5:1 chữ, >= 3.0:1 controls), viền nét khi focus (`:focus-visible`), hỗ trợ người dùng nhạy cảm chuyển động qua `prefers-reduced-motion` và tương thích giao diện co giãn 360px.
 
    ```bash
    python -m orch --ws D:/du-an-cua-ban ui

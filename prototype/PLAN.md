@@ -12,6 +12,7 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | Hạng mục | Trạng thái |
 |---|---|
 | Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+, không cần `pip install`. |
+| Web UI (Pha 1–4) | Đã hoàn thành toàn bộ 4 pha: Pha 1 (token màu, dark/light mode, bảo mật CSP), Pha 2 (tab Run, sơ đồ DAG, tổng phổ run), Pha 3 (tab thiết lập, song ngữ VI/EN, visual team builder, huy hiệu agent, bảng models sắp xếp), Pha 4 (audit WCAG 2.2 AA, focus-visible, prefers-reduced-motion, 360px responsiveness, dung lượng < 90 KB, 0 innerHTML). |
 | Test end-to-end | 25/25 PASS với mock agent (không tốn token). Đã chạy trên Windows (Python 3.13) và Linux/WSL (Python 3.14). |
 | Adapter đã kiểm chứng cờ dòng lệnh trên máy này | <ul><li>`codex` 0.153.4.</li><li>`agy` 1.2.15.</li><li>`opencode` 1.18.34, profile `opencode@free`:<ul><li>8/10 model free trả lời được;</li><li>`big-pickle` và `fledge-alpha-free` qua pre-test code.</li></ul></li></ul> |
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
@@ -617,8 +618,12 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
   - Plan đang chờ duyệt sửa được bằng kéo-thả (§4, bước 4).
 - Embeddings cho knowledge graph: đã có (§10). Trigram tại chỗ mặc định; endpoint embeddings là opt-in.
 - MCP server cho board và knowledge graph: đã có (§10).
+- Web UI (Pha 1–4 hoàn thành đầy đủ theo [docs/UIUX.md](docs/UIUX.md)):
+  - **Pha 1 (Nền tảng)**: Đã xong — token màu tĩnh, dark/light theme, typography hệ thống, badge ký hiệu + chữ, toast `aria-live`, CSP nghiêm ngặt không CDN/font ngoài.
+  - **Pha 2 (Tab Run & Tổng phổ)**: Đã xong — thanh tiến độ, token, hộp "Chờ bạn", sơ đồ DAG tương tác, panel chi tiết task, tổng phổ execution score thời gian thực từ bảng `attempts`.
+  - **Pha 3 (Tab Thiết lập & Song ngữ)**: Đã xong — Visual Team builder tương tác (chọn Lead, Reviewer, Skill Architect, quản lý Worker động kèm raw JSON editor), huy hiệu trạng thái Agent (phiên bản, auth, probe, login trigger), bảng Model 9 cột điểm chuẩn & giá thành có `aria-sort` và nút refresh dữ liệu công khai, nút chuyển song ngữ Tiếng Việt / Tiếng Anh lưu `localStorage`.
+  - **Pha 4 (Soát & Hoàn thiện WCAG 2.2 AA)**: Đã xong — tuân thủ chuẩn WCAG 2.2 AA (tương phản >= 4.5:1, viền focus `:focus-visible` 2px rõ ràng, điều hướng toàn diện bằng bàn phím), `@media (prefers-reduced-motion)` tắt hiệu ứng nhịp và cuộn êm, tương thích màn hình hẹp 360px (toast clamping), dung lượng tệp tối ưu an toàn < 90 KB (89.010 bytes), 0 innerHTML/eval.
 - Worker chạy từ xa; khi đó mới cần lease/heartbeat.
-- Thiết kế lại giao diện web UI: kế hoạch, token màu đã kiểm tra tương phản, lộ trình 4 pha và plugin hỗ trợ ở [docs/UIUX.md](docs/UIUX.md).
 
 **Giới hạn đã biết** (đánh dấu `ponytail:` trong code):
 - Repo map cắt ở cùng một độ sâu thư mục cho cả cây (tối đa 300 dòng).

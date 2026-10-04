@@ -1,6 +1,6 @@
 """End-to-end tests driving the real engine with the scripted mock agent (zero cost).
 Run: python tests/test_e2e.py [name-filter ...]   (pytest -q tests also works)"""
-import contextlib, datetime, http.server, json, os, shutil, sqlite3, stat, subprocess, sys, tempfile, threading, time, traceback
+import contextlib, datetime, http.server, json, os, re, shutil, sqlite3, stat, subprocess, sys, tempfile, threading, time, traceback
 import unittest.mock, urllib.error, urllib.request
 from pathlib import Path
 
@@ -530,12 +530,28 @@ def ui_server(project):
         srv.ws.db.close()  # an open handle would keep orch.db (and the temp dir) undeletable on Windows
 
 
+def contrast(a, b):
+    """WCAG 2.x contrast ratio of two #RRGGBB colors."""
+    def lum(c):
+        r, g, b = (x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in (int(c[i:i + 2], 16) / 255 for i in (1, 3, 5)))
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
 def test_ui_server_security():
     from orch import core
     r = Repo(two_tasks())
     with ui_server(r.repo) as call, unittest.mock.patch.object(core, "VAULT", r.tmp / "vault.test"):  # never the user's real vault
         code, page = call("/", token="")
         assert code == 200 and '<script nonce="' in page and "innerHTML" not in page
+        assert not re.search(r"https?://(?!www\.w3\.org/2000/svg\b)", page), "nothing may load from outside (CSP, docs/UIUX.md §3)"
+        light = page.split(":root", 1)[1].split("}", 1)[0]  # the color tokens (docs/UIUX.md §5), then their dark values
+        dark = page.split("prefers-color-scheme: dark", 1)[1].split("}", 1)[0]
+        for theme in (dict(re.findall(r"--(\w+):\s*(#[0-9A-Fa-f]{6})", t)) for t in (light, dark)):
+            for bg in ("paper", "surface"):  # text 4.5:1, control borders 3:1 (WCAG 2.2 AA)
+                assert all(contrast(theme[fg], theme[bg]) >= 4.5 for fg in ("ink", "muted", "running", "done", "waiting", "failed")), theme
+                assert contrast(theme["control"], theme[bg]) >= 3, theme
         assert call("/api/state", token="wrong")[0] == 403
         assert call("/api/state", Host="evil.example")[0] == 403, "DNS rebinding: foreign Host must be refused"
         secret = "sk-test-1234567890abcdef"
@@ -588,6 +604,11 @@ def test_plan_edit_from_the_ui():
     assert r.orch("resume", "--exit-on-wait") == 0, r.out
     assert r.status() == {"PLAN": "done", "T1": "done", "T2": "done", "REVIEW": "done"}, r.status()
     assert r.q("SELECT assignee, deps FROM tasks WHERE id='T2'") == [("w1", '["T1"]')] and r.outcomes("T2") == ["integrated"]
+    with ui_server(r.repo) as call:  # the task panel and the score read the attempts: no session ids, no pids
+        st = json.loads(call("/api/state")[1])
+    att = st["attempts"]
+    assert {"T1", "T2"} <= {a["task"] for a in att} and not {"session", "pid"} & set(att[0]), att
+    assert {"w1", "w2"} <= set(st["workers"]) and st["budget"] == 0, st  # quick answers: reassign <worker>, budget gate
 
 
 def test_mcp_server_read_only_tools():
