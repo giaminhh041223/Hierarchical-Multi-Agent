@@ -7,7 +7,8 @@ ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "catalog"
 SCHEMAS = CATALOG / "schemas"
 HOME = Path(os.environ.get("ORCH_HOME") or Path.home() / ".orchestra")
-SECRET_NAME = re.compile(r"(API_?KEY|ACCESS_KEY|PRIVATE_KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)", re.I)
+SECRET_NAME = re.compile(r"(API_?KEY|ACCESS_KEY|PRIVATE_KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDS|AUTH|COOKIE|DSN|_PAT$)", re.I)
+SECRET_VALUE = re.compile(r"://[^/\s:@]+:[^/\s@]+@")  # a URL with user:password@ (DATABASE_URL, proxies with credentials)
 
 # Task states. Failure edges always record an attempt outcome first, then go to todo / needs_lead / pending_user / failed.
 #   todo -> running -> verifying -> integrating -> done
@@ -79,7 +80,7 @@ class Workspace:
         return json.loads(f.read_text(encoding="utf-8")) if f.exists() else default
 
     def write_json(self, name, data):
-        (self.dir / name).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        (self.dir / name).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8", newline="\n")
 
     def meta(self, k, v=None):
         if v is None:

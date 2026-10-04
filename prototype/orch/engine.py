@@ -17,7 +17,7 @@ YES = {"y", "yes", "ok", "okay", "approve", "approved", "accept", "lgtm", "go", 
 HARD_CAP = 6  # attempts per task before the user is asked
 TEAM_DEFAULTS = {"max_parallel": 4, "timeout": 1800, "verify_timeout": 600, "budget_tokens": 0, "max_amend": 1,
                  "skills": True, "auto_approve": False, "wait_reset": 600, "cooldown": 3600, "account_max": {},
-                 "verify_allow": None, "mcp": False, "embeddings": None}
+                 "verify_allow": None, "verify_env": [], "mcp": False, "embeddings": None}
 
 RULES = {
     "common": """You are one agent in Orchestra, a local multi-agent coding team. The engine (a program, not an LLM) owns git, scheduling and integration.
@@ -72,7 +72,7 @@ def ensure_excluded(project):
     have = f.read_text(encoding="utf-8").splitlines() if f.exists() else []
     add = [p for p in (".orch/", ".agents/skills/orch-*/") if p not in have]
     if add:
-        f.write_text("\n".join(have + add) + "\n", encoding="utf-8")
+        f.write_text("\n".join(have + add) + "\n", encoding="utf-8", newline="\n")
 
 
 # --- pure checks -------------------------------------------------------------------------------------------
@@ -143,7 +143,7 @@ def check_plan(plan, workers, existing=None):
     return errs
 
 
-ASK_VERIFY = "Verify commands outside team verify_allow:"
+ASK_VERIFY = "Verify commands nobody has allowed in this run (outside team verify_allow, or added by an amendment):"
 
 
 def allowed(cmd, allow):
@@ -162,6 +162,13 @@ def file_map(files, limit=300):
             break
     lines = [r + (f" ({n} files)" if r.endswith("/") else "") for r, n in sorted(rows.items())]
     return ("\n".join(lines[:limit]) + (f"\n... {len(lines) - limit} more" if len(lines) > limit else "")) or "(empty repository)"
+
+
+def ignored_files(cwd):
+    """Untracked git-ignored paths in a worktree (directories collapsed), minus the engine's own: present when verify runs,
+    absent from the commit."""
+    out = git(cwd, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z", codes=None)
+    return [p for p in out.split("\0") if p and not p.startswith((".orch/", ".agents/skills/orch-"))]
 
 
 def check_handoff(h):
@@ -191,7 +198,7 @@ def write_rules(ws):
     d.mkdir(exist_ok=True)
     for name, text in RULES.items():
         if not (d / f"{name}.md").exists():
-            (d / f"{name}.md").write_text(text + "\n", encoding="utf-8")
+            (d / f"{name}.md").write_text(text + "\n", encoding="utf-8", newline="\n")
 
 
 def save_team(ws, team):
@@ -213,7 +220,7 @@ def save_team(ws, team):
     for n, w in workers.items():
         f = ws.dir / "rules" / f"{n}.md"
         if not f.exists():
-            f.write_text(f"You are worker {n}, running {w['agent']}/{w['model']}.\n", encoding="utf-8")
+            f.write_text(f"You are worker {n}, running {w['agent']}/{w['model']}.\n", encoding="utf-8", newline="\n")
     return team
 
 
@@ -298,8 +305,13 @@ class Engine:
         return False
 
     def unapproved(self, cmds):
-        """Verify commands outside team verify_allow that the user has not allowed in this run."""
-        return [v for v in cmds if not allowed(v, self.team["verify_allow"]) and not self.rmeta(f"allow:{json.dumps(v)}")]
+        """Verify commands nobody allowed in this run. With team verify_allow: outside that list and not allowed by the user.
+        Without it (default): the user's plan approval allows that plan's commands, so only those of an amendment (written by
+        the lead after the approval) still need a 'yes'; an auto-approved run trusts the lead's plans and amendments alike."""
+        allow = self.team["verify_allow"]
+        if allow is None and self.rmeta("auto_approve") == "1":
+            return []
+        return [v for v in cmds if not (allow is not None and allowed(v, allow)) and not self.rmeta(f"allow:{json.dumps(v)}")]
 
     def approve(self, cmds):
         for v in self.unapproved(cmds):
@@ -743,7 +755,7 @@ class Engine:
         git(path, "add", "-A", codes=None)
         d = self.rdir / "attempts"
         d.mkdir(parents=True, exist_ok=True)
-        (d / f"{tid}-abandoned-{int(time.time())}.patch").write_text(git(path, "diff", "--cached", "--binary", self.tip(), codes=None), encoding="utf-8")
+        (d / f"{tid}-abandoned-{int(time.time())}.patch").write_bytes(_git(path, "diff", "--cached", "--binary", self.tip(), text=False).stdout)
         git(path, "reset", "-q", "--hard", self.tip(), codes=None)
         git(path, "clean", "-fdq", codes=None)
 
@@ -901,9 +913,12 @@ class Engine:
             self.ws.event("verify", ("pass: " if ok else "FAIL: ") + report[:300], tid)
             if not ok:
                 return self.route(tid, "verify", f"verification failed:\n{report}")
+            if extra := ignored_files(path):
+                # verify saw them, the commit will not: the final review reruns verify on the integration tree, without them
+                self.ws.event("warn", f"verify ran with {len(extra)} git-ignored path(s) that are not committed: {', '.join(extra[:10])}", tid)
             if self.cancelled(tid):
                 return self.terminate(tid, "cancelled", "cancelled by the user")
-            # one squashed commit = exactly the verified tree on top of the tip: rejected attempts never reach the history
+            # one squashed commit = the verified tree's tracked files on top of the tip: rejected attempts never reach the history
             sha = git(path, "-c", f"user.name=orch/{t['assignee']}", "commit-tree", "HEAD^{tree}", "-p", tip,
                       "-m", f"{tid}: {t['title']}"[:200]) if changed else tip
             if not self.ws.update(tid, _expect="verifying", status="integrating", commit_sha=sha):
@@ -919,7 +934,7 @@ class Engine:
         for i, argv in enumerate(cmds):
             o, e = d / f"verify{i}.out", d / f"verify{i}.err"
             try:
-                code = agents.spawn((agents.resolve_bin(argv[0]) or [argv[0]]) + argv[1:], cwd, agents.clean_env(), out=o, err=e,
+                code = agents.spawn((agents.resolve_bin(argv[0]) or [argv[0]]) + argv[1:], cwd, agents.verify_env(self.team["verify_env"]), out=o, err=e,
                                     timeout=self.team["verify_timeout"])
             except OSError as ex:
                 return False, f"$ {subprocess.list2cmdline(argv)}\ncannot run: {ex}"
@@ -1156,11 +1171,13 @@ class Engine:
             lines += ["", f"## {t['id']}: {t['title']}", *[f"- [ ] {a}" for a in t["acceptance"]],
                       f"- scope: {', '.join(t['scope_paths'])}", *[f"- verify: `{subprocess.list2cmdline(v)}`" + ("" if allowed(v, self.team["verify_allow"]) else " (not in verify_allow)")
                                                      for v in t["verify"]]]
+        if self.team["verify_allow"] is None and self.rmeta("auto_approve") != "1":
+            lines += ["", "Approving this plan allows its verify commands in this run; commands added later by an amendment are asked."]
         lines += ["", "## Resources", "", *pool.describe(self.team, self.ws)]
         for i, v in enumerate(verdicts, 1):
             lines += ["", f"## Review round {i}: {v['verdict']}", *[f"- {x['severity']} [{x['task_id'] or 'plan'}] {x['message']}" for x in v["issues"]]]
         self.rdir.mkdir(parents=True, exist_ok=True)
-        (self.rdir / "plan.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        (self.rdir / "plan.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         return self.rdir / "plan.md"
 
     def report(self, status):
@@ -1178,7 +1195,7 @@ class Engine:
         if pend:
             lines += ["", "## Waiting for you", "", *[f"- **{t['id']}**: {t['question']}\n  `python -m orch answer {t['id']} \"...\"`" for t in pend]]
         self.rdir.mkdir(parents=True, exist_ok=True)
-        (self.rdir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        (self.rdir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         return self.rdir / "report.md"
 
     def pause(self):

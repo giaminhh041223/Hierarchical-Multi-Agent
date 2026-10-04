@@ -63,7 +63,10 @@ def api_resume(ws, b, q):
 
 
 def api_answer(ws, b, q):
-    if not ws.update(str(b.get("task")), _expect="pending_user", answer=str(b.get("text") or "").strip() or "yes"):
+    text = str(b.get("text") or "").strip()
+    if not text:  # never approve by default: 'yes' starts a plan and allows its commands
+        raise ValueError("the answer is empty: type it, or use a button")
+    if not ws.update(str(b.get("task")), _expect="pending_user", answer=text):
         raise ValueError("that task is not waiting for an answer any more")
     return {"ok": "recorded" + ("" if EngineLock(ws).held_elsewhere() else "; press Resume to continue")}
 
