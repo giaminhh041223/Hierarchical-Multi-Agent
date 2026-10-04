@@ -1,10 +1,11 @@
 {
-  "_doc": "Adapter manifests. run/resume = args after the binary; {model} {session} {out} {schema} (file) {schema_json} (inline) {prompt} {mode} are filled per call. mode.rw = worker edits, mode.ro = read-only/plan (lead, reviewer, probes). prompt: stdin | arg. verified = flags tested on this machine.",
+  "_doc": "Adapter manifests. run/resume = args after the binary; {model} {session} {out} {schema} (file) {schema_json} (inline) {prompt} {mode} are filled per call. mcp = how a call gets the workspace MCP server when team.json sets mcp to true: args put before run/resume ({mcp_json} {mcp_toml}; {mcp_tools} widens an allow-list), or config = opencode's OPENCODE_CONFIG_CONTENT; per call only, the CLI's own config files are never written. mode.rw = worker edits, mode.ro = read-only/plan (lead, reviewer, probes). prompt: stdin | arg. verified = flags tested on this machine. router = an OpenAI-compatible endpoint whose model ids are provider/model: each provider prefix is its own quota account, and shares maps the prefixes that are also a CLI's subscription to that CLI. Machine-specific changes go in ~/.orchestra/agents.json, merged per profile.",
   "codex": {
     "name": "OpenAI Codex CLI", "bin": "codex", "verified": true,
     "auth_files": ["~/.codex/auth.json"], "auth_env": ["OPENAI_API_KEY", "CODEX_API_KEY"],
     "login": ["login"], "models_from": "codex_cache", "usage": "codex_rollouts",
     "mode": {"rw": "workspace-write", "ro": "read-only"},
+    "mcp": ["-c", "mcp_servers.orch={mcp_toml}"],
     "run": ["-a", "never", "exec", "--json", "--skip-git-repo-check", "-s", "{mode}", "-m", "{model}", "-o", "{out}", "--output-schema", "{schema}", "-"],
     "resume": ["-a", "never", "exec", "resume", "{session}", "--json", "--skip-git-repo-check", "-c", "sandbox_mode=\"{mode}\"", "-m", "{model}", "-o", "{out}", "--output-schema", "{schema}", "-"],
     "prompt": "stdin", "parse": "codex"
@@ -14,9 +15,9 @@
     "auth_files": ["~/.claude/.credentials.json"], "auth_env": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
     "login": [], "login_hint": "type /login in the window that opens",
     "models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-haiku-4-5"],
-    "mode": {"rw": "acceptEdits", "ro": "plan"},
-    "run": ["-p", "--output-format", "json", "--model", "{model}", "--permission-mode", "{mode}", "--allowedTools", "Bash,Read,Edit,Write,Glob,Grep", "--json-schema", "{schema_json}"],
-    "resume": ["-p", "--output-format", "json", "--model", "{model}", "--permission-mode", "{mode}", "--allowedTools", "Bash,Read,Edit,Write,Glob,Grep", "--json-schema", "{schema_json}", "--resume", "{session}"],
+    "mode": {"rw": "acceptEdits", "ro": "plan"}, "mcp": ["--mcp-config", "{mcp_json}"],
+    "run": ["-p", "--output-format", "json", "--model", "{model}", "--permission-mode", "{mode}", "--allowedTools", "Bash,Read,Edit,Write,Glob,Grep{mcp_tools}", "--json-schema", "{schema_json}"],
+    "resume": ["-p", "--output-format", "json", "--model", "{model}", "--permission-mode", "{mode}", "--allowedTools", "Bash,Read,Edit,Write,Glob,Grep{mcp_tools}", "--json-schema", "{schema_json}", "--resume", "{session}"],
     "prompt": "stdin", "parse": "claude", "unset_env": ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"]
   },
   "claude@zai": {
@@ -38,7 +39,7 @@
   "opencode": {
     "name": "OpenCode", "bin": "opencode", "verified": true,
     "auth_files": ["~/.local/share/opencode/auth.json"], "login": ["auth", "login"],
-    "models_cmd": ["models"], "mode": {"rw": "build", "ro": "plan"},
+    "models_cmd": ["models"], "mode": {"rw": "build", "ro": "plan"}, "mcp": "config",
     "run": ["run", "--format", "json", "--agent", "{mode}", "-m", "{model}", "{prompt}"],
     "resume": ["run", "--format", "json", "--agent", "{mode}", "-m", "{model}", "--session", "{session}", "{prompt}"],
     "prompt": "arg", "parse": "opencode"
@@ -53,7 +54,8 @@
     "name": "OpenCode via 9router (local OpenAI-compatible router, github.com/decolua/9router)", "base": "opencode", "verified": false,
     "router": "http://127.0.0.1:20128/v1", "router_headers": {"X-9Router-Token-Saver": "off"},
     "models_from": "router", "models_cmd": null, "needs_vault": ["NINEROUTER_API_KEY"], "auth_files": [], "login": null,
-    "login_hint": "connect providers and create an API key on the 9router dashboard (http://127.0.0.1:20128), then: python -m orch vault set NINEROUTER_API_KEY",
+    "login_hint": "connect providers and create an API key on the 9router dashboard, then: python -m orch vault set NINEROUTER_API_KEY. Another port than 20128? ~/.orchestra/agents.json: {\"opencode@9router\": {\"router\": \"http://127.0.0.1:PORT/v1\"}}",
+    "shares": {"cx": "codex", "ag": "agy", "cc": "claude", "gc": "gemini", "cu": "cursor-agent"},
     "env": {"XDG_DATA_HOME": "{home}/opencode-9router", "ROUTER_API_KEY": "{vault:NINEROUTER_API_KEY}"},
     "run": ["run", "--pure", "--format", "json", "--agent", "{mode}", "-m", "router/{model}", "{prompt}"],
     "resume": ["run", "--pure", "--format", "json", "--agent", "{mode}", "-m", "router/{model}", "--session", "{session}", "{prompt}"]
@@ -74,7 +76,7 @@
   },
   "mock": {
     "name": "Mock agent (zero-cost tests)", "bin": "python", "verified": true, "hidden": true,
-    "models": ["mock-strong", "mock-fast"], "mode": {"rw": "rw", "ro": "ro"},
+    "models": ["mock-strong", "mock-fast"], "mode": {"rw": "rw", "ro": "ro"}, "mcp": "config",
     "run": ["-m", "orch.mock", "{model}"], "resume": ["-m", "orch.mock", "{model}", "{session}"],
     "prompt": "stdin", "parse": "agy"
   },

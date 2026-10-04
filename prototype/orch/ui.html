@@ -1,31 +1,320 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Orchestra</title>
 <style>
-:root { color-scheme: light dark; font: 14px/1.45 system-ui, sans-serif; }
-body { margin: 0; }
-header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #8885; flex-wrap: wrap; }
-nav button { border: 0; background: none; padding: 6px 10px; cursor: pointer; font: inherit; border-bottom: 2px solid transparent; }
-nav button.on { border-bottom-color: currentColor; font-weight: 600; }
-main { padding: 12px; max-width: 1200px; }
-table { border-collapse: collapse; width: 100%; margin: 6px 0 14px; }
-td, th { border-bottom: 1px solid #8883; padding: 4px 6px; text-align: left; vertical-align: top; }
-pre { white-space: pre-wrap; word-break: break-word; background: #8881; padding: 8px; max-height: 45vh; overflow: auto; margin: 4px 0 12px; }
-textarea, input[type=text], input[type=password], input[type=search] { box-sizing: border-box; font: inherit; padding: 4px 6px; }
-textarea { width: 100%; }
-.card { border: 1px solid #8885; border-radius: 6px; padding: 8px 10px; margin: 8px 0; }
-.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
-.muted { opacity: .7; } .err { color: #d33; } .ok { color: #2a2; }
-.done { color: #2a2; } .failed, .cancelled { color: #d33; } .pending_user, .needs_lead { color: #c80; font-weight: 600; }
-.running, .verifying, .integrating { color: #27c; }
-</style></head>
+:root {
+  --paper: #F3F4F1; --surface: #FFFFFF; --ink: #1C2024; --muted: #545B63; --line: #DADDD8;
+  --control: #7E858C; --running: #1F5FBF; --done: #1D7443; --waiting: #8F5300; --failed: #B3261E;
+  color-scheme: light dark;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Noto Sans", sans-serif;
+  font-size: 14px; line-height: 1.45; font-weight: 400; background-color: var(--paper); color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #16191C; --surface: #1E2226; --ink: #E4E6E3; --muted: #A0A8B0; --line: #2A2F34;
+    --control: #69717A; --running: #7DAAF0; --done: #5CC489; --waiting: #F0AE4C; --failed: #FF8A80;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background-color: var(--paper); color: var(--ink); font-family: inherit; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+header { display: flex; gap: 12px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--surface); flex-wrap: wrap; }
+.header-brand { font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; font-size: 16px; font-weight: 600; color: var(--ink); margin-right: 4px; }
+nav#tabs { display: flex; gap: 4px; align-items: center; overflow-x: auto; scrollbar-width: thin; white-space: nowrap; max-width: 100%; }
+nav button { flex: none; border: 1px solid transparent; background: transparent; color: var(--muted); padding: 6px 12px; cursor: pointer; font: inherit; font-size: 14px; font-weight: 400; border-radius: 4px; min-height: 32px; min-width: 32px; }
+nav button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+nav button.on { color: var(--ink); background: color-mix(in srgb, var(--ink) 10%, transparent); font-weight: 600; border-color: var(--line); }
+.tab-gap { margin-left: 20px; }
+@media (max-width: 640px) { .tab-gap { margin-left: 8px; } }
+#header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.pending-pill { background: color-mix(in srgb, var(--waiting) 14%, var(--surface)); color: var(--waiting); border: 1px solid color-mix(in srgb, var(--waiting) 40%, var(--surface)); font-weight: 600; font-size: 13px; padding: 4px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; }
+.pending-pill:hover { background: color-mix(in srgb, var(--waiting) 22%, var(--surface)); }
+
+main { padding: 16px; max-width: 1200px; margin: 0 auto; }
+h1, h2, h3, .heading { font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; font-weight: 600; color: var(--ink); margin: 20px 0 8px; }
+h1, h2 { font-size: 20px; line-height: 1.25; } h3 { font-size: 16px; line-height: 1.25; }
+p, .prose { max-width: 75ch; margin: 6px 0 12px; }
+.question { white-space: pre-wrap; }
+.mono, pre, code { font-family: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", Menlo, monospace; }
+.tabular { font-variant-numeric: tabular-nums; }
+.bold { font-weight: 600; } .muted { color: var(--muted); } .ok { color: var(--done); } .err { color: var(--failed); }
+
+.run-header { margin: 4px 0 16px; }
+.run-header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
+.run-title { font-size: 20px; line-height: 1.25; font-weight: 600; margin: 0; color: var(--ink); word-break: break-word; }
+.run-meta-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; font-size: 13px; color: var(--muted); }
+.run-progress-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 8px 0; font-size: 13px; }
+.run-progress-wrap { display: flex; align-items: center; gap: 4px 12px; flex: 1; min-width: 240px; flex-wrap: wrap; }
+.progress-bar { display: flex; height: 8px; flex: 1; max-width: 320px; min-width: 120px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.progress-seg { height: 100%; }
+.progress-seg.done { background: var(--done); } .progress-seg.running { background: var(--running); } .progress-seg.waiting { background: var(--waiting); } .progress-seg.failed { background: var(--failed); } .progress-seg.todo { background: var(--control); }
+.progress-text { font-size: 13px; color: var(--muted); }
+.token-stat { font-size: 13px; color: var(--muted); white-space: nowrap; margin-left: auto; }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin: 12px 0; background: var(--surface); }
+.card-waiting { border-left: 4px solid var(--waiting); background: color-mix(in srgb, var(--waiting) 4%, var(--surface)); }
+.card-goal { border-left: 4px solid var(--control); background: color-mix(in srgb, var(--ink) 2%, var(--surface)); }
+.card-err { border-left: 4px solid var(--failed); background: color-mix(in srgb, var(--failed) 6%, var(--surface)); }
+.goal-label { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.field-grow { flex: 1; min-width: 200px; }
+.field-action { display: flex; align-items: flex-end; padding-bottom: 8px; }
+label { font-size: 13px; font-weight: 600; color: var(--ink); }
+.checkbox-label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 400; cursor: pointer; user-select: none; }
+input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--ink); cursor: pointer; }
+textarea, input[type=text], input[type=password], input[type=search], input[type=number], select { box-sizing: border-box; font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--control); border-radius: 4px; background: var(--surface); color: var(--ink); min-height: 32px; }
+textarea { width: 100%; resize: vertical; line-height: 1.45; }
+#team-input { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 13px; }
+button { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 32px; min-width: 32px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 600; border-radius: 4px; cursor: pointer; background: var(--surface); color: var(--ink); border: 1px solid var(--control); text-decoration: none; line-height: 1.2; }
+button:hover { background: color-mix(in srgb, var(--ink) 4%, var(--surface)); }
+button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+button.primary:hover { background: color-mix(in srgb, var(--paper) 15%, var(--ink)); }
+button.secondary { background: var(--surface); color: var(--ink); border-color: var(--control); }
+button.danger { color: var(--failed); border-color: var(--control); background: var(--surface); }
+button.danger:hover { border-color: var(--failed); background: color-mix(in srgb, var(--failed) 8%, var(--surface)); }
+.table-wrap { overflow: auto; max-height: 70vh; max-width: 100%; margin: 8px 0 16px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-weight: 600; font-size: 12px; border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; z-index: 1; }
+td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: middle; color: var(--ink); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: color-mix(in srgb, var(--ink) 4%, var(--surface)); }
+.truncate { max-width: 380px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.badge.todo { color: var(--muted); background: color-mix(in srgb, var(--control) 12%, var(--surface)); border: 1px solid var(--line); }
+.badge.running, .badge.verifying, .badge.integrating { color: var(--running); background: color-mix(in srgb, var(--running) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--running) 30%, transparent); }
+.badge.done { color: var(--done); background: color-mix(in srgb, var(--done) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--done) 30%, transparent); }
+.badge.pending_user, .badge.needs_lead { color: var(--waiting); background: color-mix(in srgb, var(--waiting) 15%, var(--surface)); border: 1px solid color-mix(in srgb, var(--waiting) 30%, transparent); }
+.badge.failed, .badge.cancelled { color: var(--failed); background: color-mix(in srgb, var(--failed) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--failed) 30%, transparent); }
+.badge.unknown { color: var(--muted); background: color-mix(in srgb, var(--control) 12%, var(--surface)); border: 1px solid var(--line); }
+.badge-sym { font-size: 11px; }
+@keyframes badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.pulse { animation: badge-pulse 2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+details { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); margin: 12px 0; overflow: hidden; }
+summary { padding: 10px 14px; cursor: pointer; font-weight: 600; font-size: 14px; user-select: none; background: color-mix(in srgb, var(--ink) 2%, var(--surface)); border-bottom: 1px solid transparent; color: var(--ink); }
+details[open] > summary { border-bottom: 1px solid var(--line); }
+summary:hover { background: color-mix(in srgb, var(--ink) 5%, var(--surface)); }
+details pre { margin: 0; border: 0; border-radius: 0; max-height: 45vh; }
+pre { white-space: pre-wrap; word-break: break-word; background: color-mix(in srgb, var(--ink) 4%, var(--surface)); padding: 10px 12px; max-height: 45vh; overflow: auto; border-radius: 4px; margin: 8px 0 12px; border: 1px solid var(--line); }
+
+.run-grid { margin: 12px 0; }
+@media (min-width: 1100px) { .run-grid.has-waiting { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 20px; align-items: start; } }
+.waiting-col { display: flex; flex-direction: column; gap: 12px; }
+.waiting-col h3 { margin: 0 0 4px; }
+.quick-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.reassign-group { display: inline-flex; align-items: center; gap: 6px; }
+.dag-area { display: flex; flex-direction: column; min-width: 0; }
+.dag-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px; }
+.dag-header h3 { margin: 0; }
+.dag-controls { display: flex; align-items: center; gap: 4px; }
+.dag-btn { min-width: 32px; min-height: 32px; padding: 4px 8px; font-size: 13px; }
+.dag-wrap { overflow: auto; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 12px; }
+.dag-node { cursor: pointer; }
+.dag-node:focus-visible rect.dag-node-bg, .dag-node.selected rect.dag-node-bg { stroke: var(--ink); stroke-width: 2.5; }
+.dag rect.dag-node-bg { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.dag path.dag-stripe, .dag path.dag-stripe.edit { fill: var(--control); }
+.dag :is(.running, .verifying, .integrating) .dag-stripe { fill: var(--running); }
+.dag :is(.running, .verifying, .integrating) .dag-node-bg { stroke: var(--running); }
+.dag .done .dag-stripe { fill: var(--done); } .dag .done .dag-node-bg { stroke: var(--done); }
+.dag :is(.pending_user, .needs_lead) .dag-stripe { fill: var(--waiting); }
+.dag :is(.pending_user, .needs_lead) .dag-node-bg { stroke: var(--waiting); }
+.dag :is(.failed, .cancelled) .dag-stripe { fill: var(--failed); }
+.dag :is(.failed, .cancelled) .dag-node-bg { stroke: var(--failed); }
+.dag text { fill: var(--ink); font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; font-size: 12px; }
+.dag text.head { font-family: "Cascadia Mono", Consolas, monospace; font-weight: 600; }
+.dag text.dag-worker { fill: var(--muted); font-size: 11px; font-family: "Cascadia Mono", Consolas, monospace; }
+.dag path.edge { fill: none; stroke: var(--control); stroke-width: 1.2; }
+.dag path.edge.highlighted { stroke: var(--ink); stroke-width: 2.5; }
+.dag path.hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; }
+.dag path.hit:hover { stroke: color-mix(in srgb, var(--failed) 30%, transparent); }
+.dag [data-id] { cursor: crosshair; touch-action: none; user-select: none; }
+.dag line.drag { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
+.plan-editor { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--ink) 2%, var(--surface)); }
+.task-panel { border: 2px solid var(--ink); border-radius: 8px; padding: 16px; margin: 16px 0; background: var(--surface); }
+.task-panel:focus-visible { outline: none; }
+.task-panel-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.task-panel-title { font-size: 16px; line-height: 1.3; margin: 4px 0 0; }
+.task-panel-meta { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 13px; margin: 6px 0 12px; }
+.task-panel-section { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.task-panel-section h4 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 4px 0 6px; }
+.spec-list { margin: 4px 0 8px 18px; padding: 0; }
+.spec-list li { margin: 2px 0; }
+.spec-row { margin: 4px 0; }
+.spec-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.selectable-dir { user-select: all; cursor: text; background: color-mix(in srgb, var(--ink) 4%, var(--surface)); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); font-size: 12px; display: inline-block; }
+.score-card { margin: 16px 0; }
+.score-card h3 { margin: 0 0 8px; }
+.score-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 12px; }
+.score-svg { display: block; min-width: 600px; width: 100%; }
+.score-svg text.muted { fill: var(--muted); }
+.score-bar { cursor: pointer; }
+.score-bar:focus-visible rect { stroke: var(--ink); stroke-width: 2; }
+.score-bar:hover rect { opacity: 0.85; }
+.task-link-btn { background: transparent; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--ink); text-decoration: underline; text-decoration-color: var(--control); cursor: pointer; min-height: auto; min-width: auto; }
+.task-link-btn:hover { color: var(--running); text-decoration-color: var(--running); }
+.nowrap { white-space: nowrap; }
+.align-right { text-align: right; display: block; }
+
+#toasts { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 1000; max-width: 400px; pointer-events: none; }
+.toast { pointer-events: auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-radius: 4px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 4px 12px color-mix(in srgb, var(--ink) 16%, transparent); font-size: 13px; line-height: 1.4; }
+.toast.ok { border-color: var(--done); background: color-mix(in srgb, var(--done) 10%, var(--surface)); color: var(--done); }
+.toast.err { border-color: var(--failed); background: color-mix(in srgb, var(--failed) 10%, var(--surface)); color: var(--failed); }
+.toast-msg { flex: 1; }
+.toast-close { background: transparent; border: 0; color: currentColor; cursor: pointer; padding: 4px 6px; min-height: 24px; min-width: 24px; font-size: 14px; line-height: 1; border-radius: 4px; opacity: 0.8; }
+.toast-close:hover { opacity: 1; background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.lang-btn { min-width: 32px; min-height: 32px; padding: 4px 8px; font-weight: 600; font-size: 13px; }
+.worker-row { display: flex; gap: 8px 12px; align-items: flex-end; flex-wrap: wrap; padding: 10px 12px; margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.worker-field { display: flex; flex-direction: column; gap: 4px; }
+.worker-field-name { min-width: 140px; flex: 1; }
+.worker-field-cand { min-width: 220px; flex: 2; }
+.worker-field-max { width: 100px; }
+.field-hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.field-error { font-size: 12px; color: var(--failed); font-weight: 600; margin-top: 2px; }
+.sort-th-btn { background: transparent; border: 0; padding: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; min-height: auto; min-width: auto; }
+.sort-th-btn:hover { color: var(--ink); }
+th.th-right, th:has(.align-right) { text-align: right; }
+th.th-right .sort-th-btn { justify-content: flex-end; width: 100%; }
+</style>
+</head>
 <body>
-<header><strong>Orchestra</strong><nav id="tabs"></nav><span id="msg" class="muted"></span></header>
+<header>
+  <div class="header-brand"><strong>Orchestra</strong></div>
+  <nav id="tabs" aria-label="Main navigation"></nav>
+  <div id="header-right"></div>
+</header>
 <main id="main"></main>
+<div id="toasts" role="status" aria-live="polite"></div>
 <script>
 "use strict";
-const drafts = {};
-let tab = "Run", timer = null;
+const VI = {
+  "Events": "Sự kiện", "Knowledge": "Tri thức", "Agents": "Agent", "Models": "Model", "Skills": "Skill",
+  "Main navigation": "Điều hướng chính", "! Needs you {n}": "! Cần bạn {n}", "{n} task(s) waiting for you": "{n} task đang chờ bạn", "Close notification": "Đóng thông báo",
+  "Missing access token": "Thiếu access token",
+  "Open the link printed by {cmd}: it carries this session's access token.": "Mở liên kết được in bởi {cmd}: liên kết mang access token của phiên này.",
+  "waiting": "chờ", "running": "đang chạy", "verifying": "đang kiểm", "integrating": "đang tích hợp", "done": "xong",
+  "needs you": "cần bạn", "with lead": "chờ lead", "failed": "lỗi", "cancelled": "đã huỷ", "todo": "chờ",
+  "Cancel all": "Huỷ tất cả",
+  "Cancel every unfinished task? Running and queued work will be stopped.": "Huỷ mọi task chưa hoàn thành? Công việc đang chạy và trong hàng đợi sẽ dừng lại.",
+  "Cancelled all tasks": "Đã huỷ tất cả task", "none": "không", "stopped": "đã dừng", "open": "mở", "idle": "rảnh",
+  "Task progress: {counts}": "Tiến độ task: {counts}",
+  "{n} done": "{n} xong", "{n} running": "{n} đang chạy", "{n} needs you": "{n} cần bạn", "{n} with lead": "{n} chờ lead",
+  "{n} failed": "{n} lỗi", "{n} cancelled": "{n} đã huỷ", "{n} todo": "{n} chờ", "{n} tasks": "{n} task",
+  "{used} / {budget} tokens": "{used} / {budget} token", "{used} tokens": "{used} token",
+  "Waiting for you ({n})": "Chờ bạn ({n})", "Goal": "Mục tiêu",
+  "What should the team build or fix? (the lead plans it, the reviewer checks the plan)": "Đội cần xây dựng hoặc sửa gì? (lead lập plan, reviewer kiểm tra plan)",
+  "Auto-approve the reviewed plan": "Tự động duyệt plan đã qua review", "Start run": "Bắt đầu run", "Resume run {run}": "Chạy tiếp run {run}",
+  "No team yet: pick one in the Team tab (or run python -m orch init).": "Chưa có team: hãy chọn team ở tab Team (hoặc chạy python -m orch init).",
+  "The plan is not waiting for approval any more: your edit was dropped": "Plan không còn chờ duyệt nữa: bản sửa của bạn đã bị bỏ",
+  "Approve plan": "Duyệt plan", "Edit plan": "Sửa plan", "Accept": "Chấp nhận", "Review again": "Review lại",
+  "Continue with double budget": "Tiếp tục với ngân sách gấp đôi", "Stop run": "Dừng run",
+  "Stop run? Every unfinished task will be cancelled.": "Dừng run? Mọi task chưa hoàn thành sẽ bị huỷ.",
+  "Install": "Cài đặt", "Skip": "Bỏ qua", "Yes": "Có", "Retry": "Thử lại", "Reassign": "Giao lại",
+  "Cancel task": "Huỷ task", "Cancel task {id}?": "Huỷ task {id}?", "Cancelled task": "Đã huỷ task",
+  "Feedback for a new plan": "Góp ý cho plan mới", "New budget or instruction": "Ngân sách mới hoặc chỉ dẫn",
+  "Instructions for review": "Chỉ dẫn cho review", "Your answer": "Câu trả lời của bạn",
+  "e.g. split T2 into two tasks": "vd: tách T2 thành hai task", "e.g. 500k or stop": "vd: 500k hoặc stop",
+  "yes / retry / cancel / reassign <worker> / instructions": "yes / retry / cancel / reassign <worker> / chỉ dẫn",
+  "Send feedback": "Gửi góp ý", "Send answer": "Gửi câu trả lời", "Sent answer": "Đã gửi câu trả lời",
+  "Type an answer first, or use a button above": "Hãy nhập câu trả lời trước, hoặc dùng nút phía trên",
+  "Board": "Bảng task", "Status": "Trạng thái", "Try": "Lần thử", "Deps": "Phụ thuộc", "Title": "Tiêu đề", "Cancel": "Huỷ",
+  "Open details for task {id}": "Mở chi tiết cho task {id}", "Report": "Báo cáo", "Engine console": "Console engine",
+  "Task graph": "Sơ đồ task", "Plan editor": "Sửa sơ đồ plan", "Zoom out": "Thu nhỏ", "Zoom in": "Phóng to", "Fit": "Vừa", "Fit graph to view": "Vừa khung nhìn",
+  "Drag from a task onto another: the second then waits for the first. Click a line to remove it. Saving makes a new plan version, which still needs your yes.": "Kéo từ task này sang task khác: task sau sẽ chờ task trước. Bấm vào đường nối để xoá. Lưu sẽ tạo phiên bản plan mới và vẫn cần bạn duyệt.",
+  "The plan is now v{version}: discard this edit and start again.": "Plan hiện là v{version}: hãy huỷ bản sửa này và bắt đầu lại.",
+  "Waits for": "Chờ", "Save as plan v{version}": "Lưu thành plan v{version}", "Discard": "Huỷ thay đổi",
+  "{id} waits for {dep}: click to remove": "{id} chờ {dep}: bấm để xoá",
+  "{dep} already waits for {id}: that would be a cycle": "{dep} đã chờ {id} rồi: như vậy sẽ bị lặp vòng",
+  "Task graph: {total} tasks, {done} done": "Sơ đồ task: {total} task, {done} xong",
+  "Task graph: {total} tasks, {done} done, {running} running": "Sơ đồ task: {total} task, {done} xong, {running} đang chạy",
+  "Task details for {id}": "Chi tiết task {id}", "Close task details": "Đóng chi tiết task",
+  "Tries: ": "Số lần thử: ", "Deps: ": "Phụ thuộc: ",
+  "Specification": "Quy cách (spec)", "Acceptance:": "Nghiệm thu:", "Scope: ": "Phạm vi (scope): ", "Verify:": "Kiểm tra (verify):",
+  "Question:": "Câu hỏi:", "Answer:": "Câu trả lời:", "Note:": "Ghi chú:", "Attempts ({n})": "Các lần thử ({n})",
+  "Result": "Kết quả", "Failure": "Lỗi", "Tokens (in / out)": "Token (vào / ra)", "Duration": "Thời lượng", "Started": "Bắt đầu", "Evidence dir": "Thư mục bằng chứng",
+  "Handoff": "Bàn giao (handoff)", "Status: ": "Trạng thái: ", "Summary: ": "Tóm tắt: ", "Files: ": "Tệp: ", "Decisions:": "Quyết định:", "Facts:": "Tri thức (facts):",
+  "Score": "Tổng phổ", "No attempts yet.": "Chưa có lần thử nào.",
+  "Score: {attempts} attempt(s) by {lanes} agent(s) over {min} minute(s)": "Tổng phổ: {attempts} lần thử bởi {lanes} agent trong {min} phút",
+  "Attempt on {task}, {agent}/{model}, {status}": "Lần thử của {task}, {agent}/{model}, {status}",
+  "Time": "Thời gian", "Kind": "Loại", "Actor": "Tác nhân", "Message": "Thông điệp", "No events yet.": "Chưa có sự kiện nào.", "Open Run": "Mở Run",
+  "Facts published by integrated tasks (only from work that passed verification), searchable by every agent.": "Tri thức do các task đã tích hợp công bố (chỉ từ việc đã qua kiểm tra), mọi agent đều có thể tra cứu.",
+  "Search facts": "Tìm tri thức", "Search facts across tasks, e.g. auth api": "Tìm kiếm tri thức giữa các task, ví dụ: auth api", "Search": "Tìm kiếm",
+  "No facts match: facts appear when tasks pass verification.": "Không có tri thức nào khớp: tri thức xuất hiện khi task vượt qua kiểm tra.",
+  "Entity": "Thực thể", "Fact": "Tri thức", "From": "Từ", "Relation": "Quan hệ", "To": "Đến",
+  "Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orchestra never sees passwords. A probe sends one tiny prompt per agent to prove the account works.": "Các agent CLI tìm thấy trên máy này. Đăng nhập sẽ mở cửa sổ của chính CLI: Orchestra không bao giờ nhìn thấy mật khẩu. Probe gửi một prompt nhỏ cho mỗi agent để kiểm tra tài khoản hoạt động.",
+  "Discover": "Tìm agent", "Discover + probe": "Tìm + probe", "Discover agents": "Tìm agent", "No agents discovered yet.": "Chưa tìm thấy agent nào.",
+  "Installed": "Đã cài", "Auth": "Đăng nhập", "Keys it can use": "Key có thể dùng", "Log in": "Đăng nhập",
+  "credentials found (not proven)": "có thông tin đăng nhập (chưa probe)", "not checked": "chưa kiểm tra", "missing key {keys}": "thiếu key {keys}", "Add key": "Thêm key",
+  "not probed": "chưa probe", "+{n} more": "+{n} model nữa", "yes": "có", "no": "chưa",
+  "Roles": "Vai trò",
+  "lead plans and triages (strongest model)": "lead lập plan và xử lý sự cố (model mạnh nhất)",
+  "reviewer checks plans and results (ideally another vendor than the lead)": "reviewer kiểm tra plan và kết quả (nên dùng nhà cung cấp khác lead)",
+  "skill architect picks skills for tasks": "skill architect chọn skill phù hợp cho các task",
+  "Workers": "Các worker", "Worker name": "Tên worker", "Parallel tasks": "Task song song", "Add worker": "Thêm worker", "Remove": "Xoá", "Save team": "Lưu team", "Use suggested team": "Dùng team gợi ý", "Reset to saved team": "Đặt lại về team đã lưu",
+  "Discard current changes and use the suggested team?": "Huỷ các thay đổi hiện tại và dùng team gợi ý?",
+  "Advanced: edit JSON": "Nâng cao: sửa JSON", "Team configuration (JSON)": "Cấu hình team (JSON)", "Invalid team JSON": "JSON team không hợp lệ",
+  "The JSON below is invalid. Fix syntax errors or reset to saved team.": "JSON bên dưới không hợp lệ. Hãy sửa lỗi cú pháp hoặc đặt lại về team đã lưu.",
+  "(not usable here)": "(không dùng được ở đây)", "Usable models ({n})": "Model dùng được ({n})",
+  "No usable models found yet: discover agents or log in first.": "Chưa có model nào dùng được: hãy tìm agent hoặc đăng nhập trước.", "Open Agents": "Mở tab Agent",
+  "Benchmarks, API reference price, our own run history": "Benchmark, giá API tham khảo, lịch sử run trên máy",
+  "Name must be 1-32 letters, digits, _ or -": "Tên phải gồm 1-32 chữ cái, số, _ hoặc -",
+  "Name cannot be a reserved role": "Tên không được trùng vai trò hệ thống",
+  "Worker names must be unique": "Tên worker không được trùng lặp",
+  "Team needs at least one worker": "Team cần ít nhất một worker",
+  "Missing role: {role}": "Thiếu vai trò: {role}", "Team saved": "Đã lưu team",
+  "API keys for agents that use them. Stored encrypted for this Windows user with DPAPI; each agent receives only declared keys; only masked values are returned.": "API key cho các agent cần dùng. Được mã hoá bằng DPAPI cho người dùng Windows này; mỗi agent chỉ nhận key đã khai báo; dữ liệu trả về luôn được che.",
+  "No API keys in vault. Only agents that use API keys need one.": "Chưa có API key nào trong vault. Chỉ các agent cần API key mới cần nhập.",
+  "Name": "Tên", "Value": "Giá trị", "Delete": "Xoá",
+  "Delete API key {name}? Agents needing it will fail authentication.": "Xoá API key {name}? Các agent cần key này sẽ không đăng nhập được.",
+  "Add or update key": "Thêm hoặc sửa key", "Key name": "Tên key", "Upper-case name the agent expects, e.g. OPENAI_API_KEY": "Tên chữ hoa mà agent mong đợi, ví dụ OPENAI_API_KEY", "Key value": "Giá trị key", "Save key": "Lưu key", "Saved key": "Đã lưu key", "Key name is required": "Tên key là bắt buộc",
+  "Benchmarks: Epoch AI (CC-BY); prices/context: OpenRouter list prices (a reference: subscription CLIs do not bill per token). Data as of {date}.": "Benchmark: Epoch AI (CC-BY); giá/context: giá niêm yết OpenRouter (để tham khảo: CLI dạng thuê bao không tính tiền theo token). Dữ liệu tính đến {date}.",
+  "Refresh from public sources": "Làm mới từ nguồn công khai", "No models found yet.": "Chưa có model nào.",
+  "API price in / out ($/Mtok)": "Giá API vào / ra ($/Mtok)", "Our runs": "Lịch sử của ta",
+  "{runs} runs, ok {rate}, {avg}s": "{runs} lần, ok {rate}, {avg}s", "never": "chưa có",
+  "Curated sources (pinned commits): {sources} + skills installed for your local agents. Refreshing downloads the index from github.com.": "Nguồn chọn lọc (commit đã ghim): {sources} + các skill đã cài cho agent trên máy. Làm mới sẽ tải chỉ mục từ github.com.",
+  "Refresh index": "Làm mới chỉ mục", "Skill index is empty.": "Chỉ mục skill đang trống.", "This run": "Run này", "Tasks": "Task", "Reason / Scan": "Lý do / Quét", "Approve": "Duyệt", "Reject": "Từ chối", "Index ({n})": "Chỉ mục ({n})", "Id": "ID", "Description": "Mô tả",
+  "team saved": "Đã lưu team", "recorded": "Đã ghi nhận", "recorded; press Resume to continue": "Đã ghi nhận; bấm Tiếp tục để chạy tiếp", "saved": "Đã lưu",
+  "that task is not waiting for an answer any more": "Task đó không còn chờ câu trả lời nữa", "an engine is already running on this workspace": "Engine đang chạy trên workspace này rồi", "the goal must be 1-8000 characters": "Mục tiêu phải từ 1-8000 ký tự", "unknown agent": "Agent không xác định", "a JSON object is expected": "Cần một đối tượng JSON"
+};
+
+let lang = "vi";
+try { lang = localStorage.getItem("orch.lang") || "vi"; } catch {}
+document.documentElement.lang = lang;
+
+function t(s, vars) {
+  if (typeof s !== "string") return s;
+  let str = (lang === "vi" && VI[s] !== undefined) ? VI[s] : s;
+  if (vars) for (const [k, v] of Object.entries(vars)) str = str.replaceAll("{" + k + "}", v);
+  return str;
+}
+
+function setLang(l) {
+  lang = l;
+  try { localStorage.setItem("orch.lang", lang); } catch {}
+  document.documentElement.lang = lang;
+  for (const k of Object.keys(tabCache)) delete tabCache[k];
+  render();
+}
+
+const drafts = {}, openBlocks = {}, tabCache = {};
+let tab = "Run", timer = null, pendingCount = 0;
+let selectedTaskId = null, panelOpener = null;
+let dagZoom = 1.0, dagScroll = { left: 0, top: 0 };
+
+const STATUSES = {
+  todo: { sym: "○", text: "waiting", cls: "todo" }, running: { sym: "▶", text: "running", cls: "running" },
+  verifying: { sym: "▶", text: "verifying", cls: "verifying" }, integrating: { sym: "▶", text: "integrating", cls: "integrating" },
+  done: { sym: "✓", text: "done", cls: "done" }, pending_user: { sym: "!", text: "needs you", cls: "pending_user" },
+  needs_lead: { sym: "?", text: "with lead", cls: "needs_lead" }, failed: { sym: "✕", text: "failed", cls: "failed" },
+  cancelled: { sym: "–", text: "cancelled", cls: "cancelled" }
+};
 
 async function api(path, body) {
   const r = await fetch("/api/" + path, {method: body ? "POST" : "GET",
@@ -35,142 +324,1220 @@ async function api(path, body) {
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
+
 // Every string becomes a text node: nothing coming from agents, repos or the DB is ever parsed as HTML.
 function h(tag, props, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
     if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
     else if (k === "class") e.className = v;
+    else if (k === "role" || k.startsWith("aria")) { if (v != null && v !== false) e.setAttribute(k.replace(/^aria(?=[A-Z])/, "aria-").toLowerCase(), v); }
+    else if (k === "style" && typeof v === "object") Object.assign(e.style, v);
     else e[k] = v;
   }
   for (const k of kids.flat(Infinity)) if (k !== null && k !== undefined && k !== false) e.append(k instanceof Node ? k : String(k));
   return e;
 }
-function say(text, cls) { const m = document.getElementById("msg"); m.className = cls || "muted"; m.textContent = text; }
+
+function badge(status) {
+  const s = STATUSES[status] || { sym: "•", text: status, cls: "unknown" };
+  const isPulse = ["running", "verifying", "integrating"].includes(status);
+  return h("span", {
+    class: "badge " + s.cls + (isPulse ? " pulse" : ""),
+    title: status
+  },
+    h("span", {class: "badge-sym", "aria-hidden": "true"}, s.sym),
+    " ",
+    h("span", {class: "badge-text"}, t(s.text))
+  );
+}
+
+function say(text, cls) {
+  if (!text) return;
+  const toasts = document.getElementById("toasts");
+  if (!toasts) return;
+  const isErr = cls === "err";
+  const el = h("div", {class: "toast " + (cls || ""), role: isErr ? "alert" : null},  // the container is the polite live region
+    h("span", {class: "toast-msg"}, text),
+    h("button", {class: "toast-close", ariaLabel: t("Close notification"), onclick: () => el.remove()}, "✕")
+  );
+  toasts.append(el);
+  if (!isErr) setTimeout(() => el.remove(), 5000);
+}
+
 async function act(fn, ok) {
-  try { const r = await fn(); say(ok || (r && r.ok) || "done", "ok"); } catch (e) { say(e.message, "err"); }
+  try { const r = await fn(); say(t(ok || (r && r.ok) || "done"), "ok"); } catch (e) { say(t(e.message), "err"); }
   render();
 }
+
 const draft = (key, props) => h(props.rows ? "textarea" : "input", Object.assign({value: drafts[key] || "", oninput: e => drafts[key] = e.target.value}, props));
-const table = (head, rows) => h("table", {}, h("tr", {}, head.map(x => h("th", {}, x))), rows.map(r => h("tr", {}, r.map(c => h("td", {}, c)))));
-const btn = (label, fn) => h("button", {onclick: fn}, label);
+
+const table = (head, rows) => h("div", {class: "table-wrap"},
+  h("table", {},
+    h("thead", {}, h("tr", {}, head.map(x => h("th", {}, x)))),
+    h("tbody", {}, rows.map(r => h("tr", {}, r.map(c => h("td", {}, c)))))
+  )
+);
+
+const btn = (label, fn, cls) => h("button", {onclick: fn, class: cls || "secondary"}, label);
 const time = ts => new Date(ts * 1000).toLocaleTimeString();
 
-async function Run() {
-  const s = await api("state"), live = t => !["done", "failed", "cancelled"].includes(t.status);
-  const pending = s.tasks.filter(t => t.status === "pending_user");
-  return h("div", {},
-    h("div", {class: "row"}, h("span", {class: "muted"}, s.project), " | run ", h("b", {}, s.run || "none"),
-      " | ", h("span", {class: s.status || ""}, s.status || (s.run ? "open" : "")), " | engine ", h("b", {}, s.engine ? "running" : "stopped")),
-    s.goal && h("div", {class: "card"}, h("b", {}, "Goal: "), s.goal),
-    !s.has_team && h("p", {class: "err"}, "No team yet: pick one in the Team tab (or run python -m orch init)."),
-    !s.engine && h("div", {class: "card"},
-      draft("goal", {rows: 3, placeholder: "What should the team build or fix? (the lead plans it, the reviewer checks the plan)"}),
-      h("div", {class: "row"},
-        h("label", {}, h("input", {type: "checkbox", checked: !!drafts.yes, onchange: e => drafts.yes = e.target.checked}), " auto-approve the reviewed plan"),
-        btn("Start run", () => act(() => api("run", {goal: drafts.goal || "", yes: !!drafts.yes}))),
-        s.run && !["done", "failed", "cancelled"].includes(s.status) && btn("Resume run " + s.run, () => act(() => api("resume", {}))))),
-    pending.length > 0 && h("h3", {}, "Waiting for you"),
-    pending.map(t => h("div", {class: "card"}, h("b", {}, t.id + ": " + t.title), h("pre", {}, t.question || ""),
-      draft("ans:" + t.id, {rows: 2, placeholder: "yes / retry / cancel / reassign <worker> / any instruction"}),
-      h("div", {class: "row"}, btn("Send answer", () => act(() => api("answer", {task: t.id, text: drafts["ans:" + t.id] || "yes"})))))),
-    s.tasks.length > 0 && h("h3", {}, "Board"),
-    s.tasks.length > 0 && table(["id", "status", "worker", "try", "deps", "title", ""], s.tasks.map(t => [
-      t.id, h("span", {class: t.status}, t.status), t.assignee || "", t.attempts, t.deps.join(", "), t.title,
-      live(t) ? btn("cancel", () => act(() => api("cancel", {task: t.id}))) : ""])),
-    s.tasks.some(live) && btn("Cancel all", () => confirm("Cancel every unfinished task?") && act(() => api("cancel", {task: "all"}))),
-    s.report && [h("h3", {}, "Report"), h("pre", {}, s.report)],
-    s.plan && [h("h3", {}, "Plan"), h("pre", {}, s.plan)],
-    s.log && [h("h3", {}, "Engine console"), h("pre", {}, s.log)]);
+const svg = (tag, attrs, ...kids) => {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs))
+    if (typeof v === "function") e.addEventListener(k.slice(2), v);
+    else if (v !== null) e.setAttribute(/^aria[A-Z]/.test(k) ? "aria-" + k.slice(4).toLowerCase() : k, v);
+  e.append(...kids);
+  return e;
+};
+
+function detailsBlock(key, title, content) {
+  const d = h("details", {
+    ontoggle: e => { openBlocks[key] = e.target.open; }
+  },
+    h("summary", {}, title),
+    h("pre", {class: "mono"}, content)
+  );
+  if (openBlocks[key]) d.open = true;
+  return d;
 }
 
-async function Events() {
-  const ev = await api("events");
-  return table(["time", "kind", "task", "actor", "message"], ev.map(e => [time(e.ts), h("span", {class: e.kind}, e.kind), e.task || "", e.actor, e.body]));
+function selectTask(id, opener) {  // opener = id of the node, row button or bar to focus again on close (renders replace elements)
+  selectedTaskId = id;
+  panelOpener = opener;
+  render().then(() => {
+    const p = document.getElementById("task-panel");
+    if (p) {
+      const b = p.querySelector("button");
+      if (b) b.focus();
+      else p.focus();
+    }
+  });
+}
+
+function closeTaskPanel() {
+  selectedTaskId = null;
+  render().then(() => {
+    const o = panelOpener && document.getElementById(panelOpener);
+    if (o) o.focus();
+    panelOpener = null;
+  });
+}
+
+function taskPanel(tNode, s) {
+  const pJ = (x, d) => { try { return typeof x === "string" ? JSON.parse(x || "null") : x; } catch { return d; } };
+  const spec = pJ(tNode.spec, {}) || {}, handoff = pJ(tNode.handoff, null);
+  const attempts = (s.attempts || []).filter(a => a.task === tNode.id);
+  const sRow = (lbl, ...kids) => h("div", {class: "spec-row"}, h("div", {class: "spec-label"}, t(lbl)), ...kids);
+  const sList = arr => h("ul", {class: "spec-list"}, arr.map(a => h("li", {}, a))), arrOf = x => Array.isArray(x) ? x : [x];
+
+  return h("div", {id: "task-panel", class: "card task-panel", tabIndex: -1, role: "region", ariaLabel: t("Task details for {id}", {id: tNode.id})},
+    h("div", {class: "task-panel-header"},
+      h("div", {},
+        h("div", {class: "row"}, h("b", {class: "mono"}, tNode.id), badge(tNode.status)),
+        h("h3", {class: "task-panel-title"}, tNode.title)
+      ),
+      h("button", {class: "secondary dag-btn", ariaLabel: t("Close task details"), onclick: closeTaskPanel}, "✕")
+    ),
+    h("div", {class: "task-panel-meta"},
+      h("span", {}, t("Worker: "), h("b", {class: "mono"}, tNode.assignee || t("none"))),
+      h("span", {}, t("Tries: "), h("b", {class: "tabular"}, tNode.attempts)),
+      h("span", {}, t("Deps: "), h("b", {class: "mono"}, tNode.deps && tNode.deps.length ? tNode.deps.join(", ") : t("none")))
+    ),
+    (spec.acceptance || spec.scope_paths || spec.verify) ? h("div", {class: "task-panel-section"},
+      h("h4", {}, t("Specification")),
+      spec.acceptance && spec.acceptance.length ? sRow("Acceptance:", sList(spec.acceptance)) : null,
+      spec.scope_paths && spec.scope_paths.length ? sRow("Scope: ", h("span", {class: "mono"}, spec.scope_paths.join(", "))) : null,
+      spec.verify && spec.verify.length ? sRow("Verify:", spec.verify.map(cmd => h("div", {class: "mono"}, Array.isArray(cmd) ? cmd.join(" ") : String(cmd)))) : null
+    ) : null,
+    (tNode.question || tNode.answer || tNode.note) ? h("div", {class: "task-panel-section"},
+      tNode.question ? sRow("Question:", h("p", {class: "prose question"}, tNode.question)) : null,
+      tNode.answer ? sRow("Answer:", h("p", {class: "prose"}, tNode.answer)) : null,
+      tNode.note ? sRow("Note:", h("p", {class: "prose"}, tNode.note)) : null
+    ) : null,
+    attempts.length ? h("div", {class: "task-panel-section"},
+      h("h4", {}, t("Attempts ({n})", {n: attempts.length})),
+      table([t("Agent / Model"), t("Result"), t("Failure"), t("Tokens (in / out)"), t("Duration"), t("Started"), t("Evidence dir")], attempts.map(a => {
+        const isOk = a.outcome === "ok" || a.outcome === "integrated", isRunning = a.ended == null;
+        const resEl = isOk ? h("span", {class: "ok bold"}, t(a.outcome))
+          : (isRunning ? h("span", {class: "badge running pulse"}, t("running"))
+          : h("span", {class: "err bold"}, t(a.outcome) || a.failure || t("failed")));
+        const dur = a.started ? `${Math.round((a.ended || Date.now() / 1000) - a.started)}s` : "";
+        return [
+          h("span", {class: "mono"}, `${a.agent} / ${a.model}`),
+          resEl,
+          h("span", {class: "err mono"}, a.failure || ""),
+          h("span", {class: "tabular mono"}, `${(a.tokens_in || 0).toLocaleString()} / ${(a.tokens_out || 0).toLocaleString()}`),
+          h("span", {class: "tabular"}, dur),
+          h("span", {class: "tabular mono"}, a.started ? time(a.started) : ""),
+          a.dir ? h("code", {class: "selectable-dir mono"}, a.dir) : ""
+        ];
+      }))
+    ) : null,
+    handoff ? h("div", {class: "task-panel-section"},
+      h("h4", {}, t("Handoff")),
+      handoff.status ? sRow("Status: ", h("b", {}, handoff.status)) : null,
+      handoff.summary ? sRow("Summary: ", h("div", {class: "prose"}, handoff.summary)) : null,
+      handoff.files && handoff.files.length ? sRow("Files: ", h("span", {class: "mono"}, arrOf(handoff.files).join(", "))) : null,
+      handoff.decisions && handoff.decisions.length ? sRow("Decisions:", sList(arrOf(handoff.decisions))) : null,
+      handoff.facts && handoff.facts.length ? sRow("Facts:", sList(arrOf(handoff.facts).map(f => typeof f === "object" ? `${f.entity}: ${f.fact}` : String(f)))) : null,
+      handoff.question ? sRow("Question:", h("p", {class: "prose question"}, handoff.question)) : null
+    ) : null
+  );
+}
+
+function scoreView(s) {
+  const attempts = s.attempts || [];
+  if (!attempts.length) return h("div", {class: "card score-card"}, h("h3", {}, t("Score")), h("p", {class: "muted"}, t("No attempts yet.")));
+
+  const now = Date.now() / 1000;
+  const startedTimes = attempts.map(a => a.started).filter(tVal => tVal > 0);
+  const tMin = startedTimes.length ? Math.min(...startedTimes) : now;
+  const endedTimes = attempts.map(a => a.ended || now);
+  const tMax = Math.max(...endedTimes, tMin + 10);
+  const totalDur = Math.max(10, tMax - tMin);
+  const lane = a => `${a.agent} / ${a.model}`, lanes = [...new Set(attempts.map(lane))].sort();
+  const ends = Object.fromEntries(lanes.map(l => [l, []])), row = attempts.map(a => {  // first free sub-row of its lane
+    const e = ends[lane(a)];
+    let r = e.findIndex(end => end <= a.started);
+    if (r < 0) r = e.length;
+    e[r] = a.ended || now;
+    return r;
+  });
+
+  const candidateSteps = [5, 10, 15, 30, 60, 120, 150, 300, 600, 900, 1800, 3600];
+  let step = candidateSteps[0];
+  for (const cs of candidateSteps) { step = cs; if (totalDur / cs <= 8) break; }
+  const ticks = [];
+  for (let tVal = 0; tVal <= totalDur; tVal += step) ticks.push(tVal);
+
+  const fmtTick = sec => { const m = Math.floor(sec / 60), r = Math.floor(sec % 60); return `${m}:${r < 10 ? "0" : ""}${r}`; };
+  const LW = 180, RH = 32, TH = 24, chartW = 760, top = {};
+  let H = TH;
+  for (const l of lanes) { top[l] = H; H += ends[l].length * RH; }
+  H += 16;
+  const totalMin = Math.max(1, Math.round(totalDur / 60));
+  const ariaSummary = t("Score: {attempts} attempt(s) by {lanes} agent(s) over {min} minute(s)", {
+    attempts: attempts.length,
+    lanes: lanes.length,
+    min: totalMin
+  });
+
+  const sLine = (x1, y1, x2, y2, stroke, w, dash) => svg("line", {x1, y1, x2, y2, stroke, "stroke-width": w, "stroke-dasharray": dash});
+  const tickElements = ticks.flatMap(tVal => {
+    const x = LW + (tVal / totalDur) * (chartW - LW - 24);
+    return [
+      sLine(x, TH, x, H - 8, "var(--line)", 1, "2 2"),
+      svg("text", {x: x, y: TH - 6, class: "mono muted tabular", "font-size": "11px", "text-anchor": "middle"}, fmtTick(tVal))
+    ];
+  });
+
+  const laneElements = lanes.flatMap(laneName => {
+    const y = top[laneName];
+    return [
+      sLine(0, y, chartW, y, "var(--line)", 0.5),
+      svg("text", {x: 8, y: y + RH / 2 + 4, class: "mono muted", "font-size": "11px"}, laneName.length > 22 ? laneName.slice(0, 21) + "…" : laneName)
+    ];
+  });
+
+  const barElements = attempts.map((a, i) => {
+    const aEnd = a.ended || now, bId = "bar-" + i;
+    const x1 = LW + ((a.started - tMin) / totalDur) * (chartW - LW - 24);
+    const x2 = LW + ((aEnd - tMin) / totalDur) * (chartW - LW - 24);
+    const w = Math.max(4, x2 - x1), y = top[lane(a)] + row[i] * RH + 4, h = RH - 8;
+    const isOk = a.outcome === "ok" || a.outcome === "integrated", isRunning = a.ended == null, isFailed = !isOk && !isRunning;
+    const color = isOk ? "var(--done)" : (isRunning ? "var(--running)" : "var(--failed)");
+    const durSec = Math.round(aEnd - a.started), tokIn = a.tokens_in || 0, tokOut = a.tokens_out || 0;
+    const titleText = `${a.task} (${a.agent} / ${a.model})\n${t("Result")}: ${a.outcome || (isRunning ? t("running") : t("failed"))}${a.failure ? " (" + a.failure + ")" : ""}\n${t("Duration")}: ${durSec}s\nToken: ${tokIn.toLocaleString()} in, ${tokOut.toLocaleString()} out`;
+
+    return svg("g", {
+      class: "score-bar",
+      id: bId,
+      tabindex: "0",
+      role: "button",
+      ariaLabel: t("Attempt on {task}, {agent}/{model}, {status}", {
+        task: a.task, agent: a.agent, model: a.model, status: isOk ? t("done") : (isRunning ? t("running") : t("failed"))
+      }),
+      onclick: () => selectTask(a.task, bId),
+      onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectTask(a.task, bId); } }
+    },
+      svg("title", {}, titleText),
+      svg("rect", {x: x1, y: y, width: w, height: h, rx: 3, fill: color}),
+      w >= 26 ? svg("text", {x: x1 + 4, y: y + h / 2 + 4, fill: "var(--paper)", "font-family": "Cascadia Mono, monospace", "font-size": "11px", "font-weight": "600", "pointer-events": "none"}, `${a.task}${isFailed ? " ✕" : ""}`) : null
+    );
+  });
+
+  return h("div", {class: "card score-card"},
+    h("h3", {}, t("Score")),
+    h("div", {class: "score-wrap"},
+      svg("svg", {class: "score-svg", role: "img", ariaLabel: ariaSummary, width: "100%", height: H, viewBox: `0 0 ${chartW} ${H}`},
+        ...tickElements, ...laneElements, ...barElements
+      )
+    )
+  );
+}
+
+// The run's task graph, left to right: one column per dependency depth. Dashed = implicit order (work starts after PLAN and
+// SKILLS). edit = the plan editor's graph: lines can be clicked away, tasks dragged onto each other (connect).
+// ponytail: one barycenter pass done; remaining: more passes (backward/iterative), edge routing around intermediate nodes.
+function dag(tasks, edit) {
+  const by = Object.fromEntries(tasks.map(tNode => [tNode.id, tNode])), depth = {}, pos = {}, W = 200, H = 56, GX = 48, GY = 14;
+  const up = tNode => (tNode.deps.length ? tNode.deps : tNode.kind === "work" ? [by.SKILLS ? "SKILLS" : "PLAN"] : tNode.kind === "skills" ? ["PLAN"] : [])
+    .filter(d => by[d] && d !== tNode.id);
+  const col = tNode => {
+    if (!(tNode.id in depth)) { depth[tNode.id] = 0; depth[tNode.id] = Math.max(0, ...up(tNode).map(d => col(by[d]) + 1)); }  // 0 first: a cycle cannot loop
+    return depth[tNode.id];
+  };
+
+  const cols = [];
+  tasks.forEach((tNode, i) => {
+    const c = col(tNode);
+    while (cols.length <= c) cols.push([]);
+    cols[c].push({t: tNode, orig: i});
+  });
+
+  const rowOf = {};
+  if (cols.length > 0) {
+    cols[0].forEach((item, r) => { rowOf[item.t.id] = r; });
+    for (let c = 1; c < cols.length; c++) {
+      cols[c].forEach(item => {
+        const earlierDeps = up(item.t).filter(d => col(by[d]) < c && rowOf[d] !== undefined);
+        item.mean = earlierDeps.length > 0
+          ? earlierDeps.reduce((acc, d) => acc + rowOf[d], 0) / earlierDeps.length
+          : item.orig;
+      });
+      cols[c].sort((a, b) => a.mean !== b.mean ? a.mean - b.mean : a.orig - b.orig);
+      cols[c].forEach((item, r) => { rowOf[item.t.id] = r; });
+    }
+  }
+
+  cols.forEach((colItems, c) => {
+    colItems.forEach((item, r) => {
+      pos[item.t.id] = [c * (W + GX), r * (H + GY)];
+    });
+  });
+
+  const maxRows = Math.max(...cols.map(c => c.length), 0);
+  const width = Math.max(1, cols.length * (W + GX) - GX);
+  const height = Math.max(1, maxRows * (H + GY) - GY);
+
+  const edges = tasks.flatMap(tNode => up(tNode).flatMap(d => {
+    if (!pos[d] || !pos[tNode.id]) return [];
+    const [x1, y1] = pos[d], [x2, y2] = pos[tNode.id], a = x1 + W, b = y1 + H / 2, c = y2 + H / 2;
+    const p = `M${a},${b} C${a + GX / 2},${b} ${x2 - GX / 2},${c} ${x2},${c}`;
+    const isSelectedEdge = !edit && selectedTaskId && (d === selectedTaskId || tNode.id === selectedTaskId);
+    const line = svg("path", {
+      d: p,
+      class: "edge" + (isSelectedEdge ? " highlighted" : ""),
+      "stroke-dasharray": tNode.deps.length ? null : "4 3"
+    });
+    return edit ? [line, svg("path", {d: p, class: "hit", onclick: () => { tNode.deps = tNode.deps.filter(x => x !== d); render(); }},
+      svg("title", {}, t("{id} waits for {dep}: click to remove", {id: tNode.id, dep: d})))] : [line];
+  }));
+
+  const nodes = tasks.map(tNode => {
+    const s = STATUSES[tNode.status] || { sym: "•", text: tNode.status };
+    const isSel = !edit && selectedTaskId === tNode.id, nId = "node-" + tNode.id;
+    const truncTitle = tNode.title.length > 24 ? tNode.title.slice(0, 23) + "…" : tNode.title;
+    const tip = edit ? `${tNode.id}: ${tNode.title}\n${tNode.assignee || ""}. Drag onto another task to make that one wait for this one.`
+      : `${tNode.id}: ${tNode.title}\n${t(s.text)}${tNode.assignee ? ", " + tNode.assignee : ""}${tNode.attempts ? ", try " + tNode.attempts : ""}`;
+    return svg("g", {
+      class: "dag-node " + (edit ? "" : tNode.status) + (isSel ? " selected" : ""),
+      transform: `translate(${pos[tNode.id]})`,
+      id: edit ? null : nId,
+      "data-id": edit ? tNode.id : null,
+      tabindex: edit ? null : "0",
+      role: edit ? null : "button",
+      ariaLabel: edit ? null : `${tNode.id}, ${tNode.title}, ${t(s.text)}`,
+      onclick: edit ? null : () => selectTask(tNode.id, nId),
+      onkeydown: edit ? null : e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectTask(tNode.id, nId); } },
+      onpointerdown: edit ? e => connect(e, tNode.id) : null
+    },
+      svg("title", {}, tip),
+      svg("rect", {width: W, height: H, rx: 6, class: "dag-node-bg"}),
+      svg("path", {d: `M0,6 A6,6 0 0,1 6,0 L6,${H} A6,6 0 0,1 0,${H - 6} Z`, class: "dag-stripe " + (edit ? "edit" : tNode.status)}),
+      svg("text", {x: 14, y: 18, class: "head"}, edit ? tNode.id : `${tNode.id}  ${s.sym} ${t(s.text)}`),
+      svg("text", {x: 14, y: 34, class: "dag-title"}, truncTitle),
+      svg("text", {x: 14, y: 48, class: "dag-worker"}, tNode.assignee || "")
+    );
+  });
+
+  const nDone = tasks.filter(x => x.status === "done").length;
+  const nRun = tasks.filter(x => ["running", "verifying", "integrating"].includes(x.status)).length;
+  const graphSummary = nRun
+    ? t("Task graph: {total} tasks, {done} done, {running} running", {total: tasks.length, done: nDone, running: nRun})
+    : t("Task graph: {total} tasks, {done} done", {total: tasks.length, done: nDone});
+
+  const svgEl = svg("svg", {
+    width: Math.round(width * dagZoom),
+    height: Math.round(height * dagZoom),
+    viewBox: `0 0 ${width} ${height}`,
+    role: "group",
+    ariaLabel: graphSummary
+  }, ...edges, ...nodes);
+
+  const wrap = h("div", {
+    class: "dag-wrap",
+    onscroll: e => { dagScroll.left = e.currentTarget.scrollLeft; dagScroll.top = e.currentTarget.scrollTop; },
+    onwheel: e => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        dagZoom = Math.min(2.0, Math.max(0.4, +(dagZoom + (e.deltaY < 0 ? 0.1 : -0.1)).toFixed(2)));
+        render();
+      }
+    }
+  }, svgEl);
+
+  setTimeout(() => {  // runs once render() has attached the view (a frame callback never comes while the window is hidden)
+    wrap.scrollLeft = dagScroll.left;
+    wrap.scrollTop = dagScroll.top;
+  });
+
+  const cBtn = (label, aria, fn) => h("button", {class: "secondary dag-btn", ariaLabel: t(aria), onclick: fn}, label);
+  const controls = h("div", {class: "dag-controls"},
+    cBtn("−", "Zoom out", () => { dagZoom = Math.max(0.4, +(dagZoom - 0.2).toFixed(1)); render(); }),
+    cBtn("+", "Zoom in", () => { dagZoom = Math.min(2.0, +(dagZoom + 0.2).toFixed(1)); render(); }),
+    cBtn(t("Fit"), "Fit graph to view", () => {
+      dagZoom = Math.min(2.0, Math.max(0.4, +(((wrap.clientWidth || 800) - 24) / width).toFixed(2)));
+      dagScroll.left = dagScroll.top = 0;
+      render();
+    })
+  );
+
+  return h("div", {class: "dag-area dag"},
+    h("div", {class: "dag-header"}, h("h3", {}, edit ? t("Plan editor") : t("Task graph")), controls),
+    wrap
+  );
+}
+
+function connect(e, from) {  // a line follows the pointer; dropped on another task, that task waits for `from`
+  e.preventDefault();
+  const root = e.currentTarget.ownerSVGElement;
+  const at = ev => {
+    const b = root.getBoundingClientRect();
+    const vb = root.viewBox.baseVal;
+    const sx = vb && vb.width ? vb.width / b.width : 1;
+    const sy = vb && vb.height ? vb.height / b.height : 1;
+    return [(ev.clientX - b.left) * sx, (ev.clientY - b.top) * sy];
+  };
+  const [x, y] = at(e), line = svg("line", {class: "drag", x1: x, y1: y, x2: x, y2: y}), on = [["pointermove", ev => {
+    const [x2, y2] = at(ev);
+    line.setAttribute("x2", x2);
+    line.setAttribute("y2", y2);
+  }], ["pointerup", ev => end(ev)], ["pointercancel", ev => end(ev)]];
+  const end = ev => {
+    for (const [k, f] of on) removeEventListener(k, f);
+    line.remove();
+    const hit = ev.type === "pointerup" && document.elementFromPoint(ev.clientX, ev.clientY), g = hit && hit.closest("[data-id]");
+    if (g && g.getAttribute("data-id") !== from) addDep(drafts.plan.tasks.find(tNode => tNode.id === g.getAttribute("data-id")), from);
+  };
+  root.append(line);
+  for (const [k, f] of on) addEventListener(k, f);
+}
+
+function addDep(tNode, d) {  // t waits for d; refused when d already waits for t, directly or not (a cycle)
+  const by = Object.fromEntries(drafts.plan.tasks.map(x => [x.id, x])), seen = new Set(), todo = [d];
+  while (todo.length) {
+    const x = todo.pop();
+    if (x === tNode.id) { say(t("{dep} already waits for {id}: that would be a cycle", {dep: d, id: tNode.id}), "err"); return render(); }
+    if (!seen.has(x) && by[x]) { seen.add(x); todo.push(...by[x].deps); }
+  }
+  if (!tNode.deps.includes(d)) tNode.deps.push(d);
+  render();
+}
+
+// Edit the plan waiting for approval (drafts.plan): who does each task and what it waits for. The table is the keyboard route.
+function planEditor(s) {
+  const p = drafts.plan, drop = (tNode, d) => { tNode.deps = tNode.deps.filter(x => x !== d); render(); };
+  return h("div", {class: "plan-editor"},
+    h("p", {class: "prose muted"}, t("Drag from a task onto another: the second then waits for the first. Click a line to remove it. Saving makes a new plan version, which still needs your yes.")),
+    p.version !== s.edit.version && h("p", {class: "err"}, t("The plan is now v{version}: discard this edit and start again.", {version: s.edit.version})),
+    dag(p.tasks, true),
+    table([t("Task"), t("Worker"), t("Waits for")], p.tasks.map(tNode => [
+      h("div", {}, h("b", {class: "mono"}, tNode.id), h("div", {class: "muted"}, tNode.title)),
+      h("select", {ariaLabel: t("Worker") + " " + tNode.id, onchange: e => { tNode.assignee = e.target.value; render(); }},
+        [...new Set([...s.edit.workers, tNode.assignee])].map(w => h("option", {value: w, selected: w === tNode.assignee}, w))),
+      h("div", {class: "row"}, p.tasks.filter(x => x.id !== tNode.id).map(x => h("label", {class: "checkbox-label"},
+        h("input", {type: "checkbox", checked: tNode.deps.includes(x.id), onchange: e => e.target.checked ? addDep(tNode, x.id) : drop(tNode, x.id)}),
+        " ", h("span", {class: "mono"}, x.id))))
+    ])),
+    h("div", {class: "row"},
+      btn(t("Save as plan v{version}", {version: p.version + 1}), () => act(async () => {
+        const r = await api("plan", {version: p.version, tasks: p.tasks.map(tNode => ({id: tNode.id, deps: tNode.deps, assignee: tNode.assignee}))});
+        delete drafts.plan;
+        return r;
+      }), "primary"),
+      btn(t("Discard"), () => { delete drafts.plan; render(); }, "secondary")
+    )
+  );
+}
+
+async function Run(data) {
+  const s = data || await api("state");
+  const live = tNode => !["done", "failed", "cancelled"].includes(tNode.status);
+  if (drafts.plan && !s.edit) { delete drafts.plan; say(t("The plan is not waiting for approval any more: your edit was dropped"), "err"); }
+  const pending = s.tasks.filter(tNode => tNode.status === "pending_user");
+
+  const totalTasks = s.tasks.length;
+  const nDone = s.tasks.filter(tNode => tNode.status === "done").length;
+  const nActive = s.tasks.filter(tNode => ["running", "verifying", "integrating"].includes(tNode.status)).length;
+  const nWaiting = s.tasks.filter(tNode => ["pending_user", "needs_lead"].includes(tNode.status)).length, nLead = nWaiting - pending.length;
+  const nFailed = s.tasks.filter(tNode => ["failed", "cancelled"].includes(tNode.status)).length, nCancelled = s.tasks.filter(tNode => tNode.status === "cancelled").length;
+  const nTodo = s.tasks.filter(tNode => tNode.status === "todo").length;
+
+  const countParts = [
+    nDone && t("{n} done", {n: nDone}),
+    nActive && t("{n} running", {n: nActive}),
+    pending.length && t("{n} needs you", {n: pending.length}),
+    nLead && t("{n} with lead", {n: nLead}),
+    (nFailed - nCancelled > 0) && t("{n} failed", {n: nFailed - nCancelled}),
+    nCancelled && t("{n} cancelled", {n: nCancelled}),
+    nTodo && t("{n} todo", {n: nTodo})
+  ].filter(Boolean);
+  const countsText = countParts.length > 0 ? countParts.join(", ") : t("{n} tasks", {n: totalTasks});
+
+  const tokensUsed = (s.attempts || []).reduce((acc, a) => acc + (a.tokens_in || 0) + (a.tokens_out || 0), 0);
+  const fmtK = n => n >= 1e6 ? (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + "m" : (n >= 1e3 ? (n / 1e3).toFixed(n % 1e3 ? 1 : 0) + "k" : String(n));
+  const tokenText = s.budget > 0 ? t("{used} / {budget} tokens", {used: fmtK(tokensUsed), budget: fmtK(s.budget)}) : t("{used} tokens", {used: fmtK(tokensUsed)});
+
+  const headerEl = h("div", {class: "run-header"},
+    h("div", {class: "run-header-top"},
+      h("h1", {class: "run-title"}, s.goal || (s.run ? `${t("Run")} ${s.run}` : "Orchestra")),
+      s.tasks.some(live) ? btn(t("Cancel all"), () => confirm(t("Cancel every unfinished task? Running and queued work will be stopped.")) && act(() => api("cancel", {task: "all"}), t("Cancelled all tasks")), "danger") : null
+    ),
+    h("div", {class: "run-meta-row"},
+      h("span", {class: "mono muted"}, s.project),
+      h("span", {}, t("run"), " ", h("b", {class: "mono"}, s.run || t("none"))),
+      s.status && STATUSES[s.status] ? badge(s.status) : h("span", {class: "mono muted"}, s.status ? t(s.status) : (s.run ? t("open") : t("idle"))),
+      h("span", {}, t("engine"), " ", h("b", {class: s.engine ? "ok" : "muted"}, s.engine ? t("running") : t("stopped")))
+    ),
+    totalTasks > 0 ? h("div", {class: "run-progress-row"},
+      h("div", {class: "run-progress-wrap"},
+        h("div", {class: "progress-bar", role: "progressbar", ariaValuemin: 0, ariaValuemax: totalTasks, ariaValuenow: nDone, ariaLabel: t("Task progress: {counts}", {counts: countsText})},
+          [["done", nDone], ["running", nActive], ["waiting", nWaiting], ["failed", nFailed], ["todo", nTodo]]
+            .filter(([, n]) => n > 0).map(([c, n]) => h("div", {class: "progress-seg " + c, style: {width: `${n / totalTasks * 100}%`}}))
+        ),
+        h("span", {class: "progress-text"}, countsText)
+      ),
+      h("span", {class: "token-stat tabular", title: `${tokensUsed.toLocaleString()} tokens${s.budget ? " (budget: " + s.budget.toLocaleString() + ")" : ""}`}, tokenText)
+    ) : null
+  );
+
+  const waitingCards = pending.map(tNode => {
+    const isPlan = tNode.kind === "plan" || tNode.id === "PLAN";
+    const isReview = tNode.kind === "review" || tNode.id.startsWith("REVIEW");
+    const isGate = tNode.kind === "gate" || tNode.id.startsWith("BUDGET");
+    const isSkills = tNode.kind === "skills" || tNode.id === "SKILLS";
+
+    const otherWorkers = (s.workers || []).filter(w => w !== tNode.assignee);
+    const reassignId = "reassign-" + tNode.id, aId = "ans-" + tNode.id, dKey = "ans:" + tNode.id;
+    const ans = text => act(async () => { const r = await api("answer", {task: tNode.id, text}); delete drafts[dKey]; return r; }, t("Sent answer"));
+
+    const quickBtns = [];
+    if (isPlan) {
+      quickBtns.push(btn(t("Approve plan"), () => ans("yes"), "primary"));
+      if (s.edit) quickBtns.push(btn(t("Edit plan"), () => { drafts.plan = {version: s.edit.version, tasks: s.edit.tasks.map(x => ({...x, deps: [...x.deps]}))}; render(); }, "secondary"));
+    } else if (isReview) {
+      quickBtns.push(btn(t("Accept"), () => ans("accept"), "primary"), btn(t("Review again"), () => ans("retry"), "secondary"));
+    } else if (isGate) {
+      if (s.budget > 0) quickBtns.push(btn(t("Continue with double budget"), () => ans(String(s.budget * 2)), "primary"));
+      quickBtns.push(btn(t("Stop run"), () => confirm(t("Stop run? Every unfinished task will be cancelled.")) && ans("stop"), "danger"));
+    } else if (isSkills) {
+      quickBtns.push(btn(t("Install"), () => ans("yes"), "primary"), btn(t("Skip"), () => ans("no"), "secondary"));
+    } else {
+      quickBtns.push(btn(t("Yes"), () => ans("yes"), "primary"), btn(t("Retry"), () => ans("retry"), "secondary"));
+      if (otherWorkers.length > 0) {
+        quickBtns.push(h("div", {class: "reassign-group"},
+          h("label", {htmlFor: reassignId, class: "muted"}, t("Worker:")),
+          h("select", {id: reassignId, onchange: e => drafts[reassignId] = e.target.value},
+            otherWorkers.map(w => h("option", {value: w, selected: w === drafts[reassignId]}, w))),
+          btn(t("Reassign"), () => ans(`reassign ${otherWorkers.includes(drafts[reassignId]) ? drafts[reassignId] : otherWorkers[0]}`), "secondary")
+        ));
+      }
+      quickBtns.push(btn(t("Cancel task"), () => confirm(t("Cancel task {id}?", {id: tNode.id})) && ans("cancel"), "danger"));
+    }
+
+    const freeTextLabel = isPlan ? t("Feedback for a new plan")
+      : (isGate ? t("New budget or instruction")
+      : (isReview ? t("Instructions for review") : t("Your answer")));
+
+    return h("div", {class: "card card-waiting", id: `wait-${tNode.id}`},
+      h("div", {class: "row"}, h("b", {class: "mono"}, tNode.id + ":"), h("span", {class: "bold"}, tNode.title), badge(tNode.status)),
+      tNode.question ? h("p", {class: "prose question"}, tNode.question) : null,
+      h("div", {class: "quick-actions"}, ...quickBtns),
+      h("div", {class: "field"},
+        h("label", {htmlFor: aId}, freeTextLabel),
+        draft(dKey, {
+          id: aId,
+          rows: 2,
+          placeholder: isPlan ? t("e.g. split T2 into two tasks") : (isGate ? t("e.g. 500k or stop") : t("yes / retry / cancel / reassign <worker> / instructions"))
+        })
+      ),
+      h("div", {class: "row"},
+        btn(isPlan ? t("Send feedback") : t("Send answer"), () => (drafts[dKey] || "").trim()
+          ? ans(drafts[dKey].trim()) : say(t("Type an answer first, or use a button above"), "err"), "secondary")
+      )
+    );
+  });
+
+  const waitingColumn = pending.length > 0 ? h("div", {class: "waiting-col"},
+    h("h3", {}, t("Waiting for you ({n})", {n: pending.length})),
+    ...waitingCards
+  ) : null;
+
+  let dagSection;
+  if (drafts.plan) {
+    dagSection = planEditor(s);
+  } else if (s.tasks.length > 0) {
+    dagSection = dag(s.tasks);
+  } else {
+    dagSection = null;
+  }
+
+  const gridSection = (waitingColumn || dagSection) ? h("div", {
+    class: "run-grid" + (waitingColumn ? " has-waiting" : "")
+  },
+    waitingColumn,
+    dagSection
+  ) : null;
+
+  const selectedTask = selectedTaskId ? s.tasks.find(tNode => tNode.id === selectedTaskId) : null;
+  const panelSection = selectedTask ? taskPanel(selectedTask, s) : null;
+
+  const scoreSection = s.run ? scoreView(s) : null;
+
+  const boardSection = s.tasks.length > 0 ? h("div", {},
+    h("h3", {}, t("Board")),
+    table([t("Task"), t("Status"), t("Worker"), h("span", {class: "align-right"}, t("Try")), t("Deps"), t("Title"), ""], s.tasks.map(tNode => [
+      h("button", {
+        class: "task-link-btn mono bold",
+        id: "row-" + tNode.id,
+        ariaLabel: t("Open details for task {id}", {id: tNode.id}),
+        onclick: () => selectTask(tNode.id, "row-" + tNode.id)
+      }, tNode.id),
+      badge(tNode.status),
+      h("span", {class: "mono"}, tNode.assignee || ""),
+      h("span", {class: "tabular align-right"}, tNode.attempts),
+      h("span", {class: "mono nowrap"}, tNode.deps.join(", ")),
+      h("div", {class: "truncate", title: tNode.title}, tNode.title),
+      live(tNode) ? btn(t("Cancel"), () => act(() => api("cancel", {task: tNode.id}), t("Cancelled task")), "danger") : ""
+    ]))
+  ) : null;
+
+  const startCard = !s.engine ? h("div", {class: "card"},
+      h("div", {class: "field"},
+        h("label", {htmlFor: "goal-box"}, t("Goal")),
+        draft("goal", {id: "goal-box", rows: 3, placeholder: t("What should the team build or fix? (the lead plans it, the reviewer checks the plan)")})
+      ),
+      h("div", {class: "row"},
+        h("label", {class: "checkbox-label"},
+          h("input", {type: "checkbox", checked: !!drafts.yes, onchange: e => drafts.yes = e.target.checked}),
+          " ", t("Auto-approve the reviewed plan")
+        ),
+        btn(t("Start run"), () => act(() => api("run", {goal: drafts.goal || "", yes: !!drafts.yes})), "primary"),
+        s.run && !["done", "failed", "cancelled"].includes(s.status) ? btn(t("Resume run {run}", {run: s.run}), () => act(() => api("resume", {})), "secondary") : null
+      )
+    ) : null;
+
+  return h("div", {},
+    headerEl,
+    !s.has_team ? h("p", {class: "err"}, t("No team yet: pick one in the Team tab (or run python -m orch init).")) : null,
+    pending.length ? null : startCard,
+    gridSection,
+    panelSection,
+    pending.length ? startCard : null,
+    scoreSection,
+    boardSection,
+    s.report ? detailsBlock("report", t("Report"), s.report) : null,
+    s.plan ? detailsBlock("plan", t("Plan"), s.plan) : null,
+    s.log ? detailsBlock("log", t("Engine console"), s.log) : null
+  );
+}
+
+async function Events(data) {
+  const ev = data || await api("events");
+  if (!ev || !ev.length) return h("div", {class: "card"}, h("p", {class: "muted"}, t("No events yet.")), btn(t("Open Run"), () => { tab = "Run"; render(); }, "primary"));
+  return table([t("Time"), t("Kind"), t("Task"), t("Actor"), t("Message")], ev.map(e => [
+    h("span", {class: "tabular mono"}, time(e.ts)),
+    STATUSES[e.kind] ? badge(e.kind) : h("span", {class: "mono muted"}, e.kind),
+    h("span", {class: "mono"}, e.task || ""),
+    h("span", {class: "mono"}, e.actor),
+    h("div", {class: "truncate", title: e.body}, e.body)
+  ]));
+}
+
+async function Knowledge() {
+  const query = (drafts.kq || "").trim();
+  const r = query ? await api("kg?q=" + encodeURIComponent(query)) : {facts: [], links: []};
+  return h("div", {},
+    h("p", {class: "prose muted"}, t("Facts published by integrated tasks (only from work that passed verification), searchable by every agent.")),
+    h("div", {class: "row"},
+      h("div", {class: "field field-grow"},
+        h("label", {htmlFor: "kq-input"}, t("Search facts")),
+        draft("kq", {id: "kq-input", type: "search", placeholder: "e.g. auth api", onkeydown: e => e.key === "Enter" && render()})
+      ),
+      h("div", {class: "field-action"}, btn(t("Search"), () => render(), "primary"))
+    ),
+    !query ? h("p", {class: "muted"}, t("Search facts across tasks, e.g. auth api"))
+      : (!r.facts.length ? h("p", {class: "muted"}, t("No facts match: facts appear when tasks pass verification.")) : null),
+    r.facts.length ? table([t("Entity"), t("Fact"), t("Task")], r.facts.map(f => [h("span", {class: "mono bold"}, f.entity), h("div", {class: "truncate", title: f.fact}, f.fact), h("span", {class: "mono"}, f.task)])) : null,
+    r.links.length ? table([t("From"), t("Relation"), t("To")], r.links.map(l => [h("span", {class: "mono"}, l.src), h("span", {class: "mono muted"}, l.rel), h("span", {class: "mono"}, l.dst)])) : null
+  );
 }
 
 async function Agents() {
   const r = await api("agents");
+  const agentEntries = Object.entries(r.agents || {});
+
+  const topHint = h("p", {class: "prose muted"}, t("Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orchestra never sees passwords. A probe sends one tiny prompt per agent to prove the account works."));
+
+  const actionRow = h("div", {class: "row"},
+    btn(t("Discover"), () => act(() => api("discover", {})), "primary"),
+    btn(t("Discover + probe"), () => act(() => api("discover", {probe: true})), "secondary")
+  );
+
+  if (agentEntries.length === 0) {
+    return h("div", {},
+      topHint,
+      actionRow,
+      h("div", {class: "card", style: {marginTop: "16px"}},
+        h("p", {class: "muted"}, t("No agents discovered yet.")),
+        btn(t("Discover agents"), () => act(() => api("discover", {})), "primary")
+      )
+    );
+  }
+
+  const agentRows = agentEntries.map(([id, a]) => {
+    const idEl = h("div", {}, h("b", {class: "mono"}, id), h("div", {class: "muted"}, a.name));
+
+    const instEl = a.installed
+      ? h("span", {class: "mono"}, a.version || t("yes"))
+      : h("span", {class: "muted"}, t("no") + (a.install ? " (" + a.install + ")" : ""));
+
+    const aBadge = (cls, sym, text, title) => h("span", {class: "badge " + cls, title: title || ""}, h("span", {class: "badge-sym"}, sym), " ", text);
+
+    let authEl;
+    if (a.auth === "ok?") {
+      authEl = aBadge("done", "✓", t("credentials found (not proven)"), "ok?");
+    } else if (typeof a.auth === "string" && a.auth.startsWith("missing vault: ")) {
+      const keys = a.auth.slice(15).trim();
+      authEl = h("div", {class: "row", style: {margin: 0, gap: "6px"}},
+        aBadge("failed", "✕", t("missing key {keys}", {keys}), a.auth),
+        btn(t("Add key"), () => { tab = "Vault"; drafts.vname = keys.split(",")[0].trim(); render(); }, "secondary")
+      );
+    } else {
+      authEl = aBadge("todo", "?", t("not checked"), a.auth || "unknown");
+    }
+
+    let probeEl;
+    if (a.probe) {
+      if (a.probe.ok) {
+        probeEl = aBadge("done", "✓", [t("probe ok"), " ", h("span", {class: "mono"}, `${a.probe.model} ${a.probe.ts || ""}`)], `${a.probe.model} (${a.probe.ts})`);
+      } else {
+        const fullErr = (a.probe.class || "error") + (a.probe.error ? ": " + a.probe.error : "");
+        probeEl = aBadge("failed", "✕", h("span", {class: "truncate", style: {maxWidth: "200px"}}, fullErr), fullErr);
+      }
+    } else {
+      probeEl = h("span", {class: "badge todo"}, "— " + t("not probed"));
+    }
+
+    const ms = a.models || [];
+    let modelsEl;
+    if (ms.length === 0) {
+      modelsEl = h("span", {class: "muted"}, "—");
+    } else if (ms.length <= 4) {
+      modelsEl = h("span", {class: "mono"}, ms.join(", "));
+    } else {
+      const shown = ms.slice(0, 4).join(", ");
+      modelsEl = h("span", {class: "mono", title: ms.join(", ")},
+        shown + ", ",
+        h("span", {class: "muted"}, t("+{n} more", {n: ms.length - 4}))
+      );
+    }
+
+    const keysEl = h("span", {class: "mono"}, (r.keys && r.keys[id] || []).join(", ") || "—");
+
+    const loginEl = (a.installed && a.login)
+      ? btn(t("Log in"), () => act(() => api("login", {agent: id})), "secondary")
+      : "";
+
+    return [idEl, instEl, authEl, probeEl, modelsEl, keysEl, loginEl];
+  });
+
   return h("div", {},
-    h("p", {class: "muted"}, "Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orchestra never sees passwords. A probe sends one tiny prompt per agent to prove the account works."),
-    h("div", {class: "row"}, btn("Discover", () => act(() => api("discover", {}))), btn("Discover + probe", () => act(() => api("discover", {probe: true})))),
-    Object.keys(r.agents).length === 0 && h("p", {}, "Nothing discovered yet: press Discover."),
-    table(["agent", "installed", "auth", "probe", "models", "keys it can use", ""], Object.entries(r.agents).map(([id, a]) => [
-      h("div", {}, h("b", {}, id), h("div", {class: "muted"}, a.name)),
-      a.installed ? (a.version || "yes") : h("span", {class: "muted"}, "no " + (a.install ? "(" + a.install + ")" : "")),
-      a.auth || "", a.probe ? (a.probe.ok ? h("span", {class: "ok"}, "ok " + a.probe.model) : h("span", {class: "err"}, a.probe.class + ": " + (a.probe.error || ""))) : "",
-      (a.models || []).slice(0, 12).join(", ") + ((a.models || []).length > 12 ? " ..." : ""),
-      (r.keys[id] || []).join(", "),
-      a.installed && a.login ? btn("Log in", () => act(() => api("login", {agent: id}))) : ""])));
+    topHint,
+    actionRow,
+    table([t("Agent"), t("Installed"), t("Auth"), t("Probe"), t("Models"), t("Keys it can use"), ""], agentRows)
+  );
+}
+
+async function Team() {
+  const tData = await api("team");
+  const cands = tData.candidates || [];
+
+  if (cands.length === 0) {
+    return h("div", {},
+      h("p", {class: "prose muted"}, t("No usable models found yet: discover agents or log in first.")),
+      btn(t("Open Agents"), () => { tab = "Agents"; render(); }, "primary")
+    );
+  }
+
+  if (drafts.team === undefined) {
+    const initObj = tData.team || tData.suggested || {
+      lead: { agent: cands[0][0], model: cands[0][1] },
+      reviewer: { agent: cands[0][0], model: cands[0][1] },
+      skill_architect: { agent: cands[0][0], model: cands[0][1] },
+      workers: { "worker-1": { agent: cands[0][0], model: cands[0][1], max: 1 } }
+    };
+    drafts.team = JSON.stringify(initObj, null, 2);
+  }
+
+  let teamObj = null, jsonError = null;
+  try {
+    teamObj = JSON.parse(drafts.team);
+    if (!teamObj || typeof teamObj !== "object" || Array.isArray(teamObj)) throw new Error("JSON must be an object");
+  } catch (e) {
+    jsonError = e.message;
+  }
+
+  const advBlock = h("details", {
+    ontoggle: e => { openBlocks.teamJson = e.target.open; }
+  },
+    h("summary", {}, t("Advanced: edit JSON")),
+    h("div", {style: {padding: "10px 14px"}},
+      h("div", {class: "field"},
+        h("label", {htmlFor: "team-input"}, t("Team configuration (JSON)")),
+        draft("team", {id: "team-input", rows: 14, spellcheck: false, onchange: () => render()})
+      )
+    )
+  );
+  if (openBlocks.teamJson || jsonError) advBlock.open = true;
+
+  const modelsBlock = h("details", {
+    ontoggle: e => { openBlocks.usableModels = e.target.open; }
+  },
+    h("summary", {}, t("Usable models ({n})", {n: cands.length})),
+    table([t("Agent"), t("Model"), t("Benchmarks, API reference price, our own run history")],
+      cands.map(([a, m, info]) => [
+        h("span", {class: "mono bold"}, a),
+        h("span", {class: "mono"}, m),
+        h("span", {}, info)
+      ])
+    )
+  );
+  if (openBlocks.usableModels) modelsBlock.open = true;
+
+  if (jsonError) {
+    const errCard = h("div", {class: "card card-err", role: "alert"},
+      h("h3", {}, t("Invalid team JSON")),
+      h("p", {class: "prose"}, t("The JSON below is invalid. Fix syntax errors or reset to saved team.")),
+      tData.team ? btn(t("Reset to saved team"), () => {
+        drafts.team = JSON.stringify(tData.team, null, 2);
+        render();
+      }, "secondary") : null
+    );
+    return h("div", {}, errCard, advBlock, modelsBlock);
+  }
+
+  // Ensure roles exist
+  if (!teamObj.lead) teamObj.lead = { agent: cands[0][0], model: cands[0][1] };
+  if (!teamObj.reviewer) teamObj.reviewer = { agent: cands[0][0], model: cands[0][1] };
+  if (!teamObj.skill_architect) teamObj.skill_architect = { agent: cands[0][0], model: cands[0][1] };
+  if (!teamObj.workers || typeof teamObj.workers !== "object") teamObj.workers = {};
+
+  const candOpts = curVal => {
+    const isCand = cands.some(c => `${c[0]}|||${c[1]}` === curVal);
+    const opts = (!isCand && curVal) ? [h("option", {value: curVal, selected: true}, `${curVal.replace("|||", " / ")} ${t("(not usable here)")}`)] : [];
+    return opts.concat(cands.map(c => {
+      const v = `${c[0]}|||${c[1]}`;
+      return h("option", {value: v, selected: isCand && v === curVal}, `${c[0]} / ${c[1]}`);
+    }));
+  };
+
+  const saveTeam = () => { drafts.team = JSON.stringify(teamObj, null, 2); render(); };
+
+  function renderRoleSelect(roleKey, labelText, hintText) {
+    const rVal = teamObj[roleKey] || {}, cur = `${rVal.agent || ""}|||${rVal.model || ""}`;
+    return h("div", {class: "field"},
+      h("label", {htmlFor: `role-${roleKey}`}, labelText),
+      h("select", {
+        id: `role-${roleKey}`,
+        onchange: e => {
+          const [a, m] = e.target.value.split("|||");
+          teamObj[roleKey] = { ...teamObj[roleKey], agent: a, model: m };
+          saveTeam();
+        }
+      }, candOpts(cur)),
+      h("span", {class: "field-hint"}, hintText)
+    );
+  }
+
+  const rolesCard = h("div", {class: "card"},
+    h("h3", {}, t("Roles")),
+    renderRoleSelect("lead", t("Lead"), t("lead plans and triages (strongest model)")),
+    renderRoleSelect("reviewer", t("Reviewer"), t("reviewer checks plans and results (ideally another vendor than the lead)")),
+    renderRoleSelect("skill_architect", t("Skill architect"), t("skill architect picks skills for tasks"))
+  );
+
+  const workerEntries = Object.entries(teamObj.workers);
+  const RESERVED_RULES = new Set(["common", "worker", "lead", "reviewer", "skill_architect"]);
+  const nameCounts = {};
+  for (const [wName] of workerEntries) nameCounts[wName] = (nameCounts[wName] || 0) + 1;
+
+  const getWorkerErr = wName => {
+    if (!wName || !/^[A-Za-z0-9][\w-]{0,31}$/.test(wName)) return t("Name must be 1-32 letters, digits, _ or -");
+    if (RESERVED_RULES.has(wName)) return t("Name cannot be a reserved role");
+    if (nameCounts[wName] > 1) return t("Worker names must be unique");
+    return null;
+  };
+
+  const workerRows = workerEntries.map(([wName, wVal], idx) => {
+    const wObj = (wVal && typeof wVal === "object") ? wVal : {};
+    const err = getWorkerErr(wName), cur = `${wObj.agent || ""}|||${wObj.model || ""}`;
+
+    const nameInput = h("input", {
+      type: "text",
+      id: `wname-${idx}`,
+      value: wName,
+      ariaLabel: t("Worker name"),
+      ariaInvalid: err ? "true" : null,
+      ariaDescribedby: err ? `werr-${idx}` : null,
+      onchange: e => {
+        const newName = e.target.value.trim();
+        if (newName && newName !== wName) {
+          const newWorkers = {};
+          for (const [k, v] of Object.entries(teamObj.workers)) newWorkers[k === wName ? newName : k] = v;
+          teamObj.workers = newWorkers;
+          saveTeam();
+        }
+      }
+    });
+
+    const candSelect = h("select", {
+      id: `wcand-${idx}`, ariaLabel: t("Agent / Model"),
+      onchange: e => { const [a, m] = e.target.value.split("|||"); wObj.agent = a; wObj.model = m; saveTeam(); }
+    }, candOpts(cur));
+
+    const maxInput = h("input", {
+      type: "number", min: "1", id: `wmax-${idx}`, value: wObj.max != null ? wObj.max : 1, ariaLabel: t("Parallel tasks"),
+      onchange: e => { wObj.max = Math.max(1, parseInt(e.target.value, 10) || 1); saveTeam(); }
+    });
+
+    const removeBtn = btn(t("Remove"), () => { delete teamObj.workers[wName]; saveTeam(); }, "danger");
+    if (workerEntries.length <= 1) removeBtn.disabled = true;
+
+    return h("div", {class: "worker-row"},
+      h("div", {class: "worker-field worker-field-name"}, h("label", {htmlFor: `wname-${idx}`}, t("Worker name")), nameInput, err ? h("span", {id: `werr-${idx}`, class: "field-error"}, err) : null),
+      h("div", {class: "worker-field worker-field-cand"}, h("label", {htmlFor: `wcand-${idx}`}, t("Agent / Model")), candSelect),
+      h("div", {class: "worker-field worker-field-max"}, h("label", {htmlFor: `wmax-${idx}`}, t("Parallel tasks")), maxInput),
+      h("div", {class: "worker-field"}, removeBtn)
+    );
+  });
+
+  const addWorkerBtn = btn(t("Add worker"), () => {
+    let n = 1;
+    while (teamObj.workers[`worker-${n}`]) n++;
+    const usedCands = new Set(Object.values(teamObj.workers).map(w => `${w.agent}|||${w.model}`));
+    const freeCand = cands.find(c => !usedCands.has(`${c[0]}|||${c[1]}`)) || cands[0];
+    teamObj.workers[`worker-${n}`] = { agent: freeCand[0], model: freeCand[1], max: 1 };
+    saveTeam();
+  }, "secondary");
+
+  const workersCard = h("div", {class: "card"},
+    h("h3", {}, t("Workers")),
+    workerRows.length ? h("div", {}, ...workerRows) : h("p", {class: "err"}, t("Team needs at least one worker")),
+    h("div", {style: {marginTop: "12px"}}, addWorkerBtn)
+  );
+
+  const buttons = [
+    btn(t("Save team"), () => {
+      if (workerEntries.length === 0) {
+        say(t("Team needs at least one worker"), "err");
+        return;
+      }
+      for (const [wName] of workerEntries) {
+        const err = getWorkerErr(wName);
+        if (err) {
+          say(err, "err");
+          return;
+        }
+      }
+      for (const r of ["lead", "reviewer", "skill_architect"]) {
+        if (!teamObj[r] || !teamObj[r].agent || !teamObj[r].model) {
+          say(t("Missing role: {role}", {role: r}), "err");
+          return;
+        }
+      }
+      act(() => api("team", {team: teamObj}), t("Team saved"));
+    }, "primary")
+  ];
+
+  if (tData.suggested) {
+    buttons.push(btn(t("Use suggested team"), () => {
+      const isDiff = tData.team && drafts.team !== JSON.stringify(tData.team, null, 2);
+      if (!isDiff || confirm(t("Discard current changes and use the suggested team?"))) {
+        drafts.team = JSON.stringify(tData.suggested, null, 2);
+        render();
+      }
+    }, "secondary"));
+  }
+
+  if (tData.team) {
+    buttons.push(btn(t("Reset to saved team"), () => {
+      drafts.team = JSON.stringify(tData.team, null, 2);
+      render();
+    }, "secondary"));
+  }
+
+  return h("div", {},
+    rolesCard,
+    workersCard,
+    h("div", {class: "row", style: {margin: "16px 0"}}, ...buttons),
+    advBlock,
+    modelsBlock
+  );
 }
 
 async function Vault() {
   const v = await api("vault");
-  return h("div", {},
-    h("p", {class: "muted"}, "API keys for agents that use them (e.g. ZAI_API_KEY for claude@zai, OPENAI_API_KEY for codex). Stored encrypted with Windows DPAPI for your user; each agent only receives the keys its adapter declares; values are masked here and redacted from logs."),
-    table(["name", "value", ""], Object.entries(v).map(([k, m]) => [k, m, btn("delete", () => confirm("Delete " + k + "?") && act(() => api("vault", {name: k, value: null})))])),
-    h("div", {class: "row"}, draft("vname", {type: "text", placeholder: "NAME_LIKE_THIS"}),
-      h("input", {type: "password", id: "vval", placeholder: "value", autocomplete: "off"}),
-      btn("Save key", () => act(async () => { const r = await api("vault", {name: drafts.vname || "", value: document.getElementById("vval").value}); drafts.vname = ""; return r; }, "saved"))));
-}
+  const entries = Object.entries(v || {});
 
-async function Team() {
-  const t = await api("team");
-  if (drafts.team === undefined) drafts.team = JSON.stringify(t.team || t.suggested || {}, null, 2);
-  return h("div", {},
-    h("p", {class: "muted"}, "lead = strongest model (plans, triages); reviewer = a different vendor if possible; workers = one per agent CLI. Edit the JSON, then save. Worker rule files are created in .orch/rules/."),
-    draft("team", {rows: 18, spellcheck: false}),
-    h("div", {class: "row"}, btn("Save team", () => act(() => api("team", {team: JSON.parse(drafts.team)}))),
-      t.suggested && btn("Use suggested team", () => { drafts.team = JSON.stringify(t.suggested, null, 2); render(); })),
-    h("h3", {}, "Usable models (agent / model / what we know)"),
-    t.candidates.length === 0 && h("p", {}, "None found yet: press Discover in the Agents tab (or log in to an agent first)."),
-    table(["agent", "model", "benchmarks, API reference price, our own run history"], t.candidates));
-}
+  const topNote = h("p", {class: "prose muted"}, t("API keys for agents that use them. Stored encrypted for this Windows user with DPAPI; each agent receives only declared keys; only masked values are returned."));
 
-async function Knowledge() {
-  const r = drafts.kq ? await api("kg?q=" + encodeURIComponent(drafts.kq)) : {facts: [], links: []};
-  return h("div", {},
-    h("p", {class: "muted"}, "Facts published by integrated tasks (only from work that passed verification), searchable by every agent."),
-    h("div", {class: "row"}, draft("kq", {type: "search", placeholder: "search facts, e.g. auth api", onkeydown: e => e.key === "Enter" && render()}), btn("Search", () => render())),
-    table(["entity", "fact", "task"], r.facts.map(f => [f.entity, f.fact, f.task])),
-    r.links.length > 0 && table(["from", "relation", "to"], r.links.map(l => [l.src, l.rel, l.dst])));
-}
+  let tableOrEmpty;
+  if (entries.length === 0) {
+    tableOrEmpty = h("p", {class: "prose muted", style: {margin: "12px 0"}}, t("No API keys in vault. Only agents that use API keys need one."));
+  } else {
+    tableOrEmpty = table([t("Name"), t("Value"), ""], entries.map(([k, m]) => [
+      h("span", {class: "mono bold"}, k),
+      h("span", {class: "mono muted"}, m),
+      btn(t("Delete"), () => confirm(t("Delete API key {name}? Agents needing it will fail authentication.", {name: k})) && act(() => api("vault", {name: k, value: null})), "danger")
+    ]));
+  }
 
-async function Skills() {
-  const r = await api("skills");
+  const addForm = h("div", {class: "card"},
+    h("h3", {}, t("Add or update key")),
+    h("div", {class: "row"},
+      h("div", {class: "field"},
+        h("label", {htmlFor: "vname-input"}, t("Key name")),
+        draft("vname", {id: "vname-input", type: "text", placeholder: "e.g. OPENAI_API_KEY"}),
+        h("span", {class: "field-hint"}, t("Upper-case name the agent expects, e.g. OPENAI_API_KEY"))
+      ),
+      h("div", {class: "field"},
+        h("label", {htmlFor: "vval"}, t("Key value")),
+        h("input", {type: "password", id: "vval", placeholder: "e.g. sk-...", autocomplete: "off"})
+      ),
+      h("div", {class: "field-action"},
+        btn(t("Save key"), () => act(async () => {
+          const name = (drafts.vname || "").trim();
+          const val = document.getElementById("vval").value;
+          if (!name) throw new Error(t("Key name is required"));
+          const r = await api("vault", {name, value: val});
+          drafts.vname = "";
+          return r;
+        }, t("Saved key")), "primary")
+      )
+    )
+  );
+
   return h("div", {},
-    h("p", {class: "muted"}, "Curated sources (pinned commits): " + r.sources.join(", ") + " + skills installed for your local agents. Refreshing downloads the index from github.com."),
-    btn("Refresh index", () => act(() => api("skill", {action: "refresh"}))),
-    r.run.length > 0 && h("h3", {}, "This run"),
-    r.run.length > 0 && table(["skill", "status", "tasks", "reason / scan", ""], r.run.map(s => [s.id, s.status, s.tasks, h("div", {}, s.reason, h("div", {class: "muted"}, s.scan || "")),
-      s.status === "proposed" ? h("span", {}, btn("approve", () => act(() => api("skill", {action: "approve", id: s.id}))), " ", btn("reject", () => act(() => api("skill", {action: "reject", id: s.id})))) : ""])),
-    h("h3", {}, "Index (" + r.index.length + ")"),
-    table(["id", "description"], r.index.map(s => [s.id, s.description])));
+    topNote,
+    tableOrEmpty,
+    addForm
+  );
 }
 
 async function Models() {
   const r = await api("models");
+  const cards = r.cards || {}, infoMap = r.info || {};
+  const mIds = Object.keys(cards);
+
+  const topNote = h("p", {class: "prose muted"}, t("Benchmarks: Epoch AI (CC-BY); prices/context: OpenRouter list prices (a reference: subscription CLIs do not bill per token). Data as of {date}.", {date: r.as_of || t("never")}));
+  const refreshBtn = btn(t("Refresh from public sources"), () => act(() => api("models", {refresh: true})), "primary");
+
+  if (mIds.length === 0) {
+    return h("div", {},
+      topNote,
+      h("div", {class: "row", style: {margin: "12px 0"}},
+        refreshBtn,
+        btn(t("Open Agents"), () => { tab = "Agents"; render(); }, "secondary")
+      ),
+      h("p", {class: "muted"}, t("No models found yet."))
+    );
+  }
+
+  drafts.modelsSort = drafts.modelsSort || { col: "eci", desc: true };
+  const sortCol = drafts.modelsSort.col;
+  const isDesc = drafts.modelsSort.desc;
+
+  const COLS = [
+    { id: "model", label: "Model" }, { id: "eci", label: "ECI" },
+    { id: "swe_bench", label: "SWE-bench" }, { id: "terminal_bench", label: "Terminal-bench" },
+    { id: "webdev_elo", label: "WebDev Elo" }, { id: "gpqa", label: "GPQA" },
+    { id: "context", label: "Context" }, { id: "price", label: "API price in / out ($/Mtok)" },
+    { id: "runs", label: "Our runs" }
+  ];
+
+  const getVal = (m, info, col) => col === "model" ? m : col === "price" ? info.price_in : col === "runs" ? (info.observed && info.observed.runs) : info[col];
+
+  const sortedIds = [...mIds].sort((a, b) => {
+    const infoA = infoMap[a] || {}, infoB = infoMap[b] || {};
+    const valA = getVal(a, infoA, sortCol), valB = getVal(b, infoB, sortCol);
+    if (valA == null && valB == null) return 0;
+    if (valA == null) return 1;
+    if (valB == null) return -1;
+    let cmp = typeof valA === "string" ? valA.localeCompare(valB) : valA - valB;
+    return isDesc ? -cmp : cmp;
+  });
+
+  const theadEls = COLS.map(c => {
+    const isSorted = sortCol === c.id;
+    const b = h("button", {
+      class: "sort-th-btn",
+      onclick: () => {
+        drafts.modelsSort = (drafts.modelsSort.col === c.id) ? { col: c.id, desc: !drafts.modelsSort.desc } : { col: c.id, desc: true };
+        render();
+      }
+    }, t(c.label) + (isSorted ? (isDesc ? " ↓" : " ↑") : ""));
+
+    return h("th", {
+      ariaSort: isSorted ? (isDesc ? "descending" : "ascending") : "none",
+      class: c.id !== "model" ? "th-right" : null
+    }, b);
+  });
+
+  const numCell = v => h("span", {class: (v != null ? "tabular" : "muted") + " align-right"}, v != null ? v : "—");
+
+  const rows = sortedIds.map(m => {
+    const info = infoMap[m] || {};
+    const ctx = info.context != null ? (info.context >= 1000 ? `${Math.round(info.context / 1000)}k` : info.context) : null;
+    const price = (info.price_in != null) ? `${info.price_in} / ${info.price_out}` : null;
+    const runs = (info.observed && info.observed.runs)
+      ? t("{runs} runs, ok {rate}, {avg}s", {runs: info.observed.runs, rate: info.observed.ok_rate, avg: info.observed.avg_s}) : null;
+    return [h("span", {class: "mono bold"}, m), numCell(info.eci), numCell(info.swe_bench), numCell(info.terminal_bench), numCell(info.webdev_elo), numCell(info.gpqa), numCell(ctx), numCell(price), numCell(runs)];
+  });
+
   return h("div", {},
-    h("p", {class: "muted"}, "Benchmarks: Epoch AI (CC-BY); prices/context: OpenRouter list prices (a reference: subscription CLIs do not bill per token). Data as of " + (r.as_of || "never") + "."),
-    btn("Refresh from public sources", () => act(() => api("models", {refresh: true}))),
-    table(["model", "card"], Object.entries(r.cards)));
+    topNote,
+    h("div", {class: "row", style: {margin: "12px 0"}}, refreshBtn),
+    h("div", {class: "table-wrap"},
+      h("table", {},
+        h("thead", {}, h("tr", {}, theadEls)),
+        h("tbody", {}, rows.map(r => h("tr", {}, r.map(c => h("td", {}, c)))))
+      )
+    )
+  );
 }
 
-const TABS = {Run, Events, Agents, Vault, Team, Knowledge, Skills, Models};
-async function render(auto) {  // auto refresh never clobbers a field the user is typing in
-  clearTimeout(timer);
-  const typing = auto && /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || "");
-  if (!typing) {
-    document.getElementById("tabs").replaceChildren(...Object.keys(TABS).map(n => h("button", {class: n === tab ? "on" : "", onclick: () => { tab = n; render(); }}, n)));
-    try { document.getElementById("main").replaceChildren(await TABS[tab]()); } catch (e) { document.getElementById("main").replaceChildren(h("p", {class: "err"}, e.message)); }
+async function Skills() {
+  const r = await api("skills");
+  const sourcesText = (r.sources || []).join(", ");
+  const topNote = h("p", {class: "prose muted"}, t("Curated sources (pinned commits): {sources} + skills installed for your local agents. Refreshing downloads the index from github.com.", {sources: sourcesText}));
+  const refreshBtn = btn(t("Refresh index"), () => act(() => api("skill", {action: "refresh"})), "primary");
+
+  if (!r.index || !r.index.length) {
+    return h("div", {}, topNote, h("div", {class: "card", style: {margin: "12px 0"}}, h("p", {class: "muted"}, t("Skill index is empty.")), refreshBtn));
   }
-  if (tab === "Run" || tab === "Events") timer = setTimeout(() => render(true), 3000);
+
+  const hasRun = r.run && r.run.length > 0;
+  return h("div", {},
+    topNote,
+    refreshBtn,
+    hasRun ? h("h3", {}, t("This run")) : null,
+    hasRun ? table([t("Skill"), t("Status"), t("Tasks"), t("Reason / Scan"), ""], r.run.map(s => [
+      h("span", {class: "mono bold"}, s.id),
+      STATUSES[s.status] ? badge(s.status) : h("span", {class: "mono muted"}, s.status),
+      h("span", {class: "mono"}, s.tasks || ""),
+      h("div", {}, h("div", {}, s.reason), h("div", {class: "muted mono"}, s.scan || "")),
+      s.status === "proposed" ? h("div", {class: "row"},
+        btn(t("Approve"), () => act(() => api("skill", {action: "approve", id: s.id})), "secondary"),
+        btn(t("Reject"), () => act(() => api("skill", {action: "reject", id: s.id})), "danger")
+      ) : ""
+    ])) : null,
+    h("h3", {}, t("Index ({n})", {n: r.index.length})),
+    table([t("Id"), t("Description")], r.index.map(s => [h("span", {class: "mono bold"}, s.id), h("div", {class: "truncate", title: s.description}, s.description)]))
+  );
 }
+
+const TABS = {Run, Events, Knowledge, Agents, Team, Vault, Models, Skills};
+
+function renderNav() {
+  const tabsEl = document.getElementById("tabs");
+  tabsEl.setAttribute("aria-label", t("Main navigation"));
+  tabsEl.replaceChildren(...Object.keys(TABS).map(n => {
+    const isCur = n === tab;
+    return h("button", {
+      class: (isCur ? "on " : "") + (n === "Agents" ? "tab-gap" : ""),
+      ariaCurrent: isCur ? "page" : null,
+      onclick: () => { tab = n; render(); }
+    }, t(n));
+  }));
+
+  const rightEl = document.getElementById("header-right");
+  if (rightEl) {
+    const isVi = lang === "vi", langAria = isVi ? "Switch to English" : "Chuyển sang tiếng Việt";
+    const langBtn = h("button", {
+      class: "lang-btn secondary", ariaLabel: langAria, title: langAria,
+      onclick: () => setLang(isVi ? "en" : "vi")
+    }, isVi ? "EN" : "VI");
+
+    const pill = pendingCount > 0 ? h("button", {
+      class: "pending-pill",
+      title: t("{n} task(s) waiting for you", {n: pendingCount}),
+      onclick: async () => {
+        tab = "Run";
+        await render();
+        const first = document.querySelector(".card-waiting");
+        if (first) {
+          first.scrollIntoView({behavior: "smooth", block: "start"});
+          const focusable = first.querySelector("button, input, textarea, select");
+          if (focusable) focusable.focus();
+        }
+      }
+    }, t("! Needs you {n}", {n: pendingCount})) : null;
+
+    rightEl.replaceChildren(...[langBtn, pill].filter(Boolean));
+  }
+}
+
+// Auto refresh never clobbers a field the user is typing in or a plan edit, and leaves the page alone when the data did not
+// change: selection, focus and scroll positions survive. User actions always redraw.
+async function render(auto) {
+  clearTimeout(timer);
+  const name = tab, live = name === "Run" || name === "Events", main = document.getElementById("main");
+  const again = () => { if (live && tab === name) timer = setTimeout(() => render(true), 3000); };
+  if (auto && (drafts.plan || /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || ""))) return again();
+  try {
+    const data = live ? await api(name === "Run" ? "state" : "events") : null, json = JSON.stringify(data);
+    if (tab !== name || (auto && tabCache[name] === json)) return again();
+    tabCache[name] = json;
+    if (name === "Run") pendingCount = data.tasks.filter(tNode => tNode.status === "pending_user").length;
+    const view = await TABS[name](data);
+    if (tab !== name) return;
+    main.replaceChildren(view);
+  } catch (e) {
+    delete tabCache[name];
+    if (tab === name) main.replaceChildren(h("p", {class: "err"}, e.message));
+  }
+  renderNav();
+  again();
+}
+
 function start() {  // the token lives in the URL fragment: it is never sent to a server or written to logs
-  if (location.hash.length < 2) return say("Missing access token: open the link printed by python -m orch ui", "err");
-  say(""); render();
+  if (location.hash.length < 2) return document.getElementById("main").replaceChildren(h("div", {class: "card card-err", role: "alert"},
+    h("h3", {}, t("Missing access token")),
+    h("p", {class: "prose"}, t("Open the link printed by {cmd}: it carries this session's access token.", {cmd: "python -m orch ui"}))));
+  render();
 }
+
+window.addEventListener("keydown", e => {
+  if (e.key === "Escape" && selectedTaskId) {
+    e.preventDefault();
+    closeTaskPanel();
+  }
+});
 window.addEventListener("hashchange", start);
 start();
 </script>
-</body></html>
+</body>
+</html>

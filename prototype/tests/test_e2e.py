@@ -1,6 +1,7 @@
 """End-to-end tests driving the real engine with the scripted mock agent (zero cost).
 Run: python tests/test_e2e.py [name-filter ...]   (pytest -q tests also works)"""
-import datetime, http.server, json, os, shutil, sqlite3, stat, subprocess, sys, tempfile, threading, time, traceback
+import contextlib, datetime, http.server, json, os, re, shutil, sqlite3, stat, subprocess, sys, tempfile, threading, time, traceback
+import unittest.mock, urllib.error, urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -8,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 os.environ["ORCH_HOME"] = tempfile.mkdtemp(prefix="orch-home-")  # in-process tests never touch the real ~/.orchestra
 from orch import agents, pool  # noqa: E402
 from orch.core import vault_set  # noqa: E402
-from orch.engine import check_plan, in_scope  # noqa: E402
+from orch.engine import allowed, check_plan, file_map, in_scope  # noqa: E402
 
 GIT = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
 REPOS = []
@@ -283,7 +284,7 @@ def test_router_profile_lists_models_and_routes_opencode():
         a = agents.catalog()["opencode@9router"]
         assert agents.list_models(a, None) == ["kr/claude-sonnet-4.5", "glm/glm-4.6"]
         assert seen[-1][0] == "/v1/models" and seen[-1][1]["authorization"] == f"Bearer {key}", seen
-        cfg = json.loads(agents.router_config(a, "kr/claude-sonnet-4.5"))["provider"]["router"]
+        cfg = agents.router_config(a, "kr/claude-sonnet-4.5")["provider"]["router"]
         assert cfg["options"]["baseURL"] == url and cfg["options"]["headers"] == {"X-9Router-Token-Saver": "off"}
         assert key not in json.dumps(cfg) and list(cfg["models"]) == ["kr/claude-sonnet-4.5"]
         if agents.resolve_bin("opencode"):
@@ -299,15 +300,88 @@ def test_router_profile_lists_models_and_routes_opencode():
         srv.shutdown()
 
 
-FIZZ = "def fizz(n):\n    return 'FizzBuzz' if n % 15 == 0 else 'Fizz' if n % 3 == 0 else 'Buzz' if n % 5 == 0 else str(n)\n"
+def test_router_accounts_per_provider_and_shared():
+    """~/.orchestra/agents.json changes a profile on this machine only. A router is one account per provider prefix, and a
+    prefix that is a CLI's subscription too (9router cx/ = codex) runs out with that CLI: when w1's account (mock@b) runs out,
+    the backup on the router's b/ provider is skipped; when the x/ provider runs out, y/ on the same router takes over."""
+    agents.OVERRIDES.write_text(json.dumps({"opencode@9router": {"router": "http://127.0.0.1:20127/v1"}}), encoding="utf-8")
+    try:
+        a = agents.catalog()["opencode@9router"]
+        assert a["router"] == "http://127.0.0.1:20127/v1" and a["bin"] == "opencode" and a["models_from"] == "router"
+        assert [agents.account("opencode@9router", m) for m in ("cx/gpt-5.5", "if/kimi-k2", "my-combo")] == [
+            "codex", "opencode@9router/if", "opencode@9router"]
+        assert agents.account("opencode@free", "opencode/big-pickle") == "opencode@free"
+    finally:
+        agents.OVERRIDES.unlink()
+    sc = {"plan": [task("T1", "w1", ["a.txt"], OK)], "steps": {"worker:T1": [QUOTA, QUOTA, {"write": {"a.txt": "a\n"}}]}}
+    r = Repo(sc, workers={"w1": {"agent": "mock@b", "model": "mock-fast"},
+                          **{f"r{p}": {"agent": "mock@r", "model": f"{p}/mock-fast", "backup": True} for p in "bxy"}})
+    (r.tmp / "home").mkdir()
+    (r.tmp / "home" / "agents.json").write_text(json.dumps(
+        {"mock@r": {"base": "mock", "router": "http://127.0.0.1:9/v1", "shares": {"b": "mock@b"}}}), encoding="utf-8")
+    assert r.run() == 0, r.out
+    assert r.q("SELECT agent, model, outcome FROM attempts WHERE task='T1' ORDER BY id") == [
+        ("mock@b", "mock-fast", "quota"), ("mock@r", "x/mock-fast", "quota"), ("mock@r", "y/mock-fast", "integrated")], r.out
+    assert {k for (k,) in r.q("SELECT k FROM meta WHERE k LIKE 'cool:%'")} == {"cool:mock@b", "cool:mock@r/x"}
+    assert r.orch("pool") == 0 and any(ln.startswith("| mock@b |") and ln.endswith("| w1, rb |") for ln in r.out.splitlines()), r.out
+
+
+def test_account_limits_parallelism_and_risk_lowers_rank():
+    """account_max: two workers on one subscription take turns. pool.rank: an account at risk of running out before its reset
+    ranks below an equal candidate on a safe account."""
+    sc = {"plan": [task("T1", "w1", ["a.txt"], OK), task("T2", "w2", ["b.txt"], OK)],
+          "steps": {"worker:T1": [{"write": {"a.txt": "a\n"}, "sleep": 2}], "worker:T2": [{"write": {"b.txt": "b\n"}, "sleep": 2}]}}
+    r = Repo(sc, account_max={"mock": 1})  # w1 and w2 both run mock: one account
+    assert r.run() == 0, r.out
+    (_, end1), (start2, _) = r.q("SELECT started, ended FROM attempts WHERE kind='work' ORDER BY started")
+    assert end1 <= start2, "the second task must wait for the account"
+    real, ws = pool.outlook, type("WS", (), {"meta": lambda self, k: None})()
+    pool.outlook = lambda ac, cool=0.0: {"text": "", "used": 50.0, "out_until": None, "risk": ac == "mock@b"}
+    try:
+        rows = pool.rank({"workers": {"w1": {"agent": "mock", "model": "m0"}}}, [("mock@b", "m1"), ("mock@c", "m1")], {"s": 1}, ws,
+                         {"models": {}})["w1"]
+    finally:
+        pool.outlook = real
+    assert [(x["pair"][0], x["risk"]) for x in rows] == [("mock@c", False), ("mock@b", True)] and rows[1]["score"] < rows[0]["score"], rows
+
+
+def test_suggest_shrinks_benchmarks_toward_history():
+    """suggest: the benchmark prior is worth k=5 calls of the pair's own record. A router pair on a provider that shares a
+    worker's subscription is no second worker; a strong model whose "done" keeps failing verification loses the lead to a
+    weaker one that keeps delivering; quota errors say nothing about the model."""
+    from orch import models
+    from orch.core import record
+    db = {"models": {"mock-strong": {"eci": 150, "org": "A"}, "mock-mid": {"eci": 140, "org": "B"}, "mock-fast": {"eci": 120, "org": "C"}}}
+    cands = [("mock", "mock-strong"), ("mock@b", "mock-mid"), ("mock@c", "mock-fast"), ("mock@r", "c/mock-fast")]
+    agents.OVERRIDES.write_text(json.dumps({"mock@r": {"base": "mock", "router": "http://127.0.0.1:9/v1", "shares": {"c": "mock@c"}}}),
+                                encoding="utf-8")
+    try:
+        s = models.suggest(cands, db)
+        assert (s["lead"], s["reviewer"], s["workers"]) == (cands[0], cands[1], [cands[2]]), s
+        for pair, outcome, n in ((cands[0], "verify", 5), (cands[2], "integrated", 10), (cands[1], "quota", 5)):
+            for _ in range(n):
+                record("t", "T1", *pair, "work", outcome, 1)
+        s = models.suggest(cands, db)  # strong (5*1 + 0) / 10 = 0.5; fast (5/3 + 10) / 15 = 0.78; mid keeps 2/3
+        assert (s["lead"], s["reviewer"]) == (cands[2], cands[1]), s
+    finally:
+        agents.OVERRIDES.unlink()
+
+
+ROMAN = ("V = [(1000, 'M'), (900, 'CM'), (500, 'D'), (400, 'CD'), (100, 'C'), (90, 'XC'), (50, 'L'), (40, 'XL'), (10, 'X'), "
+         "(9, 'IX'), (5, 'V'), (4, 'IV'), (1, 'I')]\n"
+         "def to_roman(n):\n    out = ''\n    for v, s in V:\n        out, n = out + s * (n // v), n % v\n    return out\n"
+         "def from_roman(s):\n    n, i = 0, 0\n    for v, sym in V:\n        while s.startswith(sym, i):\n            n, i = n + v, i + len(sym)\n"
+         "    if not s or i < len(s) or not 0 < n < 4000 or to_roman(n) != s:\n        raise ValueError(s)\n    return n\n")
 
 
 def test_pool_plan_ranks_pretests_and_backs_up():
-    """pool plan: candidates from discovery minus each primary's own account; one pre-test each, where a model that claims
-    done with wrong code ranks lower (honest); the best saved as each primary's designated backup. When w2's account runs
-    out, w2's own backup takes over, not w1's backup that lives on the same exhausted account."""
+    """pool plan: candidates from discovery minus each primary's own account; one pre-test each (the hard one for a ranking
+    led by honesty), where a model that claims done with wrong code ranks lower (honest); the best saved as each primary's
+    designated backup. When w2's account runs out, w2's own backup takes over, not w1's backup that lives on the same
+    exhausted account. `pool test` uses the easy task by default."""
     sc = {"plan": [task("T1", "w2", ["a.txt"], OK)],
-          "steps": {"worker:POOL@mock-strong": [{"write": {"fizz.py": FIZZ}}],
+          "steps": {"worker:POOL-HARD@mock-strong": [{"write": {"roman.py": ROMAN}}],
+                    "worker:POOL-HARD@mock-fast": [{"write": {"roman.py": ROMAN.replace(" or to_roman(n) != s", "")}}],  # takes IIII
                     "worker:POOL@mock-fast": [{"write": {"fizz.py": "def fizz(n):\n    return str(n)\n"}}],
                     "worker:T1": [QUOTA, {"write": {"a.txt": "a\n"}}]}}
     r = Repo(sc, workers={"w1": {"agent": "mock", "model": "mock-strong"}, "w2": {"agent": "mock@b", "model": "mock-fast"}})
@@ -317,9 +391,10 @@ def test_pool_plan_ranks_pretests_and_backs_up():
     # precise without the t filter: a benchmark DB from `models refresh` would filter out the mock models
     assert r.orch("pool", "plan", "--preset", "precise", "--criteria", "t", "--yes") == 0, r.out
     db = sqlite3.connect(home / "history.db")
-    tests = db.execute("SELECT agent, model, outcome FROM runs WHERE role='pool' ORDER BY agent, model").fetchall()
+    tests = db.execute("SELECT agent, model, task, outcome FROM runs WHERE role='pool' ORDER BY agent, model").fetchall()
     db.close()
-    assert tests == [("mock@b", "mock-strong", "ok"), ("mock@c", "mock-fast", "verify"), ("mock@c", "mock-strong", "ok")], r.out
+    assert tests == [("mock@b", "mock-strong", "POOL-HARD", "ok"), ("mock@c", "mock-fast", "POOL-HARD", "verify"),
+                     ("mock@c", "mock-strong", "POOL-HARD", "ok")], r.out
     team = json.loads((r.repo / ".orch" / "team.json").read_text(encoding="utf-8"))
     backups = {n: (w["agent"], w["model"], w["for"]) for n, w in team["workers"].items() if w.get("backup")}
     assert backups == {"mock-b-b1": ("mock@b", "mock-strong", ["w1"]), "mock-c-b1": ("mock@c", "mock-strong", ["w2"])}, r.out
@@ -387,6 +462,29 @@ def test_skill_architect_installs_and_places():
     assert "acme/tools" in (home / "sources.json").read_text(encoding="utf-8")
 
 
+def test_opt_in_gates_verify_allowlist_and_skill_proposals():
+    """PLAN §13 opt-ins, both off by default. skills=propose: the curated pick waits for the user and work waits for it.
+    verify_allow: a command outside the list stops its task before any worker call, even in an auto-approved run; one 'yes'
+    allows that command for the run and releases every task it held."""
+    sc = {"plan": [task("T1", "w1", ["a.txt"], OK), task("T2", "w2", ["b.txt"], OK)],
+          "steps": {"skill_architect:SKILLS": [{"reply": {"skills": [{"id": "local/demo", "tasks": [], "reason": "useful"}]}}],
+                    "worker:T1": [{"write": {"a.txt": "a\n"}}], "worker:T2": [{"write": {"b.txt": "b\n"}}]}}
+    r = Repo(sc, skills="propose", verify_allow=[["git"]])
+    skill, home = r.tmp / "demo", r.tmp / "home" / "skills"
+    skill.mkdir()
+    home.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: demo\ndescription: Demo skill.\n---\nUse it.\n", encoding="utf-8")
+    (home / "index.json").write_text(json.dumps([{"id": "local/demo", "description": "Demo skill.", "local": str(skill)}]), encoding="utf-8")
+    assert r.run() == 3, r.out
+    assert r.status()["SKILLS"] == "pending_user" and r.q("SELECT status FROM skills") == [("proposed",)], r.out
+    assert r.orch("answer", "SKILLS", "yes") == 0 and r.orch("resume", "--exit-on-wait") == 3, r.out
+    assert r.q("SELECT status FROM skills") == [("installed",)] and r.calls("worker", "T1") + r.calls("worker", "T2") == 0
+    held = dict(r.q("SELECT id, question FROM tasks WHERE status='pending_user'"))
+    assert set(held) == {"T1", "T2"} and "python -c" in held["T1"], held
+    assert r.orch("answer", "T1", "yes") == 0 and r.orch("resume", "--exit-on-wait") == 0, r.out
+    assert r.status() == {"PLAN": "done", "T1": "done", "T2": "done", "SKILLS": "done", "REVIEW": "done"}, r.status()
+
+
 def test_skills_index_offline():
     from orch import skills
     tmp, sha = Path(tempfile.mkdtemp(prefix="orch-skills-")), "a" * 40
@@ -408,12 +506,11 @@ def test_skills_index_offline():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def test_ui_server_security():
-    import threading, urllib.error, urllib.request
+@contextlib.contextmanager
+def ui_server(project):
+    """The web UI in process on a free port; yields call(path, body=None, token=<its token>, **headers) -> (status, text)."""
     from orch import core, server
-    r, saved = Repo(two_tasks()), core.VAULT
-    core.VAULT = r.tmp / "vault.test"  # never the user's real vault
-    srv = server.make_server(core.Workspace(r.repo), 0)
+    srv = server.make_server(core.Workspace(project), 0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = srv.url.split("#")[0].rstrip("/")
 
@@ -426,8 +523,35 @@ def test_ui_server_security():
         except urllib.error.HTTPError as e:
             return e.code, e.read().decode()
     try:
+        yield call
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        srv.ws.db.close()  # an open handle would keep orch.db (and the temp dir) undeletable on Windows
+
+
+def contrast(a, b):
+    """WCAG 2.x contrast ratio of two #RRGGBB colors."""
+    def lum(c):
+        r, g, b = (x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in (int(c[i:i + 2], 16) / 255 for i in (1, 3, 5)))
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_ui_server_security():
+    from orch import core
+    r = Repo(two_tasks())
+    with ui_server(r.repo) as call, unittest.mock.patch.object(core, "VAULT", r.tmp / "vault.test"):  # never the user's real vault
         code, page = call("/", token="")
         assert code == 200 and '<script nonce="' in page and "innerHTML" not in page
+        assert not re.search(r"https?://(?!www\.w3\.org/2000/svg\b)", page), "nothing may load from outside (CSP, docs/UIUX.md §3)"
+        light = page.split(":root", 1)[1].split("}", 1)[0]  # the color tokens (docs/UIUX.md §5), then their dark values
+        dark = page.split("prefers-color-scheme: dark", 1)[1].split("}", 1)[0]
+        for theme in (dict(re.findall(r"--(\w+):\s*(#[0-9A-Fa-f]{6})", t)) for t in (light, dark)):
+            for bg in ("paper", "surface"):  # text 4.5:1, control borders 3:1 (WCAG 2.2 AA)
+                assert all(contrast(theme[fg], theme[bg]) >= 4.5 for fg in ("ink", "muted", "running", "done", "waiting", "failed")), theme
+                assert contrast(theme["control"], theme[bg]) >= 3, theme
         assert call("/api/state", token="wrong")[0] == 403
         assert call("/api/state", Host="evil.example")[0] == 403, "DNS rebinding: foreign Host must be refused"
         secret = "sk-test-1234567890abcdef"
@@ -444,11 +568,94 @@ def test_ui_server_security():
         assert call("/api/team", {"team": {**team, "workers": {"../evil": {"agent": "mock", "model": "m"}}}})[0] == 400
         code, body = call("/api/state")
         assert code == 200 and json.loads(body)["has_team"] and json.loads(body)["run"] is None, body
+
+
+def test_plan_edit_from_the_ui():
+    """The plan editor (web UI): deps and workers of the plan waiting for approval, saved as its next version. Cycles, unknown
+    workers, partial edits, stale versions and a plan with an answer on its way are refused; the run then follows the edit."""
+    from orch import core, engine
+    exists_a = [["python", "-c", "import os; assert os.path.exists('a.txt')"]]  # passes only once T1 is integrated
+    sc = {"plan": [task("T1", "w1", ["a.txt"], OK), task("T2", "w2", ["b.txt"], exists_a)],
+          "steps": {"worker:T1": [{"write": {"a.txt": "a\n"}}], "worker:T2": [{"write": {"b.txt": "b\n"}}]}}
+    r = Repo(sc)
+    assert r.orch("run", "demo goal", "--exit-on-wait") == 3 and r.status() == {"PLAN": "pending_user"}, r.out
+    edit = lambda v, **t: {"version": v, "tasks": [{"id": "T1", "deps": [], "assignee": "w1"}, {"id": "T2", "deps": [], "assignee": "w2", **t}]}
+    with ui_server(r.repo) as call:
+        state = lambda: json.loads(call("/api/state")[1])
+        assert state()["edit"] == {"version": 1, "workers": ["w1", "w2"], "tasks": [
+            {"id": "T1", "title": "task T1", "assignee": "w1", "deps": []}, {"id": "T2", "title": "task T2", "assignee": "w2", "deps": []}]}
+        cycle = edit(1, deps=["T1"])
+        cycle["tasks"][0]["deps"] = ["T2"]
+        for bad, why in ((cycle, "dependency cycle"), (edit(1, assignee="w9"), "unknown assignee"),
+                         ({"version": 1, "tasks": edit(1)["tasks"][:1]}, "every task"), ({"version": 1, "tasks": "T1"}, "expected")):
+            code, body = call("/api/plan", bad)
+            assert code == 400 and why in body, (code, body)
+        code, body = call("/api/plan", edit(1, deps=["T1"], assignee="w1"))
+        assert code == 200 and "plan v2" in body, body
+        assert state()["edit"]["version"] == 2 and "your edit of v1" in r.q("SELECT question FROM tasks WHERE id='PLAN'")[0][0]
+        assert "| T2 | w1 | T1 |" in state()["plan"], state()["plan"]
+        assert call("/api/plan", edit(1))[0] == 400, "a stale version must be refused"
+        ws = core.Workspace(r.repo)  # the engine approved v1 just before the edit landed: v1 must not become the run
+        engine.Engine(ws).materialize(sc["plan"], "pending_user", 1)
+        ws.db.close()
+        assert r.status() == {"PLAN": "pending_user"}
+        assert call("/api/answer", {"task": "PLAN", "text": "yes"})[0] == 200
+        assert state()["edit"] is None and call("/api/plan", edit(2))[0] == 400, "an answer is already on its way"
+    assert r.orch("resume", "--exit-on-wait") == 0, r.out
+    assert r.status() == {"PLAN": "done", "T1": "done", "T2": "done", "REVIEW": "done"}, r.status()
+    assert r.q("SELECT assignee, deps FROM tasks WHERE id='T2'") == [("w1", '["T1"]')] and r.outcomes("T2") == ["integrated"]
+    with ui_server(r.repo) as call:  # the task panel and the score read the attempts: no session ids, no pids
+        st = json.loads(call("/api/state")[1])
+    att = st["attempts"]
+    assert {"T1", "T2"} <= {a["task"] for a in att} and not {"session", "pid"} & set(att[0]), att
+    assert {"w1", "w2"} <= set(st["workers"]) and st["budget"] == 0, st  # quick answers: reassign <worker>, budget gate
+
+
+def test_mcp_server_read_only_tools():
+    """`python -m orch mcp`: the board and the knowledge graph as read-only MCP tools. With "mcp": true each agent call gets the
+    server through its CLI's per-call config; here T2's agent starts it from that config and finds the fact T1 published."""
+    import io, tomllib
+    from orch import mcp
+    sc = two_tasks()
+    sc["steps"]["worker:T2"][0]["mcp"] = ["kg_search", {"query": "add"}]
+    r = Repo(sc, mcp=True)
+    assert r.run() == 0, r.out
+    summary = json.loads(r.q("SELECT handoff FROM tasks WHERE id='T2'")[0][0])["summary"]
+    assert "returns a + b  [T1]" in summary, summary
+    # protocol edges, in process: version echo, a notification gets no reply, read-only tools only, JSON-RPC errors
+    msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05"}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "board", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "kg_links", "arguments": {"node": "T2"}}},
+            {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "write_file", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 6, "method": "resources/list"}]
+    out = io.BytesIO()
+    mcp.serve(r.repo, io.BytesIO(b"".join(json.dumps(m).encode() + b"\n" for m in msgs) + b"{not json\n"), out)
+    rep = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert [x["id"] for x in rep] == [1, 2, 3, 4, 5, 6, None], rep
+    tools = rep[1]["result"]["tools"]
+    assert rep[0]["result"]["protocolVersion"] == "2024-11-05" and all(t["annotations"]["readOnlyHint"] for t in tools)
+    assert sorted(t["name"] for t in tools) == ["board", "kg_links", "kg_search"], tools
+    text = [x["result"]["content"][0]["text"] for x in rep[2:4]]
+    assert "goal: demo goal" in text[0] and "T2" in text[0] and "T2 -after-> T1" in text[1] and "test_app.py" in text[1], text
+    assert [x["error"]["code"] for x in rep[4:]] == [-32602, -32601, -32700], rep
+    # per CLI: codex -c TOML, claude --mcp-config JSON plus its allow-list, opencode config env; without mcp nothing changes
+    srv, seen, real = agents.mcp_server(r.repo), [], (agents.spawn, agents.resolve_bin)
+    agents.spawn, agents.resolve_bin = lambda cmd, cwd, env, *a: seen.append((cmd, env)), lambda b: [b]
+    try:
+        for aid in ("codex", "claude", "opencode"):
+            for on in (None, r.repo):
+                agents.run_agent(aid, "m", "hi", r.tmp, r.tmp / "out", schema="handoff", mcp=on)
     finally:
-        srv.shutdown()
-        srv.server_close()
-        srv.ws.db.close()  # an open handle would keep orch.db (and the temp dir) undeletable on Windows
-        core.VAULT = saved
+        agents.spawn, agents.resolve_bin = real
+    (codex, codex_on), (claude, claude_on), (oc, oc_on) = [(seen[i][0], seen[i + 1][0]) for i in (0, 2)] + [(seen[4][1], seen[5][1])]
+    assert codex_on[:3] == ["codex", "-c", f"mcp_servers.orch={agents.toml(srv)}"] and codex_on[3:] == codex[1:], codex_on
+    assert tomllib.loads("s = " + agents.toml(srv))["s"] == srv
+    assert claude[claude.index("--allowedTools") + 1] == "Bash,Read,Edit,Write,Glob,Grep", claude
+    assert claude_on[1] == "--mcp-config" and json.loads(claude_on[2]) == {"mcpServers": {"orch": srv}}
+    assert claude_on[claude_on.index("--allowedTools") + 1] == "Bash,Read,Edit,Write,Glob,Grep,mcp__orch"
+    assert "OPENCODE_CONFIG_CONTENT" not in oc
+    assert json.loads(oc_on["OPENCODE_CONFIG_CONTENT"])["mcp"]["orch"]["command"] == [srv["command"], *srv["args"]]
 
 
 def test_scope_and_plan_checks():
@@ -463,6 +670,11 @@ def test_scope_and_plan_checks():
         assert frag in errs, (frag, errs)
     assert check_plan({"tasks": [task("T2", "w1", ["a"], [["x"]], ["T1"])]}, {"w1": {}}, {"T1": "done"}) == []
     assert check_plan({"tasks": [task("T1", "w1", ["a"], [["x"]])]}, {"w1": {}}, {"T1": "done"}), "ids are never reused"
+    assert allowed(["python", "-m", "unittest", "x"], [["python", "-m", "unittest"]]) and allowed(["x"], None)
+    assert not allowed(["python", "x.py"], [["python", "-m"]]) and not allowed(["python"], [["python", "-m"]])
+    big = ["README.md", "src/main.py"] + [f"src/m{i}/f{j}.py" for i in range(5) for j in range(100)]
+    assert file_map(big[:3]).splitlines() == ["README.md", "src/m0/f0.py", "src/main.py"], "a small repo lists every file"
+    assert file_map(big, 10).splitlines() == ["README.md", *[f"src/m{i}/ (100 files)" for i in range(5)], "src/main.py"]
 
 
 if __name__ == "__main__":

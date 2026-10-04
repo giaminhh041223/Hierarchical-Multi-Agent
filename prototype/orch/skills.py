@@ -104,7 +104,9 @@ def architect(e, t):
     by_id, done = {s["id"]: s for s in index}, []
     for pick in obj["skills"][:3]:
         s, row = by_id.get(pick["id"]), None
-        if s:
+        if s and e.team["skills"] == "propose":  # every pick waits for the user's answer (Engine.job_skills asks)
+            row = (s.get("repo") or "local", s.get("repo") and f"https://github.com/{s['repo']}", s.get("sha"), "proposed", 1, None, None, None)
+        elif s:
             try:
                 path, digest, scan = install(s)
                 row = (s.get("repo") or "local", s.get("repo") and f"https://github.com/{s['repo']}", s.get("sha"), "installed", 1, str(path), digest, scan)
@@ -120,6 +122,22 @@ def architect(e, t):
             if row[3] == "installed":
                 e.ws.event("skill", f"installed {pick['id']} for {pick['tasks'] or 'all tasks'}; {row[7]}", "SKILLS")
     return "skills: " + (", ".join(done) or "none needed")
+
+
+def settle(e, yes):
+    """skills=propose: the user's one answer on the curated picks: install them all, or none."""
+    by_id, done = {s["id"]: s for s in load_index()}, []
+    for r in e.ws.q("SELECT id FROM skills WHERE run=? AND status='proposed' AND curated=1", e.run):
+        status, path, digest, scan = "rejected", None, None, None
+        if yes and r["id"] in by_id:
+            try:
+                (path, digest, scan), status = install(by_id[r["id"]]), "installed"
+            except (OSError, ValueError) as ex:
+                e.ws.event("warn", f"skill {r['id']} not installed: {ex}", "SKILLS")
+        e.ws.x("UPDATE skills SET status=?, path=?, digest=?, scan=?, updated=? WHERE run=? AND id=?",
+               status, path and str(path), digest, scan, time.time(), e.run, r["id"])
+        done.append(f"{r['id']} ({status})")
+    return "skills: " + (", ".join(done) or "none")
 
 
 def place(ws, run, tid, wt):
@@ -138,7 +156,7 @@ def place(ws, run, tid, wt):
 
 def decide(ws, sid, action):
     """approve | reject a proposed (non-curated) repo; an approved repo joins the sources for the next refresh."""
-    if action not in ("approve", "reject") or not ws.q("SELECT id FROM skills WHERE run=? AND id=? AND status='proposed'", ws.run, sid):
+    if action not in ("approve", "reject") or not ws.q("SELECT id FROM skills WHERE run=? AND id=? AND status='proposed' AND curated=0", ws.run, sid):
         raise ValueError(f"no proposed skill {sid!r} in this run (see: python -m orch skills list)")
     ws.x("UPDATE skills SET status=?, updated=? WHERE run=? AND id=?", action + "d", time.time(), ws.run, sid)
     if action == "reject":
