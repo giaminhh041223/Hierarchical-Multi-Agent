@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS skills(
 CREATE VIRTUAL TABLE IF NOT EXISTS facts USING fts5(entity, fact, task UNINDEXED, actor UNINDEXED, sha UNINDEXED, run UNINDEXED);
 CREATE TABLE IF NOT EXISTS links(src TEXT, rel TEXT, dst TEXT, task TEXT, UNIQUE(src, rel, dst));
 CREATE TABLE IF NOT EXISTS vectors(digest TEXT PRIMARY KEY, vec BLOB);
+CREATE TABLE IF NOT EXISTS leases(id TEXT PRIMARY KEY, task TEXT, agent TEXT, model TEXT, prompt TEXT, schema TEXT, readonly INT,
+  base TEXT, pid INT, pid_ctime TEXT, stale REAL, status TEXT DEFAULT 'open', runner TEXT, beat REAL, result TEXT, created REAL);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 """
 

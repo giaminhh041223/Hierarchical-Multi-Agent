@@ -7,12 +7,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import agents, models, skills
+from . import agents, models, remote, skills
 from .core import ROOT, EngineLock, mask, redact, vault, vault_set
 from .engine import Engine, load_team, save_team
 
 UI = Path(__file__).with_name("ui.html")
 MAX_BODY = 100_000
+MAX_PATCH = 50_000_000  # a remote runner's result: the binary patch, base64
 
 
 def _file(path, limit=60_000):
@@ -142,7 +143,8 @@ def api_models(ws, b, q):
 GET = {"state": api_state, "events": api_events, "agents": api_agents, "vault": api_vault, "team": api_team, "kg": api_kg,
        "skills": api_skills, "models": api_models}
 POST = {"run": api_run, "resume": api_resume, "answer": api_answer, "plan": api_plan, "cancel": api_cancel, "discover": api_discover,
-        "login": api_login, "vault": api_vault, "team": api_save_team, "skill": api_skill, "models": api_models}
+        "login": api_login, "vault": api_vault, "team": api_save_team, "skill": api_skill, "models": api_models,
+        "lease": remote.claim, "lease/beat": remote.beat, "lease/done": remote.done}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -163,25 +165,34 @@ class Handler(BaseHTTPRequestHandler):
 
     def serve(self, routes):
         srv, url = self.server, urlsplit(self.path)
+        lease = url.path.startswith("/api/lease")  # remote runners: their own token, which opens nothing else
+        key, limit = (srv.remote_token, MAX_PATCH) if lease else (srv.token, MAX_BODY)
+        ok_token = bool(key) and hmac.compare_digest(self.headers.get("X-Orch-Token", "").encode(), key.encode())
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        # read the body before any reply: on Windows a reply sent over an unread body becomes a connection reset (WinError 10053)
+        raw = self.rfile.read(n) if routes is POST and 0 < n <= (limit if ok_token else MAX_BODY) else b""
         if self.headers.get("Host") not in srv.hosts:
             return self.reply(403, {"error": "bad Host"})
         if url.path == "/" and routes is GET:
             nonce = secrets.token_urlsafe(16)
             page = UI.read_text(encoding="utf-8").replace("<script>", f'<script nonce="{nonce}">').replace("<style>", f'<style nonce="{nonce}">')
             return self.reply(200, page.encode(), "text/html; charset=utf-8", nonce)
-        origin, token = self.headers.get("Origin"), self.headers.get("X-Orch-Token", "")
-        if (origin and origin not in srv.origins) or not hmac.compare_digest(token.encode(), srv.token.encode()):
-            return self.reply(403, {"error": "forbidden: open the UI from the link printed by `python -m orch ui`"})
+        origin = self.headers.get("Origin")
+        if (origin and origin not in srv.origins) or not ok_token:
+            return self.reply(403, {"error": "forbidden: remote runners need ORCH_REMOTE_TOKEN (16+ characters, the same value on "
+                                             "both machines)" if lease else "forbidden: open the UI from the link printed by `python -m orch ui`"})
         fn = url.path.startswith("/api/") and routes.get(url.path[5:])
         if not fn:
             return self.reply(404, {"error": "not found"})
         try:
             body = {}
             if routes is POST:
-                n = int(self.headers.get("Content-Length") or 0)
-                if n > MAX_BODY or not (self.headers.get("Content-Type") or "").startswith("application/json"):
-                    return self.reply(413, {"error": f"JSON bodies up to {MAX_BODY} bytes only"})
-                body = json.loads(self.rfile.read(n) or b"{}")
+                if not 0 <= n <= limit or not (self.headers.get("Content-Type") or "").startswith("application/json"):
+                    return self.reply(413, {"error": f"JSON bodies up to {limit} bytes only"})
+                body = json.loads(raw or b"{}")
                 if not isinstance(body, dict):
                     raise ValueError("a JSON object is expected")
             self.reply(200, fn(srv.ws, body, {k: v[0] for k, v in parse_qs(url.query).items()}))
@@ -204,6 +215,9 @@ def make_server(ws, port=8765):
     except OSError:  # port taken (another app): any free port will do, the printed link carries it
         srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     srv.daemon_threads, srv.ws, srv.token = True, ws, secrets.token_urlsafe(24)
+    rt = os.environ.get("ORCH_REMOTE_TOKEN") or vault().get("ORCH_REMOTE_TOKEN")
+    srv.remote_token = rt if rt and len(rt) >= 16 else None  # None: remote runners are refused
+    srv.remote_short = bool(rt) and not srv.remote_token
     port = srv.server_address[1]  # port 0 = any free port (tests)
     srv.hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     srv.origins = {f"http://{h}" for h in srv.hosts}
@@ -214,6 +228,9 @@ def make_server(ws, port=8765):
 def serve(ws, port=8765, browser=True):
     srv = make_server(ws, port)
     print(f"Orchestra UI for {ws.project}:\n  {srv.url}\n(the link holds this session's access token; Ctrl+C stops the UI, not a running engine)")
+    if srv.remote_token or srv.remote_short:  # never the token itself
+        print("remote runners: on (ORCH_REMOTE_TOKEN)" if srv.remote_token else
+              "remote runners: OFF, ORCH_REMOTE_TOKEN is shorter than 16 characters")
     if browser:
         webbrowser.open(srv.url)
     srv.serve_forever()

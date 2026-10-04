@@ -24,6 +24,8 @@ def account(aid, model=None):
     """The quota a call spends. An agent id is one login; a router holds one account per provider prefix of its model ids
     (cx/, ag/ ...), and "shares" maps the prefixes that are also a CLI's subscription: those run out together with the CLI."""
     a = catalog().get(aid) or {}
+    if a.get("remote"):  # model = "<agent>:<model>". ponytail: every runner of one CLI counts as one account; name runners if not
+        return f"{aid}/{(model or '').split(':', 1)[0]}"
     if not a.get("router") or "/" not in (model or ""):
         return aid
     pre = model.split("/", 1)[0]

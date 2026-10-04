@@ -539,6 +539,7 @@ def ui_server(project):
                 return resp.status, resp.read().decode()
         except urllib.error.HTTPError as e:
             return e.code, e.read().decode()
+    call.base = base
     try:
         yield call
     finally:
@@ -736,6 +737,56 @@ def test_kg_search_vectors():
     ws.db.close()
     ro.db.close()
     shutil.rmtree(d, ignore_errors=True)
+
+
+def test_remote_worker():
+    """A worker on another machine: a runner that claims the attempt and goes silent is detected (heartbeat), the retry is
+    served by a real runner process, its patch goes through scope and verify here. The two tokens open disjoint routes."""
+    import secrets
+    tok = secrets.token_urlsafe(24)  # generated here, written nowhere
+    sc = {"plan": [task("T1", "far", ["far.txt"], [["python", "-c", "assert open('far.txt').read().strip() == 'far'"]])],
+          "steps": {"worker:T1": [{"write": {"far.txt": "far\n"}}]}}
+    r = Repo(sc, workers={"far": {"agent": "remote", "model": "mock:mock-fast", "max": 1}})
+    with unittest.mock.patch.dict(os.environ, ORCH_REMOTE_TOKEN=tok), ui_server(r.repo) as call:
+        out = open(r.tmp / "engine.out", "w")  # a file, not a pipe: a full pipe hangs the child on Windows
+        eng = subprocess.Popen([sys.executable, "-m", "orch", "--ws", str(r.repo), "run", "demo goal", "--yes", "--exit-on-wait"],
+                               cwd=ROOT, env={**r.env, "ORCH_REMOTE_STALE": "2", "ORCH_REMOTE_WAIT": "60"},
+                               stdout=out, stderr=subprocess.STDOUT)
+        try:
+            deadline, got = time.time() + 60, None
+            while time.time() < deadline and not got:  # a "ghost" runner takes the attempt, then never beats
+                code, body = call("/api/lease", {"agents": ["mock"], "runner": "ghost"}, token=tok)
+                assert code == 200, body
+                got = json.loads(body)["lease"] and json.loads(body)
+                time.sleep(0.3)
+            assert got, "the engine never opened a lease"
+            lease = got["lease"]
+            assert (lease["agent"], lease["model"], lease["schema"], lease["readonly"]) == ("mock", "mock-fast", "handoff", 0), lease
+            assert lease["prompt"].startswith("ORCH-CALL role=worker task=T1") and got["bundle"], lease
+            while time.time() < deadline and r.q("SELECT 1 FROM leases WHERE id=?", lease["id"]):
+                time.sleep(0.3)  # the proxy gives up after 2s without a heartbeat and removes its lease
+            assert call("/api/lease/beat", {"id": lease["id"], "runner": "ghost"}, token=tok) == (200, '{"cancel": true}')
+            code, body = call("/api/lease/done", {"id": lease["id"], "runner": "ghost", "ok": True, "patch": ""}, token=tok)
+            assert code == 400 and "gone" in body, body
+            assert call("/api/lease", {"agents": ["mock"], "runner": "x"})[0] == 403, "the UI token must not open runner routes"
+            assert call("/api/state", token=tok)[0] == 403, "the runner token must not open the UI"
+            run = subprocess.run([sys.executable, "-m", "orch", "remote", "run", "--url", call.base, "--name", "box1", "--agents", "mock",
+                                  "--once"], cwd=ROOT, env={**r.env, "ORCH_REMOTE_TOKEN": tok, "ORCH_HOME": str(r.tmp / "remote-home")},
+                                 capture_output=True, encoding="utf-8", errors="replace", timeout=120)
+            assert run.returncode == 0 and "serving mock" in run.stdout and ": ok" in run.stdout, run.stdout + run.stderr
+            assert eng.wait(timeout=120) == 0, (r.tmp / "engine.out").read_text(encoding="utf-8", errors="replace")
+        finally:
+            if eng.poll() is None:
+                eng.kill()
+            out.close()
+    assert r.status() == {"PLAN": "done", "T1": "done", "REVIEW": "done"}, r.status()
+    assert r.show("far.txt").strip() == "far"
+    assert r.outcomes("T1") == ["error", "integrated"], r.outcomes("T1")
+    first = r.q("SELECT failure FROM attempts WHERE task='T1' AND kind='work' ORDER BY id")[0][0]
+    assert "remote runner ghost stopped responding" in first, first
+    assert any("box1 took" in b for _, b in r.q("SELECT id, body FROM events WHERE kind='remote'"))
+    assert r.q("SELECT count(*) FROM leases") == [(0,)] and not list((r.repo / ".orch" / "leases").iterdir())
+    assert agents.account("remote", "codex:gpt-5.5") == "remote/codex"
 
 
 def test_cli_parsers_failure_classes_and_env():
