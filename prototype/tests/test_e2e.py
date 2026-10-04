@@ -807,7 +807,8 @@ def test_cli_parsers_failure_classes_and_env():
     assert agents.classify(err["error"]) == "quota" and agents.reset_at(err["error"]), err
     for text, kind in [("Error: Not logged in. Please run /login", "auth"), ("HTTP 401 Unauthorized", "auth"),
                        ("status: 429 Too Many Requests", "rate_limit"), ("Quota exceeded for quota metric", "quota"),
-                       ("RESOURCE_EXHAUSTED", "quota"), ("model gpt-x is not supported when using ChatGPT", "model"),
+                       ("RESOURCE_EXHAUSTED", "quota"), ('{"type": "authentication_error"}', "auth"), ("code: invalid_api_key", "auth"),
+                       ("You exceeded your current quota", "quota"), ("insufficient_quota", "quota"), ("model gpt-x is not supported when using ChatGPT", "model"),
                        # project text an agent prints: none of these is about the account
                        ("FAILED test_login_returns_401 (route /login)", "error"), ('File "app.py", line 429, in handler', "error"),
                        ("tests for quota.py failed", "error"), ("def authenticate(user):", "error")]:

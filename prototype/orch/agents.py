@@ -368,7 +368,7 @@ FAILURES = [  # first match wins: a usage-limit message that links a billing or 
               r"insufficient.?(credit|balance|funds)"),
     ("rate_limit", r"rate.?limit|(status|code|error|http)\W{0,3}429\b|\b429\W{0,3}(too|rate)|too many requests|overloaded"),
     ("auth", r"not logged in|unauthori[sz]ed|(status|code|error|http)\W{0,3}401\b|(run|use|type) /login|login required|"
-             r"please log ?in|invalid api.?key|authentication (failed|required|error)|failed to authenticate"),
+             r"please log ?in|invalid[ _-]?api[ _-]?key|authentication[ _-](failed|required|error)|failed to authenticate"),
     ("model", r"model.{0,40}not supported|not supported.{0,40}model|unknown model|model .{0,30}not found|invalid model"),
 ]
 
