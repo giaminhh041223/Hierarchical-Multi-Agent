@@ -19,7 +19,7 @@ Bối cảnh cho Claude Code (local hoặc cloud) khi làm việc trong repo nà
 cd prototype && PYTHONIOENCODING=utf-8 PYTHONPATH=. python tests/test_e2e.py
 ```
 
-- 25 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 40 giây, Windows khoảng 2–3 phút.
+- 27 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 50 giây, Windows khoảng 2–3 phút.
 - Lọc theo tên: thêm một phần tên test vào cuối lệnh, ví dụ `pool`.
 - Cần Python 3.11+ và git. Test tự truyền danh tính git, không cần `git config`.
 - Test 9router dựng router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router đó.
@@ -50,6 +50,7 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 | `skills.py` | Skill catalog (repo GitHub ghim commit, skill đã cài) và skill architect. |
 | `server.py`, `ui.html` | Web UI local (`python -m orch ui`): chỉ 127.0.0.1, có token. Tab Run có sơ đồ DAG (`dag()`); plan đang chờ duyệt sửa được bằng kéo-thả (`planEditor()` → `POST /api/plan` → `Engine.edit_plan`). |
 | `mcp.py` | MCP server qua stdio (`python -m orch mcp`): board và knowledge graph thành tool chỉ đọc. Team bật `"mcp": true` thì engine truyền server cho từng lời gọi agent (`agents.mcp_server`). |
+| `remote.py` | Worker chạy từ xa: profile ẩn `remote` gọi `remote proxy` (bundle worktree, lease trong bảng `leases`, áp patch); route `/api/lease*` của web UI với token riêng `ORCH_REMOTE_TOKEN`; vòng lặp `remote run` trên máy kia (heartbeat, patch nhị phân). |
 | `mock.py` | Agent giả theo kịch bản, dùng cho test. |
 | `__main__.py` | CLI `python -m orch <lệnh>`. |
 
@@ -67,13 +68,16 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 ## An toàn (bắt buộc)
 
 - Không đọc hay in nội dung secret. Với file auth chỉ kiểm tra có tồn tại. Từ rollout của codex chỉ đọc object `rate_limits` và timestamp, không đọc nội dung hội thoại.
-- Không commit credential, `.orchestra/`, `.orch/`, log. Repo có thể public: quét secret trước khi push.
+- Không commit credential, `.orchestra/`, `.orch/`, log. Repo **public**: quét secret trước khi push. Không ghi email của người dùng hay chi tiết bảo mật máy họ (cấu hình 9router) vào repo. Token giả trong test (`ORCH_REMOTE_TOKEN`, key embeddings) chỉ sinh trong test.
 - Output của model là đề xuất không tin cậy. Hai điểm va chạm với `AGENTS.md` (`PLAN.md` §13) đã có opt-in (`verify_allow`, `"skills": "propose"`). Mặc định giữ hành vi cũ; bật hay không do người dùng quyết định.
 - Không sửa dữ liệu hay config global của tool người dùng. Test opencode dùng `XDG_DATA_HOME` riêng.
 - Phải hỏi người dùng trước khi: tải hoặc cài gói; login, tạo tài khoản, nhập key; pre-test model trả phí (tốn quota).
 - 9router: không bật MITM, cert hay DNS. Khuyến nghị `HOSTNAME=127.0.0.1`, `REQUIRE_API_KEY=true`, đổi `INITIAL_PASSWORD`, tắt Cloud Sync. Không sửa cấu hình hay dừng/khởi động lại router của người dùng khi chưa được phép.
 - Pre-test hoặc probe qua router tốn quota subscription phía sau nó: hỏi trước.
 - Không đổi cài đặt hệ thống hay bảo mật (ví dụ sandbox Windows của codex), chỉ khuyến nghị.
+- Runner từ xa chỉ nối qua 127.0.0.1 hoặc đường hầm SSH; không đổi firewall, không mở port UI ra mạng.
+- Gửi fact ra endpoint embeddings chỉ khi người dùng bật `"embeddings"` trong `team.json`.
+- Lớp lỗi (`agents.classify`) chỉ đọc lỗi của CLI và stderr, không đọc transcript stdout. Lệnh verify dùng `agents.verify_env()` (danh sách cho phép), không dùng `clean_env()`.
 
 ## Bẫy đã gặp
 
@@ -82,14 +86,23 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 - `Path.write_text` trên Windows ghi CRLF nếu không truyền `newline="\n"`.
 - Heredoc trong bash biến `\\n` thành `\n`. Sửa chuỗi có escape bằng công cụ Edit.
 - Chỉ codex để lại số liệu quota (`rate_limits` trong rollout). agy, opencode và router: engine học từ lỗi trả về.
+- Hàm `git()` của engine decode và strip output, làm hỏng patch nhị phân: dùng `_git(..., text=False)`.
+- `git bundle create f <sha>` báo "Refusing to create empty bundle": tạo ref tạm, bundle xong thì xoá (`remote.snapshot`).
+- Windows: trả lời HTTP khi chưa đọc hết body thành connection reset (WinError 10053); handler của UI đọc body trước.
 
 ## Việc tiếp theo
 
-**Đọc `prototype/docs/HANDOFF.md` trước.** Phiên local dừng giữa chừng; file đó có thiết kế đã chốt của worker chạy từ xa, việc review UI ở nhánh `orchestra-uiux` và thứ tự làm. Lộ trình chung ở `prototype/PLAN.md` §0 và §16.
+Lộ trình ở `prototype/PLAN.md` §0 và §16. P1 xong. P2 xong phần code: sơ đồ DAG, sửa plan bằng kéo-thả, MCP server, embeddings, worker chạy từ xa, UI pha 1–3. Đợt review 2026-10-04 đã sửa phân loại lỗi, lệnh verify của bản amend, môi trường của verify, LF (`PLAN.md` §16).
 
 Đang chờ người dùng:
 1. Quyết định có bật hai opt-in ở §13 trong `team.json` hay không.
 2. Nối 9router: người dùng tự kiểm tra cấu hình an toàn (§13), login dashboard và provider, `vault set NINEROUTER_API_KEY`, rồi `discover --only opencode@9router`.
 3. Tự chạy `models refresh`, `skills refresh` và `login claude`.
+4. Chạy bộ test trên Windows (hai test mới chưa chạy ở đó); thử worker chạy từ xa với CLI thật qua `ssh -R`.
+5. UI pha 4 (`docs/UIUX.md` §12): audit bằng web-design-guidelines bản ghim (cần cài), Narrator, ảnh chụp README.
 
-P1 ở §16 đã xong. P2: đã có sơ đồ DAG, sửa plan bằng kéo-thả, MCP server và embeddings cho knowledge graph; đang làm worker chạy từ xa (xem §16).
+Ưu tiên tiếp theo: vài run thật trên repo thật; lưu đầu ra thật của CLI mới vào `prototype/docs/probes/` làm fixture cho parser.
+
+## Quy ước git
+
+- Mỗi tính năng một commit. Không dùng `git stash` trần. Chỉ push khi người dùng bảo.

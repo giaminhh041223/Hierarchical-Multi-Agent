@@ -101,7 +101,8 @@ Mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn 
 | `log [-n 40]` | Xem các sự kiện gần nhất. Đây là kênh chung của cả đội. |
 | `kg search <từ khoá> [-k 8]` · `kg links <node>` · `kg add <entity> <fact>` | Knowledge graph dùng chung. |
 | `mcp` | MCP server qua stdio: board và knowledge graph thành tool chỉ đọc. Xem [MCP server](#mcp-server). |
-| `ui [--port 8765] [--no-browser]` | Web UI. Cổng bận thì tự chọn cổng khác. |
+| `ui [--port 8765] [--no-browser]` | Web UI. Cổng bận thì tự chọn cổng khác (khi dùng worker từ xa, đường hầm phải theo đúng cổng in ra). |
+| `remote run [--url …] [--agents codex,agy] [--name …] [--once]` | Chạy trên máy khác: phục vụ agent CLI của máy đó cho engine. Xem [Worker chạy từ xa](#worker-chạy-từ-xa). |
 
 Mã thoát của `run` và `resume`:
 - `0`: xong;
@@ -282,6 +283,42 @@ claude mcp add orch -e PYTHONPATH=D:/Hierarchical-Multi-Agent/prototype -- pytho
 codex mcp add orch --env PYTHONPATH=D:/Hierarchical-Multi-Agent/prototype -- python -m orch --ws D:/du-an mcp
 ```
 
+## Worker chạy từ xa
+
+Một máy khác, có agent CLI và login riêng, nhận task như một worker. Engine, kiểm tra scope, verify và merge vẫn chạy ở máy chính.
+
+**Cách nối.** Máy kia gọi vào web UI của máy chính qua đường hầm SSH; không mở port nào ra mạng.
+
+1. Sinh token, rồi đặt cùng một giá trị ở **cả hai** máy, qua biến môi trường hoặc vault:
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(24))"
+   python -m orch vault set ORCH_REMOTE_TOKEN
+   ```
+2. Máy chính: chạy `python -m orch --ws <dự án> ui` (mặc định port 8765). Dòng `remote runners: on` xác nhận token đã được nhận.
+3. Máy kia: mở đường hầm (hai đầu phải cùng port, vì server kiểm tra Host), rồi chạy runner từ `prototype/`:
+   ```bash
+   ssh -R 8765:127.0.0.1:8765 user@máy-kia
+   python -m orch remote run --url http://127.0.0.1:8765 --agents codex
+   ```
+4. `team.json` ở máy chính: model ghi agent thật và model, cách nhau bằng dấu `:` đầu tiên.
+   ```json
+   "workers": {"far": {"agent": "remote", "model": "codex:gpt-5.5", "max": 1}}
+   ```
+
+**Luồng một lần thử.**
+1. Engine chụp worktree của task (cả thay đổi chưa commit) thành một git bundle không có lịch sử.
+2. Engine mở một lease và chờ.
+3. Runner nhận lease, dựng lại cây trong thư mục tạm, chạy CLI thật và gửi heartbeat.
+4. Runner gửi patch nhị phân về; engine áp patch vào worktree rồi kiểm tra scope, verify và gộp như với worker local.
+
+**Cần biết.**
+- Runner im lặng quá `ORCH_REMOTE_STALE` giây thì lần thử đó lỗi, engine thử lại một lần. Không runner nào nhận trong `ORCH_REMOTE_WAIT` giây cũng lỗi.
+- Bundle không chở lịch sử git. Worker từ xa không có MCP hay knowledge graph.
+- Log của runner nằm ở `~/.orchestra/remote/<lease>` trên máy kia.
+- Mọi runner của một CLI tính là một tài khoản (`remote/codex`) khi xoay vòng quota.
+- Token của UI không mở được route của runner, và ngược lại. Token remote ngắn hơn 16 ký tự thì runner bị từ chối.
+- **Ai có `ORCH_REMOTE_TOKEN` và vào được port của UI thì đọc được mã nguồn (bundle) và prompt.** Chỉ dùng qua 127.0.0.1 hoặc đường hầm SSH.
+
 ## Workspace
 
 Engine đặt `<dự án>/.orch/` vào `.git/info/exclude`, nên thư mục này không lọt vào commit. Nội dung:
@@ -325,6 +362,7 @@ Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi b
   "auto_approve": false,
   "account_max": {},
   "verify_allow": null,
+  "verify_env": [],
   "mcp": false,
   "embeddings": null,
   "notify_url": null
@@ -348,7 +386,8 @@ Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi b
 | `skills` | `true`: skill architect cài skill curated đã chọn. `"propose"`: chỉ đề xuất, task SKILLS hỏi bạn trước khi cài. `false`: tắt. |
 | `auto_approve` | Bỏ qua bước bạn duyệt plan. |
 | `account_max` | Số task chạy song song tối đa trên một tài khoản, ví dụ `{"codex": 1}` khi hai worker dùng chung một subscription. Mặc định không giới hạn. |
-| `verify_allow` | Danh sách tiền tố lệnh verify được chạy không cần hỏi, ví dụ `[["python", "-m", "unittest"]]`. Lệnh khác dừng task trước khi gọi worker và hỏi bạn, kể cả khi `auto_approve`; duyệt plan bằng tay cũng là duyệt lệnh trong plan. `null` (mặc định) = không dùng danh sách. |
+| `verify_allow` | Danh sách tiền tố lệnh verify được chạy không cần hỏi, ví dụ `[["python", "-m", "unittest"]]`. Lệnh khác dừng task trước khi gọi worker và hỏi bạn, kể cả khi `auto_approve`; duyệt plan bằng tay cũng là duyệt lệnh trong plan. `null` (mặc định) = không dùng danh sách: duyệt plan bằng tay là duyệt lệnh của plan đó, còn lệnh mới trong bản amend (lead viết sau khi bạn duyệt) vẫn bị hỏi; run `auto_approve` tin lead ở cả hai. |
+| `verify_env` | Tên biến môi trường thêm vào cho lệnh verify, ví dụ `["JAVA_OPTS"]`. Lệnh verify chỉ nhận một danh sách cho phép (hệ thống, locale, thư mục tạm, toolchain như `PYTHON*`, `NODE_*`, `GOPATH`); tên trông giống secret vẫn bị loại. |
 | `mcp` | `true`: mỗi lời gọi codex, claude và opencode được nối với [MCP server](#mcp-server) của workspace. Mặc định `false`. |
 | `embeddings` | Endpoint `/embeddings` kiểu OpenAI để knowledge graph tìm theo nghĩa; fact được gửi tới đó ([Knowledge graph](#knowledge-graph)). `null` (mặc định) = chỉ dùng từ khoá và trigram trên máy. |
 | `notify_url` | Webhook kiểu ntfy/Slack/Discord, gửi khi cần bạn và khi xong. Có thể thay bằng biến `ORCH_NOTIFY_URL`. |
@@ -360,6 +399,8 @@ Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi b
 | `ORCH_HOME` | Thư mục dữ liệu chung, mặc định `~/.orchestra`. |
 | `ORCH_WS` | Dự án mặc định, thay cho `--ws`. |
 | `ORCH_NOTIFY_URL` | Webhook thông báo. |
+| `ORCH_REMOTE_TOKEN` | Token của [worker chạy từ xa](#worker-chạy-từ-xa), cùng giá trị trên hai máy, tối thiểu 16 ký tự. Đặt được qua vault. |
+| `ORCH_REMOTE_STALE`, `ORCH_REMOTE_WAIT` | Số giây không có heartbeat (mặc định 60) và số giây chờ runner nhận lần thử (mặc định 600). |
 | `ORCH_MOCK`, `ORCH_CRASH_AT` | Chỉ dùng cho test. |
 
 ## Bảo mật (tóm tắt)
@@ -368,12 +409,14 @@ Chi tiết ở [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
 
 - **Agent chạy với quyền của bạn.** Worktree không phải sandbox. Giới hạn thật là sandbox/permission mode của từng CLI, ví dụ `codex -s workspace-write`.
 - **Secret.**
-  - Mỗi agent chỉ nhận đúng biến chứng thực adapter của nó cần.
-  - Lệnh verify chạy không có secret nào.
+  - Mỗi agent chỉ nhận đúng biến chứng thực adapter của nó cần. Biến trông giống secret (tên chứa `KEY`, `TOKEN`, `AUTH`, `COOKIE` …, hoặc URL có `user:password@`) bị loại.
+  - Lệnh verify chạy code do worker viết, nên chỉ nhận một danh sách biến cho phép (`verify_env` thêm tên), không có secret nào.
   - Log, events và UI đều che secret.
 - **Git.** Engine commit với hook tắt và không bao giờ ghi vào nhánh hay working tree của bạn.
 - **Web UI.** Chỉ mở trên 127.0.0.1, có token, kiểm tra Host và Origin, có CSP.
-- **Duyệt plan.** Lệnh verify trong plan do model đề xuất. Hãy đọc chúng trong `plan.md` trước khi trả lời `yes`. `--yes` / `auto_approve` bỏ qua bước này, trừ khi bạn đặt `verify_allow`.
+- **Duyệt plan.** Lệnh verify trong plan do model đề xuất. Hãy đọc chúng trong `plan.md` trước khi trả lời `yes`. Lệnh mới mà lead thêm sau đó (amend) được hỏi riêng. `--yes` / `auto_approve` bỏ qua cả hai, trừ khi bạn đặt `verify_allow`.
+- **Phân loại lỗi.** Hết quota, rate limit, chưa đăng nhập được nhận ra từ lỗi của chính CLI và stderr, không từ transcript của agent: một route `/login` hay file `quota.py` trong dự án không khoá tài khoản.
+- **Worker từ xa.** Route riêng, token riêng (`ORCH_REMOTE_TOKEN`); patch vẫn qua scope và verify ở máy chính.
 
 ## Kiểm thử
 
@@ -381,7 +424,8 @@ Chi tiết ở [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
 python tests/test_e2e.py
 ```
 
-- 25 test end-to-end: Linux khoảng 40 giây, Windows khoảng 2–3 phút.
+- 27 test end-to-end: Linux khoảng 50 giây, Windows khoảng 2–3 phút.
+- Parser của các CLI được kiểm bằng đầu ra thật lưu ở [docs/probes/](docs/probes/).
 - Dùng mock agent theo kịch bản, không tốn token.
 - Riêng test 9router dựng một router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router giả đó.
 - Lọc theo tên: `python tests/test_e2e.py crash`.

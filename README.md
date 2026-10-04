@@ -1,3 +1,5 @@
+> **Code đang phát triển nằm ở [`prototype/`](prototype/README.md)** (Orchestra: engine, CLI, web UI, test). Phần còn lại của thư mục gốc dưới đây là bộ đề xuất và mã nháp do Codex viết trước đó, giữ lại để tham khảo, chưa tích hợp với prototype.
+
 # Agent Orchestra — bản đề xuất dự án
 
 **Trạng thái ngày 03/10/2026: khảo sát và lập kế hoạch.** Công việc triển khai sản phẩm đã dừng. Một số file Python và giao diện được tạo trước khi đổi phạm vi là **mã nháp chưa tích hợp**, không phải một ứng dụng đã nghiệm thu. Theo yêu cầu mới, kênh nghiên cứu riêng đã gọi Gemini Flash 3.8 High qua Antigravity để làm G00; chưa thử inference trong app nháp hoặc bằng API key độc lập.
