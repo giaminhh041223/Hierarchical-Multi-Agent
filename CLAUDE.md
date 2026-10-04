@@ -85,7 +85,7 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 
 ## Việc tiếp theo
 
-Xem `prototype/PLAN.md` §0 và §16.
+**Đọc `prototype/docs/HANDOFF.md` trước.** Phiên local dừng giữa chừng; file đó có thiết kế đã chốt của worker chạy từ xa, việc review UI ở nhánh `orchestra-uiux` và thứ tự làm. Lộ trình chung ở `prototype/PLAN.md` §0 và §16.
 
 Đang chờ người dùng:
 1. Quyết định có bật hai opt-in ở §13 trong `team.json` hay không.

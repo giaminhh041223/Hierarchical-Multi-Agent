@@ -45,11 +45,12 @@ Authority: you may retry, reassign, cancel and re-plan. Only the user may provid
 
 
 # --- git -------------------------------------------------------------------------------------------------
-def _git(cwd, *args):
+def _git(cwd, *args, env=None, text=True):
+    """text=False: raw bytes (binary patches)."""
     return subprocess.run(["git", "-c", f"core.hooksPath={HOOKS.as_posix()}", "-c", "core.quotepath=false", "-c", "user.name=orchestra",
                            "-c", "user.email=orchestra@localhost", "-c", "commit.gpgsign=false", *args],
-                          cwd=str(cwd), capture_output=True, encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
-                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+                          cwd=str(cwd), capture_output=True, creationflags=NO_WINDOW, env={**os.environ, "GIT_TERMINAL_PROMPT": "0", **(env or {})},
+                          **({"encoding": "utf-8", "errors": "replace"} if text else {}))
 
 
 def git(cwd, *args, codes=(0,)):
