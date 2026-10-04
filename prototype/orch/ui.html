@@ -39,7 +39,7 @@ nav button.on { color: var(--ink); background: color-mix(in srgb, var(--ink) 10%
 main { padding: 16px; max-width: 1200px; margin: 0 auto; }
 h1, h2, h3, .heading { font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; font-weight: 600; color: var(--ink); margin: 20px 0 8px; }
 h1, h2 { font-size: 20px; line-height: 1.25; } h3 { font-size: 16px; line-height: 1.25; }
-p, .prose { max-width: 75ch; margin: 6px 0 12px; }
+p, .prose { max-width: 75ch; margin: 6px 0 12px; overflow-wrap: anywhere; } /* long paths in questions must wrap, not overflow */
 .question { white-space: pre-wrap; }
 .mono, pre, code { font-family: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", Menlo, monospace; }
 .tabular { font-variant-numeric: tabular-nums; }
@@ -1204,6 +1204,10 @@ async function Team() {
       ariaDescribedby: err ? `werr-${idx}` : null,
       onchange: e => {
         const newName = e.target.value.trim();
+        if (newName !== wName && Object.prototype.hasOwnProperty.call(teamObj.workers, newName)) {
+          e.target.value = wName;  // renaming onto another worker would silently drop one of them
+          return say(t("Worker names must be unique"), "err");
+        }
         if (newName && newName !== wName) {
           const newWorkers = {};
           for (const [k, v] of Object.entries(teamObj.workers)) newWorkers[k === wName ? newName : k] = v;
@@ -1472,6 +1476,11 @@ function renderNav() {
       onclick: () => { tab = n; render(); }
     }, t(n));
   }));
+  const on = tabsEl.querySelector(".on");  // narrow screens scroll the tab bar: keep the current tab in view
+  if (on) {
+    const a = on.getBoundingClientRect(), b = tabsEl.getBoundingClientRect();
+    if (a.left < b.left || a.right > b.right) tabsEl.scrollLeft += a.left - b.left - 16;
+  }
 
   const rightEl = document.getElementById("header-right");
   if (rightEl) {
