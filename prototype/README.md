@@ -235,6 +235,26 @@ Mở Claude Code hoặc Codex trong dự án của bạn và bảo nó điều k
 
 Bên trong run, worker đã có sẵn `ORCH_WS` và `PYTHONPATH`, nên tự tra knowledge graph được bằng `python -m orch kg search …`.
 
+## Knowledge graph
+
+Task đã tích hợp công bố fact; bạn thêm bằng `kg add`. Engine chèn các fact liên quan vào packet của mỗi task. Agent tra bằng `kg search` hoặc tool MCP `kg_search`.
+
+Tìm kiếm gộp hai bảng xếp hạng:
+- từ khoá (SQLite FTS5/BM25);
+- vector. Mặc định là trigram ký tự tính ngay trên máy, không gửi gì ra ngoài. Cách này tìm được từ viết gần đúng và từ gõ không dấu, ví dụ `dang nhap` thấy "Đăng nhập".
+
+**Tìm theo nghĩa (tuỳ chọn).** Thêm vào `team.json` một endpoint `/embeddings` kiểu OpenAI, ví dụ Ollama trên máy bạn:
+
+```json
+"embeddings": {"url": "http://127.0.0.1:11434/v1", "model": "nomic-embed-text", "key": null, "min": 0.3}
+```
+
+- **Nội dung các fact được gửi tới `url`.** Muốn fact không rời máy thì dùng endpoint chạy trên máy.
+- `key`: tên biến môi trường hoặc mục vault chứa API key, ví dụ `"OPENAI_API_KEY"` sau khi `vault set OPENAI_API_KEY`. Key đi qua header Bearer. Để `null` nếu endpoint không cần.
+- `min`: độ tương đồng cosine tối thiểu, mặc định 0.3.
+- Vector được lưu trong `orch.db`, nên mỗi fact chỉ gửi một lần cho mỗi model.
+- Endpoint lỗi thì tìm bằng trigram và ghi một dòng ra stderr (`engine.log` khi chạy từ UI).
+
 ## MCP server
 
 `python -m orch --ws <dự án> mcp` chạy một MCP server qua stdio. Server có ba tool, đều chỉ đọc:
@@ -242,7 +262,7 @@ Bên trong run, worker đã có sẵn `ORCH_WS` và `PYTHONPATH`, nên tự tra 
 | Tool | Trả về |
 |---|---|
 | `board` | Mục tiêu và trạng thái run; từng task với trạng thái, worker, số lần thử, phụ thuộc. |
-| `kg_search` | Các fact mà task đã tích hợp công bố, tìm theo từ khoá. |
+| `kg_search` | Các fact mà task đã tích hợp công bố, tìm theo từ khoá và vector ([Knowledge graph](#knowledge-graph)). |
 | `kg_links` | Quan hệ của một node. Task: file nó đã sửa, task nó chạy sau. File: các task đã sửa file đó. |
 
 **Cho agent trong run.** Đặt `"mcp": true` trong `team.json`. Engine truyền server cho từng lời gọi agent bằng cờ hoặc biến môi trường của chính lời gọi đó, không ghi file cấu hình nào của CLI:
@@ -268,7 +288,7 @@ Engine đặt `<dự án>/.orch/` vào `.git/info/exclude`, nên thư mục này
 
 ```
 .orch/
-  orch.db                 tasks, attempts, plans, events (kênh chung), facts, links, skills
+  orch.db                 tasks, attempts, plans, events (kênh chung), facts, links, vectors, skills
   team.json               đội và tham số
   rules/                  common.md, lead.md, reviewer.md, worker.md, skill_architect.md, <worker>.md
   runs/<run>/plan.md      plan để bạn duyệt
@@ -306,6 +326,7 @@ Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi b
   "account_max": {},
   "verify_allow": null,
   "mcp": false,
+  "embeddings": null,
   "notify_url": null
 }
 ```
@@ -329,6 +350,7 @@ Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi b
 | `account_max` | Số task chạy song song tối đa trên một tài khoản, ví dụ `{"codex": 1}` khi hai worker dùng chung một subscription. Mặc định không giới hạn. |
 | `verify_allow` | Danh sách tiền tố lệnh verify được chạy không cần hỏi, ví dụ `[["python", "-m", "unittest"]]`. Lệnh khác dừng task trước khi gọi worker và hỏi bạn, kể cả khi `auto_approve`; duyệt plan bằng tay cũng là duyệt lệnh trong plan. `null` (mặc định) = không dùng danh sách. |
 | `mcp` | `true`: mỗi lời gọi codex, claude và opencode được nối với [MCP server](#mcp-server) của workspace. Mặc định `false`. |
+| `embeddings` | Endpoint `/embeddings` kiểu OpenAI để knowledge graph tìm theo nghĩa; fact được gửi tới đó ([Knowledge graph](#knowledge-graph)). `null` (mặc định) = chỉ dùng từ khoá và trigram trên máy. |
 | `notify_url` | Webhook kiểu ntfy/Slack/Discord, gửi khi cần bạn và khi xong. Có thể thay bằng biến `ORCH_NOTIFY_URL`. |
 
 ## Biến môi trường
@@ -359,7 +381,7 @@ Chi tiết ở [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
 python tests/test_e2e.py
 ```
 
-- 24 test end-to-end: Linux khoảng 40 giây, Windows khoảng 2–3 phút.
+- 25 test end-to-end: Linux khoảng 40 giây, Windows khoảng 2–3 phút.
 - Dùng mock agent theo kịch bản, không tốn token.
 - Riêng test 9router dựng một router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router giả đó.
 - Lọc theo tên: `python tests/test_e2e.py crash`.

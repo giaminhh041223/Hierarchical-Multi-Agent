@@ -17,7 +17,7 @@ YES = {"y", "yes", "ok", "okay", "approve", "approved", "accept", "lgtm", "go", 
 HARD_CAP = 6  # attempts per task before the user is asked
 TEAM_DEFAULTS = {"max_parallel": 4, "timeout": 1800, "verify_timeout": 600, "budget_tokens": 0, "max_amend": 1,
                  "skills": True, "auto_approve": False, "wait_reset": 600, "cooldown": 3600, "account_max": {},
-                 "verify_allow": None, "mcp": False}
+                 "verify_allow": None, "mcp": False, "embeddings": None}
 
 RULES = {
     "common": """You are one agent in Orchestra, a local multi-agent coding team. The engine (a program, not an LLM) owns git, scheduling and integration.
@@ -45,11 +45,12 @@ Authority: you may retry, reassign, cancel and re-plan. Only the user may provid
 
 
 # --- git -------------------------------------------------------------------------------------------------
-def _git(cwd, *args):
+def _git(cwd, *args, env=None, text=True):
+    """text=False: raw bytes (binary patches)."""
     return subprocess.run(["git", "-c", f"core.hooksPath={HOOKS.as_posix()}", "-c", "core.quotepath=false", "-c", "user.name=orchestra",
                            "-c", "user.email=orchestra@localhost", "-c", "commit.gpgsign=false", *args],
-                          cwd=str(cwd), capture_output=True, encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
-                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+                          cwd=str(cwd), capture_output=True, creationflags=NO_WINDOW, env={**os.environ, "GIT_TERMINAL_PROMPT": "0", **(env or {})},
+                          **({"encoding": "utf-8", "errors": "replace"} if text else {}))
 
 
 def git(cwd, *args, codes=(0,)):

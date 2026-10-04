@@ -658,6 +658,67 @@ def test_mcp_server_read_only_tools():
     assert json.loads(oc_on["OPENCODE_CONFIG_CONTENT"])["mcp"]["orch"]["command"] == [srv["command"], *srv["args"]]
 
 
+def test_kg_search_vectors():
+    """kg_search fuses FTS5 keywords with vectors. Local trigrams find near spellings and words typed without accents; with
+    team.json "embeddings" an OpenAI-compatible endpoint ranks by meaning: vault key as Bearer, each fact sent once, read-only
+    workspaces still search. A dead endpoint falls back to the local vectors."""
+    import io, re
+    from orch import core
+    d = Path(tempfile.mkdtemp(prefix="orch-test-"))
+    ws = core.Workspace(d)
+    for e, f in [("parser", "Parser handles nested parentheses"), ("auth", "Đăng nhập dùng JWT trong cookie httpOnly"),
+                 ("db", "migrations live in db/migrations, run with make migrate"), ("app", "add(a, b) returns a + b")]:
+        ws.kg_add(e, f, "T1")
+    top = lambda q, w=ws: [r["entity"] for r in w.kg_search(q)]
+    assert not ws.q("SELECT 1 FROM facts WHERE facts MATCH ?", '"parsing" OR "brackets" OR "dang" OR "nhap"'), "FTS5 alone misses"
+    assert top("parsing brackets")[0] == "parser" and top("dang nhap")[0] == "auth"
+    concepts = [{"login", "sign", "jwt", "đăng", "nhập", "session"}, {"database", "migrations", "schema", "db"},
+                {"parser", "parentheses", "brackets", "parsing"}, {"add", "sum", "plus"}]
+    seen = []
+
+    class Embeddings(http.server.BaseHTTPRequestHandler):  # one dimension per concept; replies out of order
+        def log_message(self, *a):
+            pass
+
+        def do_POST(self):
+            req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            seen.append((self.path, self.headers.get("Authorization"), req["model"], len(req["input"])))
+            vec = lambda t: [float(bool(c & set(re.findall(r"\w+", t.lower())))) for c in concepts]
+            body = json.dumps({"data": [{"index": i, "embedding": vec(t)} for i, t in enumerate(req["input"])][::-1]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Embeddings)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        assert "auth" not in top("users sign in"), "no shared word or trigram: only a model links them"
+        ws.write_json("team.json", {"embeddings": {"url": f"http://127.0.0.1:{srv.server_address[1]}/v1", "model": "m", "key": "EMBED_KEY"}})
+        vault_set("EMBED_KEY", "embed-test-key")
+        assert top("users sign in") == ["auth"], seen
+        assert seen == [("/v1/embeddings", "Bearer embed-test-key", "m", n) for n in (4, 1)], seen
+        top("users sign in")
+        assert [s[3] for s in seen[2:]] == [1], "the facts' vectors are stored"
+        ws.kg_add("session", "session cookies expire after 30 minutes", "T2")
+        ro, n = core.Workspace(d, readonly=True), len(seen)
+        assert set(top("login", ro)) == set(top("login", ro)) == {"auth", "session"}, seen
+        top("login"), top("login")
+        assert [s[3] for s in seen[n:]] == [1, 1, 1, 1, 1, 1, 1], "read-only: the new fact is sent each time; writable: once"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        vault_set("EMBED_KEY")
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        assert top("dang nhap")[0] == "auth"
+    assert "embeddings:" in err.getvalue() and "ranking locally" in err.getvalue(), err.getvalue()
+    ws.db.close()
+    ro.db.close()
+    shutil.rmtree(d, ignore_errors=True)
+
+
 def test_scope_and_plan_checks():
     assert in_scope("src/a.py", ["src/"]) and in_scope("src/a.py", ["src"]) and not in_scope("srcx/a.py", ["src"])
     assert in_scope("a/b/c.py", ["**/*.py"]) and in_scope("src/a.py", ["src/**/*.py"]) and in_scope("any/x", ["."])
