@@ -133,6 +133,8 @@ Mã thoát của `run` và `resume`:
 
 ## Hết usage: xoay vòng và pool backup
 
+> **Điều khoản của nhà cung cấp.** Tính năng này lập lịch công việc trên **các tài khoản và key bạn sở hữu hợp lệ**, để run không đứng yên khi một quota cạn. Nó không phải công cụ lách hạn mức. Điều khoản của nhiều nhà cung cấp cấm chia sẻ tài khoản, mở nhiều tài khoản để vượt hạn mức, hoặc dùng gói thuê bao cá nhân qua công cụ bên thứ ba; một số hãng từng chặn việc này trên thực tế. Hãy đọc điều khoản của từng hãng. Dùng chung với nhóm, trên máy chủ hay trong CI thì dùng API key.
+
 **Tài khoản** là một quota. Thường mỗi agent id (`codex`, `agy`, `opencode@free` …) là một tài khoản. Riêng router (`opencode@9router`) thì mỗi nhà cung cấp phía sau là một tài khoản, và nhà cung cấp trùng subscription với một CLI (`cx/` = codex) được tính chung với CLI đó.
 
 **Khi một tài khoản hết usage giữa run**, engine xử lý như sau, không tốn token:
@@ -209,7 +211,9 @@ Chỉnh tiêu chí:
 
 ## 9router (tuỳ chọn): nhiều API AI free qua một endpoint
 
-[9router](https://github.com/decolua/9router) là router chạy local, có endpoint tương thích OpenAI tại `http://127.0.0.1:20128/v1`. Nó gom nhiều nhà cung cấp, có cả gói free, nên làm pool backup rất hợp. Orchestra dùng nó qua profile `opencode@9router`: opencode gọi router, key lấy từ vault và không bao giờ ghi vào file cấu hình.
+> **Tự chịu rủi ro.** Router đưa quyền dùng của các gói thuê bao sang công cụ khác; điều đó có thể trái điều khoản của nhà cung cấp phía sau (xem lưu ý ở [Hết usage](#hết-usage-xoay-vòng-và-pool-backup)). Hoatau chỉ là client của router, không khuyến nghị dùng gói thuê bao theo cách này.
+
+[9router](https://github.com/decolua/9router) là router chạy local, có endpoint tương thích OpenAI tại `http://127.0.0.1:20128/v1`. Nó gom nhiều nhà cung cấp, có cả gói free, nên làm pool backup rất hợp. Hoatau dùng nó qua profile `opencode@9router`: opencode gọi router, key lấy từ vault và không bao giờ ghi vào file cấu hình.
 
 Prototype không cài 9router. Tự cài nếu bạn muốn, theo các bước:
 
@@ -221,7 +225,7 @@ Prototype không cài 9router. Tự cài nếu bạn muốn, theo các bước:
    - Tắt Cloud Sync nếu không cần.
    - Không bật các tính năng MITM, cài chứng chỉ hay DNS.
 3. Trên dashboard (`http://127.0.0.1:20128`): kết nối các nhà cung cấp, tạo API key.
-4. Gửi key cho Orchestra và kiểm tra:
+4. Gửi key cho Hoatau và kiểm tra:
 
    ```bash
    python -m orch vault set NINEROUTER_API_KEY
@@ -243,9 +247,11 @@ Engine gửi kèm header `X-9Router-Token-Saver: off`. Lý do: tính năng nén 
 
 ## Dùng Claude Code hoặc Codex làm lead tương tác
 
-Mở Claude Code hoặc Codex trong dự án của bạn và bảo nó điều khiển Orchestra qua CLI, ví dụ:
+Mở Claude Code hoặc Codex trong dự án của bạn và bảo nó điều khiển Hoatau qua CLI, ví dụ:
 
 > dùng `python -m orch --ws . status`, `inbox`, `answer`, `kg search` để theo dõi và xử lý run
+
+Gọn hơn: đăng ký MCP server với `--control` ([MCP server](#mcp-server)); agent của bạn có sẵn tool `run`, `status`, `answer`.
 
 Bên trong run, worker đã có sẵn `ORCH_WS` và `PYTHONPATH`, nên tự tra knowledge graph được bằng `python -m orch kg search …`.
 
@@ -494,7 +500,7 @@ Chi tiết ở [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
 python tests/test_e2e.py
 ```
 
-- 27 test end-to-end: Linux khoảng 50 giây, Windows khoảng 2–3 phút.
+- 32 test end-to-end: Linux khoảng 60 giây, Windows khoảng 2–3 phút. GitHub Actions chạy chúng trên Windows và Linux (Python 3.11, 3.13) ở mỗi lần push, cùng với bản wheel và GitHub Action.
 - Parser của các CLI được kiểm bằng đầu ra thật lưu ở [docs/probes/](docs/probes/).
 - Dùng mock agent theo kịch bản, không tốn token.
 - Riêng test 9router dựng một router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router giả đó.

@@ -7,12 +7,12 @@
 
 Hướng dẫn sử dụng nằm ở [README.md](README.md).
 
-## 0. Trạng thái (2026-10-04)
+## 0. Trạng thái (2026-10-05)
 
 | Hạng mục | Trạng thái |
 |---|---|
-| Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server, worker chạy từ xa | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+, không cần `pip install`. |
-| Test end-to-end | 27/27 PASS với mock agent (không tốn token) trên Linux (Python 3.11) và Windows (Python 3.13). WSL (Python 3.14) mới chạy 25 test cũ. |
+| Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server (cả chế độ `--control`), worker chạy từ xa, `doctor`, GitHub Action | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+. Đóng gói thành lệnh `hoatau` (`pyproject.toml`, chưa lên PyPI), license Apache-2.0. |
+| Test end-to-end | 32/32 PASS với mock agent (không tốn token) trên Linux (Python 3.11). GitHub Actions chạy bộ test trên Windows và Linux (3.11, 3.13), macOS (không chặn), cùng job wheel và GitHub Action. Trên máy Windows của bạn đã pass 27 test (trước đợt đóng gói). |
 | Adapter đã kiểm chứng cờ dòng lệnh trên máy này | <ul><li>`codex` 0.153.4.</li><li>`agy` 1.2.15.</li><li>`opencode` 1.18.34, profile `opencode@free`:<ul><li>8/10 model free trả lời được;</li><li>`big-pickle` và `fledge-alpha-free` qua pre-test code.</li></ul></li></ul> |
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
 | Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả. 9router đã có trên máy nhưng chưa nối (§16 P0).</li><li>Worker chạy từ xa với CLI thật qua đường hầm SSH: mới qua test với mock agent (§10).</li></ul> |
@@ -77,6 +77,8 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | [orch/skills.py](orch/skills.py) | Chỉ mục skill, cài đặt, skill architect, đặt skill vào worktree, duyệt repo |
 | [orch/server.py](orch/server.py), [orch/ui.html](orch/ui.html) | Web UI local |
 | [orch/mcp.py](orch/mcp.py) | MCP server qua stdio: board và knowledge graph thành tool chỉ đọc |
+| [orch/doctor.py](orch/doctor.py) | `doctor`: kiểm tra máy và dự án tại chỗ (không mạng, không gọi agent, không in secret) |
+| [action/](action/) | GitHub Action dạng composite: `action.yml` và `run.py` (đặt team, chạy run, đẩy nhánh, mở PR) |
 | [orch/remote.py](orch/remote.py) | Worker chạy từ xa: proxy phía engine (bundle, lease, áp patch), route lease của web UI, vòng lặp runner |
 | [orch/\_\_main\_\_.py](orch/__main__.py) | CLI |
 | [orch/mock.py](orch/mock.py) | Agent giả theo kịch bản, để test không tốn token |
@@ -388,6 +390,11 @@ Xếp theo mức tác động (thống nhất với Codex ở vòng 1):
 - Đây là chỗ cần lease/heartbeat (§14, vòng 2): runner im lặng quá `ORCH_REMOTE_STALE` giây thì lần thử lỗi và `route()` thử lại. Engine kill proxy (timeout, cancel) thì `finally` của proxy không chạy; `sweep()` dọn lease có proxy đã chết (PID + thời điểm tạo), và heartbeat của runner nhận `cancel`.
 - Mỗi CLI ở xa là một tài khoản `remote/<agent>` khi xoay vòng quota. Worker từ xa không có MCP hay knowledge graph.
 
+**Chế độ điều khiển** (`mcp --control`). Thêm tool `run`, `status`, `answer`, `resume`, `cancel`, `doctor` cho phiên Claude Code hoặc Codex của chính bạn: nó giao mục tiêu cho đội nhiều hãng, theo dõi và chuyển câu trả lời của bạn.
+- Engine chạy nền với `--exit-on-wait` và thoát khi chỉ còn chờ bạn; `answer` và `cancel` khởi động lại nó. Một engine sắp dừng vẫn giữ khoá, nên `answer` chờ tới khi engine nhận câu trả lời hoặc thoát hẳn.
+- `status` dặn agent gọi tool không tự trả lời thay bạn; duyệt plan cũng là cho phép lệnh verify trong đó.
+- Agent trong run không bao giờ nhận `--control` (`agents.mcp_server`).
+
 **Rule.**
 - File chung: `.orch/rules/common.md`, `lead.md`, `reviewer.md`, `worker.md`, `skill_architect.md`.
 - Thêm một file cho mỗi worker.
@@ -475,6 +482,13 @@ Ma trận quyền:
 - Key nằm trong vault. Engine chỉ đưa key vào biến môi trường của đúng profile, không bao giờ ghi vào file cấu hình.
 
 **Quota.** Từ rollout của codex, engine chỉ đọc object `rate_limits` và thời điểm ghi, không đọc nội dung hội thoại.
+
+**Điều khoản của nhà cung cấp.** Xoay vòng tài khoản lập lịch trên các tài khoản và key người dùng sở hữu hợp lệ; nó không phải công cụ lách hạn mức. Nhiều nhà cung cấp cấm chia sẻ tài khoản, mở nhiều tài khoản để vượt hạn mức, hoặc dùng gói thuê bao cá nhân qua công cụ bên thứ ba. README ghi rõ điều này, và ghi 9router là tự chịu rủi ro. Dùng chung, trên máy chủ hay trong CI thì dùng API key.
+
+**GitHub Action.**
+- Input đi vào `run.py` qua biến môi trường, không bao giờ chèn vào dòng lệnh shell (chống script injection).
+- `goal` là prompt cho agent đang giữ API key: chỉ kích hoạt bằng `workflow_dispatch` hoặc label do maintainer gắn, không nối nội dung issue/comment của người lạ.
+- Run trong CI tự duyệt plan (không có ai để hỏi), nên nên đặt `verify_allow`. Lệnh verify vẫn chạy với danh sách biến môi trường cho phép, nên không thấy API key.
 
 **Worktree không phải sandbox.** Agent chạy với quyền của bạn.
 - Giới hạn thật duy nhất là sandbox/permission mode của từng CLI (`codex -s workspace-write`, `claude --permission-mode acceptEdits` …).
@@ -606,6 +620,11 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `kg_search_vectors` | <ul><li>FTS5 bỏ sót "parsing brackets" và "dang nhap"; trigram tìm ra.</li><li>Endpoint embeddings giả: tìm theo nghĩa, key trong vault đi qua header Bearer, kết quả trả về lộn thứ tự vẫn khớp.</li><li>Mỗi fact chỉ gửi một lần; workspace chỉ đọc vẫn tìm được, không lưu.</li><li>Endpoint chết thì quay về trigram, có thông báo.</li></ul> |
 | `remote_worker` | <ul><li>Runner "ma" nhận lease rồi im lặng: proxy bỏ cuộc sau `ORCH_REMOTE_STALE`, lần thử ghi `error`, heartbeat nhận `cancel`, kết quả muộn bị từ chối.</li><li>Token UI không mở route runner và ngược lại.</li><li>Lần thử lại được một tiến trình `remote run` thật phục vụ; patch qua scope và verify rồi được tích hợp.</li><li>Không còn lease hay file lease nào.</li></ul> |
 | `cli_parsers_failure_classes_and_env` | <ul><li>Parser agy, claude, opencode chạy trên đầu ra thật trong `docs/probes/`; parser codex trên sự kiện mẫu.</li><li>Lớp lỗi: các thông báo thật được nhận đúng; chữ của dự án (`/login`, "line 429", `quota.py`, `authenticate`) không bị coi là lỗi tài khoản, kể cả qua `run_agent`.</li><li>Môi trường: agent mất `SSH_AUTH_SOCK`, `DATABASE_URL` có mật khẩu, `*_PAT`; lệnh verify chỉ nhận danh sách cho phép, `verify_env` thêm tên nhưng không thêm secret.</li></ul> |
+| `mcp_control_drives_a_run` | <ul><li>Qua MCP `--control`: `doctor`, `run`, chờ plan, `answer` rỗng bị từ chối, `run` thứ hai bị từ chối khi run cũ còn mở, `answer yes` khởi động lại engine, run xong và `status` trả về báo cáo.</li><li>Server không có `--control` chỉ có tool chỉ đọc; agent trong run không nhận `--control`.</li></ul> |
+| `github_action_runs_and_opens_a_pull_request` | <ul><li>`action/run.py` với team từ file, run tự duyệt, output và tóm tắt của job.</li><li>Nhánh `hoatau/<run>` được đẩy lên một remote bare, `gh` giả nhận đúng tham số tạo PR (Windows dừng trước bước PR).</li><li>Input đi vào script qua biến môi trường, không chèn vào dòng lệnh shell.</li></ul> |
+| `doctor` | Máy, dự án, team, DB, engine; agent của team chưa cài hoặc token remote quá ngắn thì mã thoát 1; không in secret. |
+| `db_schema_versions` | DB trước khi có phiên bản lên version 1 và có đủ bảng; migration chạy đúng một lần; DB của bản Hoatau mới hơn bị từ chối. |
+| `package_ships_its_data` | Mọi file dữ liệu trong `orch/` (catalog, `ui.html`) nằm trong package data; lệnh `hoatau`, version và LICENSE đúng; không có dependency. |
 | `scope_and_plan_checks` | Các kiểm tra plan, scope, allowlist lệnh verify và repo map ở dạng hàm thuần. |
 
 ## 16. Lộ trình
@@ -633,6 +652,25 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 - MCP server cho board và knowledge graph: đã có (§10).
 - Worker chạy từ xa: đã có (§10), kèm lease và heartbeat. Còn phải chạy thử với CLI thật qua đường hầm SSH.
 - Thiết kế lại giao diện web UI: pha 1–3 xong và đã QA trên Chromium; pha 4 đã có toast vừa màn 360px và cuộn theo `prefers-reduced-motion`, còn audit theo bộ quy tắc ghim, thử Narrator và ảnh chụp README ([docs/UIUX.md](docs/UIUX.md) §12).
+
+**P3: thành sản phẩm, hướng A (công cụ local mã nguồn mở) và E (làm công cụ cho agent khác), 2026-10-05**
+- Đã xong:
+  - tên Hoatau, license Apache-2.0, version 0.1.0;
+  - đóng gói `pyproject.toml`, lệnh `hoatau`; catalog nằm trong gói; dữ liệu tải về ở `~/.orchestra`;
+  - migration SQLite theo `PRAGMA user_version`;
+  - `doctor`;
+  - CI GitHub Actions (Windows, Linux, macOS không chặn; wheel; Action);
+  - MCP `--control`;
+  - GitHub Action (beta).
+- Việc của bạn:
+  - giữ tên `hoatau` trên PyPI (cần tài khoản PyPI; nên dùng Trusted Publishing từ GitHub Actions);
+  - chạy thử Action với agent thật và API key;
+  - vài run thật trên repo thật.
+- Tiếp theo nên làm:
+  - adapter qua giao thức chuẩn (Agent Client Protocol, SDK của từng hãng) thay cho đọc output CLI;
+  - tuỳ chọn chạy worker và verify trong container;
+  - tách `engine.py`;
+  - bộ bài thử so sánh với một agent chạy một mình.
 
 **Sửa sau đợt review 2026-10-04**
 - Lớp lỗi chỉ lấy từ lỗi của CLI và stderr (§6).
