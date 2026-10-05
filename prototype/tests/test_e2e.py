@@ -933,6 +933,9 @@ def test_doctor():
     assert r.orch("doctor", ORCH_REMOTE_TOKEN="short", DEMO_API_KEY=secret) == 1, r.out
     assert "w2 uses ghost, which is not installed here" in r.out and "ORCH_REMOTE_TOKEN is missing or shorter" in r.out, r.out
     assert secret not in r.out and "short" not in r.out.replace("shorter", ""), "doctor must never print a secret"
+    if os.name != "nt":  # an unreadable vault is a reported problem, not a crash
+        (home / "vault.json").write_text("not json", encoding="utf-8")
+        assert r.orch("doctor") == 1 and "cannot be read (JSONDecodeError)" in r.out and "Traceback" not in r.out, r.out
 
 
 def test_db_schema_versions():

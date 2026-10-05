@@ -34,17 +34,27 @@ def machine():
     # agents run `python -m orch kg search` with PYTHONPATH set to this package: the python on their PATH must be 3.11+
     py = shutil.which("python") or shutil.which("python3")
     code, text = _run([py, "-c", "import sys; print('%d.%d' % sys.version_info[:2])"]) if py else (None, "")
-    if code == 0 and tuple(map(int, text.split("."))) >= (3, 11):
+    try:  # the Windows Store stub answers with a message, not a version
+        recent = code == 0 and tuple(map(int, text.split("."))) >= (3, 11)
+    except ValueError:
+        recent = False
+    if recent:
         out.append(("ok", "python on PATH", f"{py} ({text}): agents can query the board and the knowledge graph"))
     else:
         out.append(("warn", "python on PATH", f"{py or 'none'} {text}: agents cannot run `python -m orch kg search` (needs 3.11+)"))
-    if VAULT.exists():
-        mode = "" if os.name == "nt" else f", mode {VAULT.stat().st_mode & 0o777:o}"
+    try:
+        keys, unreadable = vault(), None  # key names only are used below; values are never printed
+    except Exception as e:  # a corrupt file, or DPAPI refusing (another Windows user, a copied disk)
+        keys, unreadable = {}, e
+    if unreadable:
+        out.append(("fail", "vault", f"{VAULT} cannot be read ({type(unreadable).__name__}): move it away and store the keys again"))
+    elif VAULT.exists():
         loose = os.name != "nt" and VAULT.stat().st_mode & 0o077
-        out.append(("warn" if loose else "ok", "vault", f"{len(vault())} key(s) in {VAULT}{mode}" + (": run chmod 600" if loose else "")))
+        mode = "" if os.name == "nt" else f", mode {VAULT.stat().st_mode & 0o777:o}"
+        out.append(("warn" if loose else "ok", "vault", f"{len(keys)} key(s) in {VAULT}{mode}" + (": run chmod 600" if loose else "")))
     else:
         out.append(("ok", "vault", "empty (python -m orch vault set NAME stores an API key)"))
-    keys, found = vault(), []
+    found = []
     for aid, a in agents.catalog().items():
         if a.get("hidden"):
             continue
@@ -94,7 +104,10 @@ def project(path):
     out.append(("fail", "team", "; ".join(problems)) if problems else
                ("ok", "team", f"lead {team['lead']['agent']}, reviewer {team['reviewer']['agent']}, {len(team['workers'])} worker(s)"))
     if any(w.get("agent") == "remote" for w in team["workers"].values()):
-        rt = os.environ.get("ORCH_REMOTE_TOKEN") or vault().get("ORCH_REMOTE_TOKEN") or ""
+        try:
+            rt = os.environ.get("ORCH_REMOTE_TOKEN") or vault().get("ORCH_REMOTE_TOKEN") or ""
+        except Exception:
+            rt = os.environ.get("ORCH_REMOTE_TOKEN") or ""
         out.append(("ok", "remote workers", "ORCH_REMOTE_TOKEN set") if len(rt) >= 16 else
                    ("fail", "remote workers", "the team has remote workers but ORCH_REMOTE_TOKEN is missing or shorter than 16 characters"))
     db = p / ".orch" / "orch.db"
