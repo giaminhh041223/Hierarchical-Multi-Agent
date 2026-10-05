@@ -678,6 +678,91 @@ def test_mcp_server_read_only_tools():
     assert json.loads(oc_on["OPENCODE_CONFIG_CONTENT"])["mcp"]["orch"]["command"] == [srv["command"], *srv["args"]]
 
 
+def test_mcp_control_drives_a_run():
+    """`mcp --control` for the user's own Claude Code / Codex session: start a run, follow it, relay the user's plan approval,
+    read the final report. The server that agents in a run get stays read-only."""
+    import io
+    from orch import mcp
+    r = Repo(two_tasks())
+
+    def call(name, args=None, control=True):
+        msg = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args or {}}}
+        out = io.BytesIO()
+        mcp.serve(r.repo, io.BytesIO(json.dumps(msg).encode() + b"\n"), out, control=control)
+        rep = json.loads(out.getvalue())
+        return (rep["result"]["content"][0]["text"], rep["result"]["isError"]) if "result" in rep else (rep["error"]["message"], True)
+
+    def until(cond, seconds=90):
+        end = time.time() + seconds
+        while time.time() < end:
+            text = call("status")[0]
+            if cond(text):
+                return text
+            time.sleep(0.5)
+        raise AssertionError(f"timed out; status:\n{text}\nengine.log:\n{(r.repo / '.orch' / 'engine.log').read_text(encoding='utf-8')[-2000:]}")
+    with unittest.mock.patch.dict(os.environ, r.env):  # the engine processes it starts use the test's ORCH_HOME and mock agent
+        assert "[ok  ] git" in call("doctor")[0]
+        assert call("status")[0].startswith("no run yet")
+        text, bad = call("run", {"goal": "demo goal"})
+        assert not bad and "started" in text, text
+        text = until(lambda t: "WAITING FOR THE USER: PLAN" in t and "engine: stopped" in t)
+        assert "Only answer 'yes' to a plan when the user approved it" in text, text
+        assert call("answer", {"task": "PLAN", "text": " "})[1], "an empty answer is refused"
+        text, bad = call("run", {"goal": "another"})
+        assert bad and "still open" in text, text
+        text, bad = call("answer", {"task": "PLAN", "text": "yes"})
+        assert not bad and "answer recorded" in text, text
+        text = until(lambda t: ": done |" in t.splitlines()[0] and "engine: stopped" in t)  # "done" comes before its cleanup; Windows
+        # cannot delete history.db while that engine process still has it open
+        assert "# Orctram run" in text and "| T2 | done |" in text, text
+    assert r.git("rev-parse", "HEAD") == r.base and "return a + b" in r.show("app.py")
+    ro = mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, r.repo)["result"]["tools"]
+    full = mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, r.repo, control=True)["result"]["tools"]
+    assert sorted(t["name"] for t in ro) == ["board", "kg_links", "kg_search"]
+    assert {"run", "status", "answer", "resume", "cancel", "doctor"} <= {t["name"] for t in full}
+    assert [t["annotations"] for t in full if t["name"] == "cancel"] == [{"readOnlyHint": False, "destructiveHint": True}]
+    assert call("run", {"goal": "x"}, control=False)[1], "without --control there is no run tool"
+    assert "--control" not in agents.mcp_server(r.repo)["args"], "agents in a run never get the control tools"
+
+
+def test_github_action_runs_and_opens_a_pull_request():
+    """action/run.py as the composite action runs it: team from a file, an auto-approved run, outputs and the step summary,
+    then the integration branch pushed as orctram/<run> and a pull request (a fake gh on POSIX; Windows stops before the PR)."""
+    r = Repo(two_tasks())
+    team = json.loads((r.repo / ".orch" / "team.json").read_text(encoding="utf-8"))
+    shutil.rmtree(r.repo / ".orch")  # CI starts from a clean checkout: the team comes from a file in the repository
+    (r.repo / "ci-team.json").write_text(json.dumps(team), encoding="utf-8")
+    remote = r.tmp / "origin.git"
+    subprocess.run(GIT + ["init", "-q", "--bare", str(remote)], check=True, capture_output=True)
+    subprocess.run(GIT + ["remote", "add", "origin", str(remote)], cwd=r.repo, check=True)
+    bin_dir, out, summary = r.tmp / "bin", r.tmp / "gh_output", r.tmp / "gh_summary"
+    bin_dir.mkdir()
+    fake_gh = bin_dir / "gh"  # records its arguments, prints a PR URL like the real one
+    fake_gh.write_text(f"#!{sys.executable}\nimport json, sys\nopen({str(r.tmp / 'gh_args')!r}, 'w').write(json.dumps(sys.argv[1:]))\n"
+                       "print('https://github.com/o/r/pull/7')\n", encoding="utf-8")
+    fake_gh.chmod(0o755)
+    posix = os.name != "nt"
+    env = {**r.env, "PYTHONPATH": str(ROOT), "PATH": str(bin_dir) + os.pathsep + r.env["PATH"], "GITHUB_OUTPUT": str(out),
+           "GITHUB_STEP_SUMMARY": str(summary), "ORCTRAM_GOAL": "demo goal\nsecond line", "ORCTRAM_TEAM": "ci-team.json",
+           "ORCTRAM_OPEN_PR": "true" if posix else "false", "ORCTRAM_BASE": "main", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    p = subprocess.run([sys.executable, str(ROOT / "action" / "run.py")], cwd=r.repo, env=env, capture_output=True, encoding="utf-8",
+                       errors="replace", timeout=300)
+    assert p.returncode == 0, p.stdout + p.stderr
+    outputs = dict(line.split("=", 1) for line in out.read_text(encoding="utf-8").splitlines())
+    run = outputs["run"]
+    assert outputs["status"] == "done" and f"# Orctram run {run}: done" in summary.read_text(encoding="utf-8"), outputs
+    if posix:
+        assert outputs["branch"] == f"orctram/{run}" and outputs["pr-url"] == "https://github.com/o/r/pull/7", outputs
+        pushed = subprocess.run(GIT + ["show", f"orctram/{run}:app.py"], cwd=remote, capture_output=True, encoding="utf-8").stdout
+        assert "return a + b" in pushed, pushed
+        args = json.loads((r.tmp / "gh_args").read_text(encoding="utf-8"))
+        assert args[:6] == ["pr", "create", "--base", "main", "--head", f"orctram/{run}"] and args[7] == "Orctram: demo goal", args
+        assert args[9].endswith("report.md"), args
+    action = (ROOT / "action" / "action.yml").read_text(encoding="utf-8")
+    assert "${{ inputs.goal }}" not in action.split("run:")[-1], "inputs must reach the script as env, never inside the shell line"
+
+
 def test_kg_search_vectors():
     """kg_search fuses FTS5 keywords with vectors. Local trigrams find near spellings and words typed without accents; with
     team.json "embeddings" an OpenAI-compatible endpoint ranks by meaning: vault key as Bearer, each fact sent once, read-only
@@ -827,6 +912,97 @@ def test_cli_parsers_failure_classes_and_env():
     assert "PATH" in ver and "PLAIN_SETTING" not in ver and "MY_FLAG" not in ver and ver["PYTHONDONTWRITEBYTECODE"] == "1"
     assert more["MY_FLAG"] == "1" and "GH_PAT" not in more, "team verify_env adds names, never secret-looking ones"
     shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_bench_solo_versus_team():
+    """`bench`: one agent alone and the team on the same goal from the same commit, both judged by the user's check (not by
+    the agents' own verify): here the solo agent writes a wrong add() and replies nothing (as a real agy denied a command),
+    not even on its repair turn; the team writes a right one."""
+    sc = two_tasks()
+    sc["steps"]["worker:SOLO"] = [{"write": {"app.py": "def add(a, b):\n    return a - b\n"}, "raw": ""}, {"raw": "Done!"}]
+    r = Repo(sc)
+    (r.tmp / "home").mkdir(exist_ok=True)
+    (r.tmp / "home" / "agents.json").write_text(json.dumps({"mock": {"note": "## This CLI cannot run commands"}}), encoding="utf-8")
+    assert r.orch("bench", "demo goal", "--check", 'python -c "import app; assert app.add(2, 3) == 5"', "--solo", "mock/mock-fast") == 0, r.out
+    prompt = next((r.repo / ".orch" / "bench").glob("*/solo/agent/prompt.md")).read_text(encoding="utf-8")
+    assert "This CLI cannot run commands" in prompt, "the CLI's quirks reach the solo agent too (a real agy returned nothing without it)"
+    report = next((r.repo / ".orch" / "bench").glob("*/report.md")).read_text(encoding="utf-8")
+    solo_row = next(l for l in report.splitlines() if l.startswith("| solo mock/mock-fast"))
+    team_row = next(l for l in report.splitlines() if l.startswith("| team (lead mock, 2 worker(s))"))
+    assert "| no valid handoff | 0/1 | 2,000 | 200 |" in solo_row and "| 1 | 0 |" in solo_row, solo_row  # one call (+ its repair), no question
+    log = (Path(f"{r.scenario}.state") / "calls.log").read_text(encoding="utf-8")
+    assert "worker SOLO 2 resume" in log and "repair=1" in log, "the solo agent gets the repair turn every engine call gets"
+    assert "| done | 1/1 |" in team_row and "| 0 |" in team_row, team_row
+    assert "failed `python -c" in report and "AssertionError" in report, report
+    bid = next((r.repo / ".orch" / "bench").glob("*")).name
+    assert "return a - b" in r.git("show", f"orch/bench-{bid}/solo:app.py") and r.git("rev-parse", "HEAD") == r.base
+    assert not [w for w in r.git("worktree", "list").splitlines()[1:] if "bench-" in w], "no worktree is left behind"
+    assert not list((r.tmp / "home" / "wt").rglob("*")), "nor their empty directories (the team run's and the bench's)"
+    assert r.orch("bench", "demo goal") == 1 and "--check" in r.out, "without a check there is nothing to judge by"
+
+
+def test_doctor():
+    """Local readiness report: machine, project, team, workspace DB; a team agent missing here fails; secrets never printed."""
+    r = Repo(two_tasks())
+    home = r.tmp / "home"
+    home.mkdir(exist_ok=True)
+    (home / "vault.json").write_text("{}", encoding="utf-8")
+    assert r.orch("doctor") == 0, r.out
+    for frag in ("[ok  ] git", "with FTS5", "[ok  ] team             lead mock", "Ready."):
+        assert frag in r.out, (frag, r.out)
+    assert r.run() == 0 and r.orch("doctor") == 0 and "workspace db     schema 1" in r.out and "engine           not running" in r.out, r.out
+    (home / "agents.json").write_text(json.dumps({"ghost": {"name": "ghost", "bin": "no-such-agent-cli-xyz", "mode": {}, "run": [],
+                                                           "prompt": "stdin", "parse": "agy"}}), encoding="utf-8")
+    team = json.loads((r.repo / ".orch" / "team.json").read_text(encoding="utf-8"))
+    team["workers"]["w2"] = {"agent": "ghost", "model": "m"}
+    team["workers"]["far"] = {"agent": "remote", "model": "codex:x"}
+    (r.repo / ".orch" / "team.json").write_text(json.dumps(team), encoding="utf-8")
+    secret = "doctor-test-secret-0123456789"
+    assert r.orch("doctor", ORCH_REMOTE_TOKEN="short", DEMO_API_KEY=secret) == 1, r.out
+    assert "w2 uses ghost, which is not installed here" in r.out and "ORCH_REMOTE_TOKEN is missing or shorter" in r.out, r.out
+    assert secret not in r.out and "short" not in r.out.replace("shorter", ""), "doctor must never print a secret"
+    if os.name != "nt":  # an unreadable vault is a reported problem, not a crash
+        (home / "vault.json").write_text("not json", encoding="utf-8")
+        assert r.orch("doctor") == 1 and "cannot be read (JSONDecodeError)" in r.out and "Traceback" not in r.out, r.out
+
+
+def test_db_schema_versions():
+    """A workspace from before versioning becomes version 1 with any missing table; a later migration runs once; a database
+    from a newer Orctram is refused instead of being misread."""
+    from orch import core
+    d = Path(tempfile.mkdtemp(prefix="orch-db-"))
+    ws = core.Workspace(d)
+    ws.db.executescript("DROP TABLE leases; PRAGMA user_version=0;")  # what a 0.0 workspace looks like
+    ws.db.close()
+    ws = core.Workspace(d)
+    assert ws.q("PRAGMA user_version") == [{"user_version": 1}] and ws.q("SELECT count(*) n FROM leases") == [{"n": 0}]
+    ws.db.close()
+    with unittest.mock.patch.object(core, "WS_MIGRATIONS", [(2, ["ALTER TABLE tasks ADD COLUMN extra TEXT"])]):
+        for _ in range(2):  # the second open must not run the ALTER again (it would fail: duplicate column)
+            ws = core.Workspace(d)
+            assert ws.q("PRAGMA user_version") == [{"user_version": 2}]
+            assert any(r["name"] == "extra" for r in ws.q("PRAGMA table_info(tasks)"))
+            ws.db.close()
+    try:  # back on code that only knows version 1: refuse, never misread
+        core.Workspace(d)
+        raise AssertionError("a newer database was opened")
+    except RuntimeError as e:
+        assert "newer Orctram" in str(e), e
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def test_package_ships_its_data():
+    """pip install orctram: every catalog file and the UI are package data, the version and the command resolve."""
+    import fnmatch, tomllib, orch, orch.__main__
+    cfg = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    globs = cfg["tool"]["setuptools"]["package-data"]["orch"]
+    data = [p.relative_to(ROOT / "orch").as_posix() for p in (ROOT / "orch").rglob("*")
+            if p.is_file() and p.suffix not in (".py", ".pyc") and "__pycache__" not in p.parts]
+    missing = [d for d in data if not any(fnmatch.fnmatchcase(d, g) for g in globs)]
+    assert not missing and "catalog/agents.json" in data and "ui.html" in data, f"not shipped by pip install: {missing}"
+    assert cfg["project"]["scripts"]["orctram"] == "orch.__main__:main" and callable(orch.__main__.main)
+    assert cfg["project"]["dependencies"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", orch.__version__)
+    assert (ROOT / "LICENSE").read_text(encoding="utf-8").lstrip().startswith("Apache License")
 
 
 def test_scope_and_plan_checks():

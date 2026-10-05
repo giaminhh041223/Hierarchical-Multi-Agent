@@ -2,7 +2,7 @@
 import argparse, getpass, json, os, sqlite3, sys, time
 from pathlib import Path
 
-from . import agents, mcp, models, pool
+from . import __version__, agents, mcp, models, pool
 from .core import TERMINAL, EngineLock, Workspace, mask, vault, vault_set
 from .engine import Engine, ensure_excluded, git, git_ok, load_team, new_run, save_team
 
@@ -82,7 +82,7 @@ def cmd_init(a):
     p = ws.project
     if not git_ok(p, "rev-parse", "--verify", "HEAD"):
         if not (a.yes or confirm(f"{p} has no git commit. Run git init and commit the current files? [y/N] ")):
-            raise SystemExit("orchestra needs a git repository with at least one commit")
+            raise SystemExit("orctram needs a git repository with at least one commit")
         if not git_ok(p, "rev-parse", "--git-dir"):
             git(p, "init", "-q")
         ensure_excluded(p)
@@ -153,7 +153,7 @@ def cmd_kg(a):
 
 
 def cmd_mcp(a):
-    mcp.serve(Path(a.ws or os.environ.get("ORCH_WS") or os.getcwd()).resolve())
+    mcp.serve(Path(a.ws or os.environ.get("ORCH_WS") or os.getcwd()).resolve(), control=a.control)
 
 
 def cmd_log(a):
@@ -205,6 +205,19 @@ def cmd_pool(a):
     print("\n".join(pool.describe(team, ws)))
 
 
+def cmd_bench(a):
+    from . import bench
+    report = bench.bench(ws_of(a), a.goal, a.check, a.solo, a.timeout)
+    print("\n" + report.read_text(encoding="utf-8") + f"\n-> {report}")
+
+
+def cmd_doctor(a):
+    from . import doctor
+    text, code = doctor.report(a.ws or os.environ.get("ORCH_WS") or (os.getcwd() if (Path.cwd() / ".orch").is_dir() else None))
+    print(text)
+    raise SystemExit(code)
+
+
 def cmd_remote(a):
     from . import remote
     if a.action == "proxy":
@@ -214,7 +227,8 @@ def cmd_remote(a):
 
 def main(argv=None):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    ap = argparse.ArgumentParser(prog="python -m orch", description="Orchestra: local multi-agent coding orchestration")
+    ap = argparse.ArgumentParser(prog="orctram", description="Orctram: local multi-agent coding orchestration (same as: python -m orch)")
+    ap.add_argument("--version", action="version", version=f"orctram {__version__}")
     ap.add_argument("--ws", help="project folder (default: $ORCH_WS or the current directory)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("discover", help="find agent CLIs, their models and login state")
@@ -249,12 +263,20 @@ def main(argv=None):
     s.add_argument("action", choices=["search", "links", "add"])
     s.add_argument("text", nargs="+")
     s.add_argument("-k", type=int, default=8)
-    sub.add_parser("mcp", help="MCP server on stdio: the board and the knowledge graph as read-only tools for agents")
+    s = sub.add_parser("mcp", help="MCP server on stdio: the board and the knowledge graph as read-only tools for agents")
+    s.add_argument("--control", action="store_true", help="also run / status / answer / resume / cancel / doctor: for your own "
+                                                          "Claude Code or Codex session (never given to agents in a run)")
     s = sub.add_parser("log", help="recent events")
     s.add_argument("-n", type=int, default=40)
     s = sub.add_parser("ui", help="local web UI")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--no-browser", action="store_true", help="only print the link")
+    s = sub.add_parser("bench", help="the same goal by one agent alone and by the team, judged by your --check commands: is the team worth it?")
+    s.add_argument("goal")
+    s.add_argument("--check", action="append", default=[], help='a command that must pass on the result, e.g. "python -m pytest -q" (repeatable)')
+    s.add_argument("--solo", help="agent/model working alone (default: the team's lead)")
+    s.add_argument("--timeout", type=int, default=1800, help="seconds for the solo agent call")
+    sub.add_parser("doctor", help="check this machine (and the project, with --ws) before a run: local checks only, nothing is sent")
     s = sub.add_parser("remote", help="remote worker: run = serve the agent CLIs of this machine to an engine (over ssh -R)")
     s.add_argument("action", choices=["run", "proxy"])
     s.add_argument("spec", nargs="?", help=argparse.SUPPRESS)

@@ -3,8 +3,8 @@ import array, base64, collections, contextlib, functools, hashlib, json, math, o
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-CATALOG = ROOT / "catalog"
+ROOT = Path(__file__).resolve().parent.parent  # the directory holding the orch package: PYTHONPATH for agents and MCP servers
+CATALOG = Path(__file__).resolve().parent / "catalog"  # ships inside the package (pip install)
 SCHEMAS = CATALOG / "schemas"
 HOME = Path(os.environ.get("ORCH_HOME") or Path.home() / ".orchestra")
 SECRET_NAME = re.compile(r"(API_?KEY|ACCESS_KEY|PRIVATE_KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDS|AUTH|COOKIE|DSN|_PAT$)", re.I)
@@ -40,6 +40,32 @@ CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 """
 
 
+# Schema changes after 0.1.0: append (version, [statements]) here, never edit a shipped entry. Version 1 is SCHEMA above; a
+# database from before versioning reads 0 and has the same tables (CREATE IF NOT EXISTS adds missing ones), so it becomes 1.
+WS_MIGRATIONS = []
+HISTORY_MIGRATIONS = []
+
+
+def upgrade(db, migrations, what):
+    """Bring an SQLite file to the newest schema this code knows, once per version even with several processes opening it
+    (engine, UI, CLI): each step re-reads PRAGMA user_version inside its own write transaction."""
+    latest = max([1, *(v for v, _ in migrations)])
+    if db.execute("PRAGMA user_version").fetchone()[0] > latest:
+        raise RuntimeError(f"{what} was written by a newer Orctram (schema {db.execute('PRAGMA user_version').fetchone()[0]}, "
+                           f"this version knows {latest}): upgrade orctram")
+    for v, stmts in [(1, []), *sorted(migrations)]:
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            if db.execute("PRAGMA user_version").fetchone()[0] < v:
+                for sql in stmts:
+                    db.execute(sql)
+                db.execute(f"PRAGMA user_version={int(v)}")
+            db.execute("COMMIT")
+        except BaseException:
+            db.execute("ROLLBACK")
+            raise
+
+
 class Workspace:
     """<project>/.orch : one SQLite file is the blackboard. Several processes (engine, CLI, UI) may open it."""
     def __init__(self, project, readonly=False):
@@ -55,7 +81,12 @@ class Workspace:
             self.db = sqlite3.connect(self.dir / "orch.db", check_same_thread=False, isolation_level=None, timeout=30)
         self.db.row_factory = sqlite3.Row
         if not readonly:
-            self.db.executescript(SCHEMA)
+            try:
+                self.db.executescript(SCHEMA)
+                upgrade(self.db, WS_MIGRATIONS, self.dir / "orch.db")
+            except BaseException:
+                self.db.close()  # an open handle keeps the file locked on Windows
+                raise
 
     def q(self, sql, *args):
         with self.lock:
@@ -280,8 +311,10 @@ def history():
     c = sqlite3.connect(HOME / "history.db", check_same_thread=False, isolation_level=None, timeout=30)
     c.execute("CREATE TABLE IF NOT EXISTS runs(ts REAL, project TEXT, task TEXT, agent TEXT, model TEXT, role TEXT,"
               " ok INT, seconds REAL, tokens_in INT, tokens_out INT, cost REAL)")
-    with contextlib.suppress(sqlite3.OperationalError):  # added later: why a call failed (quota, verify ...), for the resource planner
-        c.execute("ALTER TABLE runs ADD COLUMN outcome TEXT")
+    if c.execute("PRAGMA user_version").fetchone()[0] == 0:
+        with contextlib.suppress(sqlite3.OperationalError):  # added before versioning: why a call failed, for the resource planner
+            c.execute("ALTER TABLE runs ADD COLUMN outcome TEXT")
+    upgrade(c, HISTORY_MIGRATIONS, HOME / "history.db")
     return c
 
 

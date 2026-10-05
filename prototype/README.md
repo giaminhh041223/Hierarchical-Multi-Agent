@@ -1,6 +1,6 @@
-# Orchestra (prototype)
+# Orctram
 
-Orchestra điều phối nhiều AI coding agent CLI (codex, claude, agy, opencode, gemini …) ngay trên máy của bạn.
+**Nhiều agent đề xuất, engine kiểm chứng.** Orctram điều phối nhiều AI coding agent CLI (codex, claude, agy, opencode, gemini …) ngay trên máy của bạn. Tên cũ của dự án là Orchestra (rồi Hoatau); bên trong vẫn giữ gói `orch`, thư mục `.orch/` và `~/.orchestra` để dữ liệu cũ dùng tiếp được.
 
 Cách làm việc:
 - Một lead lập plan cùng reviewer.
@@ -10,16 +10,34 @@ Cách làm việc:
 
 Thiết kế đầy đủ, trạng thái hiện tại và biên bản trao đổi với Codex nằm ở [PLAN.md](PLAN.md).
 
+| Duyệt và sửa plan (tối) | Run đã xong (sáng) | Tab Team trên điện thoại |
+|---|---|---|
+| ![Trình sửa plan: kéo để nối task, chọn worker cho từng task](docs/screenshots/plan-editor-dark.png) | ![Tab Run: sơ đồ task, tổng phổ các lần gọi agent, bảng task](docs/screenshots/run-done-light.png) | ![Tab Team ở màn 390px, giao diện tối](docs/screenshots/team-mobile-dark.png) |
+
+Ảnh chụp từ một run với agent giả (`mock`), không phải agent thật.
+
 ## Yêu cầu
 
-- Windows 10/11. Trên Linux (WSL) bộ test đã chạy qua, nhưng chưa chạy với agent thật. macOS chưa thử.
-- Python 3.11 trở lên. Chỉ dùng thư viện chuẩn, không cần `pip install`.
+- Windows 10/11 (đã chạy với agent thật). Linux và macOS: bộ test chạy qua trên CI ở mỗi lần push, nhưng chưa chạy với agent thật.
+- Python 3.11 trở lên. Chỉ dùng thư viện chuẩn, không có dependency nào.
 - git.
 - Ít nhất một agent CLI đã cài và đăng nhập. Trên máy này đã dùng được `codex`, `agy` và `opencode@free` (model free của OpenCode Zen, không cần tài khoản).
 
+## Cài đặt
+
+Cài thành lệnh `orctram` trong một môi trường riêng (chưa có trên PyPI; cài thẳng từ GitHub):
+
+```bash
+pipx install "git+https://github.com/giaminhh041223/Hierarchical-Multi-Agent.git#subdirectory=prototype"
+```
+
+Khi đã phát hành lên PyPI: `pipx install orctram`. Hoặc `uv tool install` với cùng địa chỉ. Sau khi cài, `orctram <lệnh>` tương đương `python -m orch <lệnh>` trong tài liệu này, và chạy được từ bất kỳ thư mục nào. Không cài cũng được: chạy `python -m orch` từ thư mục `prototype/` như dưới đây.
+
 ## Bắt đầu nhanh
 
-Mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn bằng `--ws <thư mục>`, đặt **trước** tên lệnh. Cũng có thể đặt biến `ORCH_WS`, hoặc đứng trong thư mục dự án và thêm `prototype/` vào `PYTHONPATH`.
+Không cài thì mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn bằng `--ws <thư mục>`, đặt **trước** tên lệnh. Cũng có thể đặt biến `ORCH_WS`, hoặc đứng trong thư mục dự án và thêm `prototype/` vào `PYTHONPATH`.
+
+0. Kiểm tra máy đã sẵn sàng chưa: `python -m orch doctor` (hoặc `orctram doctor`).
 
 1. Tìm agent, model và trạng thái đăng nhập. `--probe` gửi một lời gọi rất nhỏ tới từng agent để chắc chắn nó dùng được.
 
@@ -86,6 +104,8 @@ Mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn 
 
 | Lệnh | Việc |
 |---|---|
+| `bench "<mục tiêu>" --check "<lệnh>" [--check …] [--solo agent/model]` | So sánh: một agent làm một mình (một lời gọi, kèm một lượt repair như mọi lời gọi của engine; không plan, không review) và cả đội (run tự duyệt plan), cùng commit gốc, chấm bằng cùng lệnh `--check` của bạn. Báo cáo: số check pass, token, chi phí, số lời gọi, số câu hỏi cho bạn, thời gian. Ghi ở `.orch/bench/<id>/report.md`. Mỗi bên một lần chạy: lặp lại trước khi tin một khác biệt. |
+| `doctor` | Kiểm tra máy (Python, git, SQLite FTS5, thư mục dữ liệu, agent CLI đã cài, port UI) và, với `--ws`, dự án (git, team, DB, engine). Chỉ kiểm tra tại chỗ: không gọi mạng, không gọi agent, không in secret. Mã thoát 1 khi có lỗi chặn. |
 | `discover [--probe] [--only codex,agy]` | Tìm agent CLI, model và trạng thái đăng nhập. Kết quả ghi vào `~/.orchestra/resources.json`. |
 | `login <agent>` | Mở luồng đăng nhập của chính CLI đó. Với claude: gõ `/login` trong cửa sổ mở ra. |
 | `vault list` · `vault set NAME` · `vault rm NAME` | Quản lý API key: nhập ẩn, mã hoá DPAPI, chỉ hiển thị dạng đã che. |
@@ -100,7 +120,7 @@ Mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn 
 | `cancel <task \| all>` | Huỷ một task (kéo theo các task phụ thuộc nó) hoặc huỷ cả run. |
 | `log [-n 40]` | Xem các sự kiện gần nhất. Đây là kênh chung của cả đội. |
 | `kg search <từ khoá> [-k 8]` · `kg links <node>` · `kg add <entity> <fact>` | Knowledge graph dùng chung. |
-| `mcp` | MCP server qua stdio: board và knowledge graph thành tool chỉ đọc. Xem [MCP server](#mcp-server). |
+| `mcp [--control]` | MCP server qua stdio: board và knowledge graph thành tool chỉ đọc; `--control` thêm tool để phiên Claude Code / Codex của bạn chạy và theo dõi run. Xem [MCP server](#mcp-server). |
 | `ui [--port 8765] [--no-browser]` | Web UI. Cổng bận thì tự chọn cổng khác (khi dùng worker từ xa, đường hầm phải theo đúng cổng in ra). |
 | `remote run [--url …] [--agents codex,agy] [--name …] [--once]` | Chạy trên máy khác: phục vụ agent CLI của máy đó cho engine. Xem [Worker chạy từ xa](#worker-chạy-từ-xa). |
 
@@ -119,6 +139,8 @@ Mã thoát của `run` và `resume`:
 | `REVIEW<n>` | <ul><li>`accept` / `yes`: kết thúc.</li><li>`retry`: review lại.</li><li>Mô tả việc cần làm: lead bổ sung task.</li></ul> |
 
 ## Hết usage: xoay vòng và pool backup
+
+> **Điều khoản của nhà cung cấp.** Tính năng này lập lịch công việc trên **các tài khoản và key bạn sở hữu hợp lệ**, để run không đứng yên khi một quota cạn. Nó không phải công cụ lách hạn mức. Điều khoản của nhiều nhà cung cấp cấm chia sẻ tài khoản, mở nhiều tài khoản để vượt hạn mức, hoặc dùng gói thuê bao cá nhân qua công cụ bên thứ ba; một số hãng từng chặn việc này trên thực tế. Hãy đọc điều khoản của từng hãng. Dùng chung với nhóm, trên máy chủ hay trong CI thì dùng API key.
 
 **Tài khoản** là một quota. Thường mỗi agent id (`codex`, `agy`, `opencode@free` …) là một tài khoản. Riêng router (`opencode@9router`) thì mỗi nhà cung cấp phía sau là một tài khoản, và nhà cung cấp trùng subscription với một CLI (`cx/` = codex) được tính chung với CLI đó.
 
@@ -196,7 +218,9 @@ Chỉnh tiêu chí:
 
 ## 9router (tuỳ chọn): nhiều API AI free qua một endpoint
 
-[9router](https://github.com/decolua/9router) là router chạy local, có endpoint tương thích OpenAI tại `http://127.0.0.1:20128/v1`. Nó gom nhiều nhà cung cấp, có cả gói free, nên làm pool backup rất hợp. Orchestra dùng nó qua profile `opencode@9router`: opencode gọi router, key lấy từ vault và không bao giờ ghi vào file cấu hình.
+> **Tự chịu rủi ro.** Router đưa quyền dùng của các gói thuê bao sang công cụ khác; điều đó có thể trái điều khoản của nhà cung cấp phía sau (xem lưu ý ở [Hết usage](#hết-usage-xoay-vòng-và-pool-backup)). Orctram chỉ là client của router, không khuyến nghị dùng gói thuê bao theo cách này.
+
+[9router](https://github.com/decolua/9router) là router chạy local, có endpoint tương thích OpenAI tại `http://127.0.0.1:20128/v1`. Nó gom nhiều nhà cung cấp, có cả gói free, nên làm pool backup rất hợp. Orctram dùng nó qua profile `opencode@9router`: opencode gọi router, key lấy từ vault và không bao giờ ghi vào file cấu hình.
 
 Prototype không cài 9router. Tự cài nếu bạn muốn, theo các bước:
 
@@ -208,7 +232,7 @@ Prototype không cài 9router. Tự cài nếu bạn muốn, theo các bước:
    - Tắt Cloud Sync nếu không cần.
    - Không bật các tính năng MITM, cài chứng chỉ hay DNS.
 3. Trên dashboard (`http://127.0.0.1:20128`): kết nối các nhà cung cấp, tạo API key.
-4. Gửi key cho Orchestra và kiểm tra:
+4. Gửi key cho Orctram và kiểm tra:
 
    ```bash
    python -m orch vault set NINEROUTER_API_KEY
@@ -230,9 +254,11 @@ Engine gửi kèm header `X-9Router-Token-Saver: off`. Lý do: tính năng nén 
 
 ## Dùng Claude Code hoặc Codex làm lead tương tác
 
-Mở Claude Code hoặc Codex trong dự án của bạn và bảo nó điều khiển Orchestra qua CLI, ví dụ:
+Mở Claude Code hoặc Codex trong dự án của bạn và bảo nó điều khiển Orctram qua CLI, ví dụ:
 
 > dùng `python -m orch --ws . status`, `inbox`, `answer`, `kg search` để theo dõi và xử lý run
+
+Gọn hơn: đăng ký MCP server với `--control` ([MCP server](#mcp-server)); agent của bạn có sẵn tool `run`, `status`, `answer`.
 
 Bên trong run, worker đã có sẵn `ORCH_WS` và `PYTHONPATH`, nên tự tra knowledge graph được bằng `python -m orch kg search …`.
 
@@ -273,7 +299,26 @@ Tìm kiếm gộp hai bảng xếp hạng:
 
 agy, gemini và cursor-agent chưa có cách truyền theo từng lời gọi, nên vẫn tra bằng lệnh CLI.
 
-**Cho phiên Claude Code hoặc Codex của bạn.** Bạn tự đăng ký, Orchestra không ghi cấu hình của bạn. `PYTHONPATH` là thư mục `prototype/`:
+**Giao việc cho cả đội từ Claude Code hoặc Codex (`--control`).** Thêm `--control` thì server có thêm các tool điều khiển run. Phiên agent của bạn giao một mục tiêu cho đội nhiều hãng, theo dõi tiến độ, rồi chuyển câu trả lời của bạn:
+
+| Tool | Việc |
+|---|---|
+| `run` | Bắt đầu run cho một mục tiêu; trả về ngay. `auto_approve` chỉ khi bạn yêu cầu. |
+| `status` | Bảng task, engine đang chạy hay dừng, câu hỏi đang chờ bạn, và báo cáo cuối khi xong. |
+| `answer` | Chuyển câu trả lời của **bạn** cho task đang chờ (`yes`, `retry`, `cancel`, `reassign <worker>`, hoặc chỉ dẫn). Engine dừng thì tool tự khởi động lại. |
+| `resume`, `cancel` | Chạy tiếp run đang mở; huỷ một task hoặc `all`. |
+| `doctor` | Kiểm tra máy và dự án, như lệnh `doctor`. |
+
+- Engine chạy thành tiến trình nền và tự thoát khi chỉ còn chờ bạn, nên phiên MCP không bị treo.
+- Mô tả tool dặn agent không tự duyệt plan: duyệt plan cũng là cho phép các lệnh verify trong đó. Claude Code và Codex vẫn hỏi bạn trước mỗi lần gọi tool.
+- Engine thừa hưởng môi trường của server MCP. Nếu engine không tìm thấy agent CLI, truyền `PATH` vào cấu hình server.
+- Agent bên trong run không bao giờ nhận `--control`: server mà engine truyền cho chúng vẫn chỉ đọc.
+
+```bash
+claude mcp add orctram -- orctram --ws D:/du-an mcp --control
+```
+
+**Chỉ đọc, cho phiên Claude Code hoặc Codex của bạn.** Bạn tự đăng ký, Orctram không ghi cấu hình của bạn. Chưa cài `orctram` thì đặt `PYTHONPATH` là thư mục `prototype/`:
 
 ```bash
 claude mcp add orch -e PYTHONPATH=D:/Hierarchical-Multi-Agent/prototype -- python -m orch --ws D:/du-an mcp
@@ -318,6 +363,44 @@ Một máy khác, có agent CLI và login riêng, nhận task như một worker.
 - Mọi runner của một CLI tính là một tài khoản (`remote/codex`) khi xoay vòng quota.
 - Token của UI không mở được route của runner, và ngược lại. Token remote ngắn hơn 16 ký tự thì runner bị từ chối.
 - **Ai có `ORCH_REMOTE_TOKEN` và vào được port của UI thì đọc được mã nguồn (bundle) và prompt.** Chỉ dùng qua 127.0.0.1 hoặc đường hầm SSH.
+
+## GitHub Action (beta)
+
+Chạy một đội Orctram trong GitHub Actions và mở pull request chứa kết quả đã verify. Action nằm ở [action/](action/); CI của repo này chạy nó với agent giả, **chưa chạy với agent thật**.
+
+```yaml
+# .github/workflows/orctram.yml
+on:
+  workflow_dispatch:
+    inputs:
+      goal: {description: "Mục tiêu cho đội", required: true}
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  team:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: npm install -g @openai/codex   # các agent CLI mà team dùng
+      - uses: giaminhh041223/Hierarchical-Multi-Agent/prototype/action@main
+        with:
+          goal: ${{ inputs.goal }}
+          team: .github/orctram-team.json
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+```
+
+- **Input:** `goal`, `team` (file JSON cùng dạng `team.json`), `auto-approve` (mặc định `true`, vì trong CI không có ai để hỏi), `open-pr`, `base`, `working-directory`, `python-version`, `github-token`.
+- **Output:** `run`, `status` (`done`, `waiting`, `failed`), `branch`, `pr-url`. Báo cáo của run hiện trong phần tóm tắt của job.
+- Run cần người trả lời (lỗi đăng nhập, hết ngân sách, lệnh verify ngoài `verify_allow`) thì job thất bại, kèm danh sách câu hỏi.
+- PR do `GITHUB_TOKEN` mở sẽ không tự kích hoạt workflow khác (giới hạn của GitHub).
+
+**Bảo mật, đọc trước khi dùng:**
+- Trong CI, agent chạy với API key của bạn. `goal` là prompt cho chúng: **đừng nối thẳng nội dung issue hay comment của người lạ vào `goal`**. Chỉ kích hoạt bằng `workflow_dispatch`, hoặc label do maintainer gắn.
+- Dùng API key, không dùng subscription cá nhân: điều khoản của hầu hết nhà cung cấp không cho phép đem gói cá nhân lên máy CI dùng chung.
+- Nên đặt `verify_allow` trong file team: lệnh verify do model viết; ngoài danh sách thì run dừng lại thay vì chạy.
+- Lệnh verify vẫn chạy với danh sách biến môi trường cho phép, nên không thấy API key.
 
 ## Workspace
 
@@ -371,7 +454,7 @@ Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi b
 
 | Trường | Ý nghĩa |
 |---|---|
-| `agent` | Id trong [catalog/agents.json](catalog/agents.json): `codex`, `claude`, `claude@zai`, `agy`, `opencode`, `opencode@free`, `opencode@9router`, `gemini`, `cursor-agent`. Một id là một tài khoản, tức một quota; router thì mỗi nhà cung cấp một tài khoản ([Hết usage](#hết-usage-xoay-vòng-và-pool-backup)). |
+| `agent` | Id trong [orch/catalog/agents.json](orch/catalog/agents.json): `codex`, `claude`, `claude@zai`, `agy`, `opencode`, `opencode@free`, `opencode@9router`, `gemini`, `cursor-agent`. Một id là một tài khoản, tức một quota; router thì mỗi nhà cung cấp một tài khoản ([Hết usage](#hết-usage-xoay-vòng-và-pool-backup)). |
 | `max` | Số task một worker chạy cùng lúc. |
 | `backup` | Worker chỉ đứng thay, không có trong danh sách lead dùng để lập plan. |
 | `for` | Danh sách worker chính mà backup này được lập riêng cho. `pool plan` tự ghi trường này. Thiếu `for` thì backup đứng thay cho tất cả. |
@@ -424,7 +507,7 @@ Chi tiết ở [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
 python tests/test_e2e.py
 ```
 
-- 27 test end-to-end: Linux khoảng 50 giây, Windows khoảng 2–3 phút.
+- 33 test end-to-end: Linux khoảng 60 giây, Windows khoảng 2–3 phút. GitHub Actions chạy chúng trên Windows và Linux (Python 3.11, 3.13) ở mỗi lần push, cùng với bản wheel và GitHub Action.
 - Parser của các CLI được kiểm bằng đầu ra thật lưu ở [docs/probes/](docs/probes/).
 - Dùng mock agent theo kịch bản, không tốn token.
 - Riêng test 9router dựng một router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router giả đó.
@@ -440,3 +523,17 @@ python tests/test_e2e.py
 - Sandbox của codex trên Windows không thấy `python`: worker codex không tự chạy test được. Engine vẫn verify bên ngoài. Muốn worker tự test thì chỉnh sandbox của codex. Đây là cấu hình của bạn nên prototype không đổi.
 - Skill và rule toàn cục của codex (`~/.codex`) cũng được nạp vào worker codex. Hãy để ý nếu chúng mâu thuẫn với `rules/`.
 - Hai điểm va chạm với `AGENTS.md` ở thư mục cha cần bạn quyết định: lệnh verify lấy từ plan JSON, và việc tải skill curated tự động. Xem [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
+
+## Phát hành
+
+Workflow [release.yml](../.github/workflows/release.yml): push tag `vX.Y.Z` (bằng `orch.__version__`) thì CI chạy test, build sdist và wheel, đăng lên PyPI qua Trusted Publishing (không lưu token nào), rồi tạo GitHub Release kèm các file đó.
+
+Một lần, trên PyPI: thêm "trusted publisher" cho repo này, workflow `release.yml`, environment `pypi`. Sau đó:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+## License
+
+[Apache-2.0](LICENSE). Bạn được dùng, sửa và phân phối lại, kể cả cho mục đích thương mại, miễn là giữ thông báo license; license có điều khoản cấp quyền sáng chế.

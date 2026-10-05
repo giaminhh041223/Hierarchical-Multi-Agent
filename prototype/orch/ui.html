@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Orchestra</title>
+<title>Orctram</title>
 <style>
 :root {
   --paper: #F3F4F1; --surface: #FFFFFF; --ink: #1C2024; --muted: #545B63; --line: #DADDD8;
@@ -38,7 +38,7 @@ nav button.on { color: var(--ink); background: color-mix(in srgb, var(--ink) 10%
 
 main { padding: 16px; max-width: 1200px; margin: 0 auto; }
 h1, h2, h3, .heading { font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; font-weight: 600; color: var(--ink); margin: 20px 0 8px; }
-h1, h2 { font-size: 20px; line-height: 1.25; } h3 { font-size: 16px; line-height: 1.25; }
+h1, h2 { font-size: 20px; line-height: 1.25; } h3, h2.section { font-size: 16px; line-height: 1.25; } /* sections are h2 under the page's h1, sized like h3 */
 p, .prose { max-width: 75ch; margin: 6px 0 12px; overflow-wrap: anywhere; } /* long paths in questions must wrap, not overflow */
 .question { white-space: pre-wrap; }
 .mono, pre, code { font-family: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", Menlo, monospace; }
@@ -108,12 +108,12 @@ pre { white-space: pre-wrap; word-break: break-word; background: color-mix(in sr
 .run-grid { margin: 12px 0; }
 @media (min-width: 1100px) { .run-grid.has-waiting { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 20px; align-items: start; } }
 .waiting-col { display: flex; flex-direction: column; gap: 12px; }
-.waiting-col h3 { margin: 0 0 4px; }
+.waiting-col h2 { margin: 0 0 4px; }
 .quick-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
 .reassign-group { display: inline-flex; align-items: center; gap: 6px; }
 .dag-area { display: flex; flex-direction: column; min-width: 0; }
 .dag-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px; }
-.dag-header h3 { margin: 0; }
+.dag-header h2 { margin: 0; }
 .dag-controls { display: flex; align-items: center; gap: 4px; }
 .dag-btn { min-width: 32px; min-height: 32px; padding: 4px 8px; font-size: 13px; }
 .dag-wrap { overflow: auto; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 12px; }
@@ -151,14 +151,14 @@ pre { white-space: pre-wrap; word-break: break-word; background: color-mix(in sr
 .spec-label { font-size: 12px; color: var(--muted); font-weight: 600; }
 .selectable-dir { user-select: all; cursor: text; background: color-mix(in srgb, var(--ink) 4%, var(--surface)); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); font-size: 12px; display: inline-block; }
 .score-card { margin: 16px 0; }
-.score-card h3 { margin: 0 0 8px; }
+.score-card h2 { margin: 0 0 8px; }
 .score-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 12px; }
 .score-svg { display: block; min-width: 600px; width: 100%; }
 .score-svg text.muted { fill: var(--muted); }
 .score-bar { cursor: pointer; }
 .score-bar:focus-visible rect { stroke: var(--ink); stroke-width: 2; }
 .score-bar:hover rect { opacity: 0.85; }
-.task-link-btn { background: transparent; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--ink); text-decoration: underline; text-decoration-color: var(--control); cursor: pointer; min-height: auto; min-width: auto; }
+.task-link-btn { background: transparent; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--ink); text-decoration: underline; text-decoration-color: var(--control); cursor: pointer; min-height: 24px; min-width: 24px; } /* WCAG 2.5.8; the score bars rely on this equivalent control */
 .task-link-btn:hover { color: var(--running); text-decoration-color: var(--running); }
 .nowrap { white-space: nowrap; }
 .align-right { text-align: right; display: block; }
@@ -178,7 +178,7 @@ pre { white-space: pre-wrap; word-break: break-word; background: color-mix(in sr
 .worker-field-max { width: 100px; }
 .field-hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .field-error { font-size: 12px; color: var(--failed); font-weight: 600; margin-top: 2px; }
-.sort-th-btn { background: transparent; border: 0; padding: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; min-height: auto; min-width: auto; }
+.sort-th-btn { background: transparent; border: 0; padding: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; min-height: 24px; min-width: auto; } /* WCAG 2.5.8 target size */
 .sort-th-btn:hover { color: var(--ink); }
 th.th-right, th:has(.align-right) { text-align: right; }
 th.th-right .sort-th-btn { justify-content: flex-end; width: 100%; }
@@ -186,7 +186,7 @@ th.th-right .sort-th-btn { justify-content: flex-end; width: 100%; }
 </head>
 <body>
 <header>
-  <div class="header-brand"><strong>Orchestra</strong></div>
+  <div class="header-brand"><strong>Orctram</strong></div>
   <nav id="tabs" aria-label="Main navigation"></nav>
   <div id="header-right"></div>
 </header>
@@ -248,7 +248,7 @@ const VI = {
   "Search facts": "Tìm tri thức", "Search facts across tasks, e.g. auth api": "Tìm kiếm tri thức giữa các task, ví dụ: auth api", "Search": "Tìm kiếm",
   "No facts match: facts appear when tasks pass verification.": "Không có tri thức nào khớp: tri thức xuất hiện khi task vượt qua kiểm tra.",
   "Entity": "Thực thể", "Fact": "Tri thức", "From": "Từ", "Relation": "Quan hệ", "To": "Đến",
-  "Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orchestra never sees passwords. A probe sends one tiny prompt per agent to prove the account works.": "Các agent CLI tìm thấy trên máy này. Đăng nhập sẽ mở cửa sổ của chính CLI: Orchestra không bao giờ nhìn thấy mật khẩu. Probe gửi một prompt nhỏ cho mỗi agent để kiểm tra tài khoản hoạt động.",
+  "Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orctram never sees passwords. A probe sends one tiny prompt per agent to prove the account works.": "Các agent CLI tìm thấy trên máy này. Đăng nhập sẽ mở cửa sổ của chính CLI: Orctram không bao giờ nhìn thấy mật khẩu. Probe gửi một prompt nhỏ cho mỗi agent để kiểm tra tài khoản hoạt động.",
   "Discover": "Tìm agent", "Discover + probe": "Tìm + probe", "Discover agents": "Tìm agent", "No agents discovered yet.": "Chưa tìm thấy agent nào.",
   "Installed": "Đã cài", "Auth": "Đăng nhập", "Keys it can use": "Key có thể dùng", "Log in": "Đăng nhập",
   "credentials found (not proven)": "có thông tin đăng nhập (chưa probe)", "not checked": "chưa kiểm tra", "missing key {keys}": "thiếu key {keys}", "Add key": "Thêm key",
@@ -488,7 +488,7 @@ function taskPanel(tNode, s) {
 
 function scoreView(s) {
   const attempts = s.attempts || [];
-  if (!attempts.length) return h("div", {class: "card score-card"}, h("h3", {}, t("Score")), h("p", {class: "muted"}, t("No attempts yet.")));
+  if (!attempts.length) return h("div", {class: "card score-card"}, h("h2", {class: "section"}, t("Score")), h("p", {class: "muted"}, t("No attempts yet.")));
 
   const now = Date.now() / 1000;
   const startedTimes = attempts.map(a => a.started).filter(tVal => tVal > 0);
@@ -568,7 +568,7 @@ function scoreView(s) {
   });
 
   return h("div", {class: "card score-card"},
-    h("h3", {}, t("Score")),
+    h("h2", {class: "section"}, t("Score")),
     h("div", {class: "score-wrap"},
       svg("svg", {class: "score-svg", role: "img", ariaLabel: ariaSummary, width: "100%", height: H, viewBox: `0 0 ${chartW} ${H}`},
         ...tickElements, ...laneElements, ...barElements
@@ -705,7 +705,7 @@ function dag(tasks, edit) {
   );
 
   return h("div", {class: "dag-area dag"},
-    h("div", {class: "dag-header"}, h("h3", {}, edit ? t("Plan editor") : t("Task graph")), controls),
+    h("div", {class: "dag-header"}, h("h2", {class: "section"}, edit ? t("Plan editor") : t("Task graph")), controls),
     wrap
   );
 }
@@ -802,7 +802,7 @@ async function Run(data) {
 
   const headerEl = h("div", {class: "run-header"},
     h("div", {class: "run-header-top"},
-      h("h1", {class: "run-title"}, s.goal || (s.run ? `${t("Run")} ${s.run}` : "Orchestra")),
+      h("h1", {class: "run-title"}, s.goal || (s.run ? `${t("Run")} ${s.run}` : "Orctram")),
       s.tasks.some(live) ? btn(t("Cancel all"), () => confirm(t("Cancel every unfinished task? Running and queued work will be stopped.")) && act(() => api("cancel", {task: "all"}), t("Cancelled all tasks")), "danger") : null
     ),
     h("div", {class: "run-meta-row"},
@@ -881,7 +881,7 @@ async function Run(data) {
   });
 
   const waitingColumn = pending.length > 0 ? h("div", {class: "waiting-col"},
-    h("h3", {}, t("Waiting for you ({n})", {n: pending.length})),
+    h("h2", {class: "section"}, t("Waiting for you ({n})", {n: pending.length})),
     ...waitingCards
   ) : null;
 
@@ -907,7 +907,7 @@ async function Run(data) {
   const scoreSection = s.run ? scoreView(s) : null;
 
   const boardSection = s.tasks.length > 0 ? h("div", {},
-    h("h3", {}, t("Board")),
+    h("h2", {class: "section"}, t("Board")),
     table([t("Task"), t("Status"), t("Worker"), h("span", {class: "align-right"}, t("Try")), t("Deps"), t("Title"), ""], s.tasks.map(tNode => [
       h("button", {
         class: "task-link-btn mono bold",
@@ -989,7 +989,7 @@ async function Agents() {
   const r = await api("agents");
   const agentEntries = Object.entries(r.agents || {});
 
-  const topHint = h("p", {class: "prose muted"}, t("Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orchestra never sees passwords. A probe sends one tiny prompt per agent to prove the account works."));
+  const topHint = h("p", {class: "prose muted"}, t("Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orctram never sees passwords. A probe sends one tiny prompt per agent to prove the account works."));
 
   const actionRow = h("div", {class: "row"},
     btn(t("Discover"), () => act(() => api("discover", {})), "primary"),
@@ -1129,7 +1129,7 @@ async function Team() {
 
   if (jsonError) {
     const errCard = h("div", {class: "card card-err", role: "alert"},
-      h("h3", {}, t("Invalid team JSON")),
+      h("h2", {class: "section"}, t("Invalid team JSON")),
       h("p", {class: "prose"}, t("The JSON below is invalid. Fix syntax errors or reset to saved team.")),
       tData.team ? btn(t("Reset to saved team"), () => {
         drafts.team = JSON.stringify(tData.team, null, 2);
@@ -1173,7 +1173,7 @@ async function Team() {
   }
 
   const rolesCard = h("div", {class: "card"},
-    h("h3", {}, t("Roles")),
+    h("h2", {class: "section"}, t("Roles")),
     renderRoleSelect("lead", t("Lead"), t("lead plans and triages (strongest model)")),
     renderRoleSelect("reviewer", t("Reviewer"), t("reviewer checks plans and results (ideally another vendor than the lead)")),
     renderRoleSelect("skill_architect", t("Skill architect"), t("skill architect picks skills for tasks"))
@@ -1248,7 +1248,7 @@ async function Team() {
   }, "secondary");
 
   const workersCard = h("div", {class: "card"},
-    h("h3", {}, t("Workers")),
+    h("h2", {class: "section"}, t("Workers")),
     workerRows.length ? h("div", {}, ...workerRows) : h("p", {class: "err"}, t("Team needs at least one worker")),
     h("div", {style: {marginTop: "12px"}}, addWorkerBtn)
   );
@@ -1320,7 +1320,7 @@ async function Vault() {
   }
 
   const addForm = h("div", {class: "card"},
-    h("h3", {}, t("Add or update key")),
+    h("h2", {class: "section"}, t("Add or update key")),
     h("div", {class: "row"},
       h("div", {class: "field"},
         h("label", {htmlFor: "vname-input"}, t("Key name")),
@@ -1447,7 +1447,7 @@ async function Skills() {
   return h("div", {},
     topNote,
     refreshBtn,
-    hasRun ? h("h3", {}, t("This run")) : null,
+    hasRun ? h("h2", {class: "section"}, t("This run")) : null,
     hasRun ? table([t("Skill"), t("Status"), t("Tasks"), t("Reason / Scan"), ""], r.run.map(s => [
       h("span", {class: "mono bold"}, s.id),
       STATUSES[s.status] ? badge(s.status) : h("span", {class: "mono muted"}, s.status),
@@ -1458,7 +1458,7 @@ async function Skills() {
         btn(t("Reject"), () => act(() => api("skill", {action: "reject", id: s.id})), "danger")
       ) : ""
     ])) : null,
-    h("h3", {}, t("Index ({n})", {n: r.index.length})),
+    h("h2", {class: "section"}, t("Index ({n})", {n: r.index.length})),
     table([t("Id"), t("Description")], r.index.map(s => [h("span", {class: "mono bold"}, s.id), h("div", {class: "truncate", title: s.description}, s.description)]))
   );
 }
@@ -1534,7 +1534,7 @@ async function render(auto) {
 
 function start() {  // the token lives in the URL fragment: it is never sent to a server or written to logs
   if (location.hash.length < 2) return document.getElementById("main").replaceChildren(h("div", {class: "card card-err", role: "alert"},
-    h("h3", {}, t("Missing access token")),
+    h("h2", {class: "section"}, t("Missing access token")),
     h("p", {class: "prose"}, t("Open the link printed by {cmd}: it carries this session's access token.", {cmd: "python -m orch ui"}))));
   render();
 }

@@ -3,11 +3,11 @@
 The lead is stateless: every lead prompt is rebuilt from the DB. Workers edit isolated git worktrees; the engine commits,
 merges the integration tip in, checks scope, runs the plan's verify commands, records the commit as intent, fast-forwards
 the run's integration branch, and only then publishes facts and releases dependents."""
-import collections, contextlib, fnmatch, hashlib, json, os, re, shutil, sqlite3, subprocess, threading, time, traceback, urllib.request
+import collections, contextlib, fnmatch, hashlib, json, os, re, shutil, sqlite3, subprocess, sys, threading, time, traceback, urllib.request
 from pathlib import Path
 
 from . import agents, models, pool
-from .core import ACTIVE, HOME, TERMINAL, EngineLock, contract, extract_json, hm, record, schema, validate
+from .core import ACTIVE, HOME, ROOT, TERMINAL, EngineLock, contract, extract_json, hm, record, schema, validate
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 HOOKS = HOME / "no-hooks"  # never created: engine commits run no git hooks
@@ -20,7 +20,7 @@ TEAM_DEFAULTS = {"max_parallel": 4, "timeout": 1800, "verify_timeout": 600, "bud
                  "verify_allow": None, "verify_env": [], "mcp": False, "embeddings": None}
 
 RULES = {
-    "common": """You are one agent in Orchestra, a local multi-agent coding team. The engine (a program, not an LLM) owns git, scheduling and integration.
+    "common": """You are one agent in Orctram, a local multi-agent coding team. The engine (a program, not an LLM) owns git, scheduling and integration.
 - Never run git commands that write (commit, merge, rebase, reset, checkout, stash, push, branch): the engine commits and merges your work.
 - Work only inside your current directory (a git worktree of the project). Never touch .orch/.
 - Be economical with context: read only what you need, prefer targeted search over reading whole trees.
@@ -175,9 +175,54 @@ def check_handoff(h):
     return ["status blocked needs a non-empty question"] if h["status"] == "blocked" and not (h["question"] or "").strip() else []
 
 
+def parse(text, contract_name, check=None):
+    """The reply as its output contract: (obj, None), or (obj or None, the error the agent is asked to fix)."""
+    try:
+        obj = validate(extract_json(text or ""), schema(contract_name))
+    except ValueError as e:
+        return None, str(e)
+    errs = check(obj) if check else []
+    return obj, "; ".join(errs) or None
+
+
+def checked_call(run, prompt, d, session, aid, contract_name, check=None, cancelled=lambda: False):
+    """One agent call, validated strictly, repaired once (in the same session when the CLI can resume it: a headless agy
+    denied a command on its first turn replies nothing, its repair turn answers). run(prompt, out_dir, session) runs the
+    agent. Returns (result, the results of every run, obj, error)."""
+    r = run(prompt, d, session)
+    calls, obj, err = [r], None, None
+    if r["ok"]:
+        obj, err = parse(r["text"], contract_name, check)
+        if err and not cancelled():
+            can = bool(r["session"] and agents.catalog()[aid].get("resume"))
+            fix = (f"{prompt.splitlines()[0]} repair=1\nYour previous reply was rejected by the engine: {err}\n"
+                   "Reply again with ONLY the corrected JSON object for the same output contract.")
+            r2 = run(fix if can else f"{prompt}\n\n{fix}\nRejected reply:\n{r['text'][:4000]}", d / "repair", r["session"] if can else None)
+            calls.append(r2)
+            if r2["ok"]:
+                obj, err = parse(r2["text"], contract_name, check)
+                r["session"] = r2["session"] or r["session"]
+            else:
+                r = {**r, "ok": False, "failure": r2["failure"], "error": r2["error"]}
+    return r, calls, obj, err
+
+
 def entity(fact, tid):
     head, sep, _ = fact.partition(":")
     return head.strip() if sep and 0 < len(head.strip()) <= 60 else tid
+
+
+def write_atomic(path, text):
+    """Readers (web UI, MCP status) never see a half-written file: write a sibling, then replace."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8", newline="\n")
+    for _ in range(40):
+        try:
+            return os.replace(tmp, path)
+        except PermissionError:  # Windows: a reader holds the file open for a moment
+            time.sleep(0.05)
+    path.write_text(text, encoding="utf-8", newline="\n")  # still busy after 2 s: a plain write beats no report
+    tmp.unlink(missing_ok=True)
 
 
 def crash_point(name):
@@ -201,8 +246,8 @@ def write_rules(ws):
             (d / f"{name}.md").write_text(text + "\n", encoding="utf-8", newline="\n")
 
 
-def save_team(ws, team):
-    """Validate, then write team.json and any missing rule file (one per role, one per worker)."""
+def validate_team(team):
+    """The team with defaults filled in; ValueError when it cannot run (save_team, doctor)."""
     roles = ("lead", "reviewer", "skill_architect")
     workers = team.get("workers") if isinstance(team, dict) else None
     if not isinstance(workers, dict) or not workers:
@@ -214,7 +259,13 @@ def save_team(ws, team):
     bad = [n for n in workers if not re.fullmatch(r"[A-Za-z0-9][\w-]{0,31}", n) or n in RULES]  # names become file names
     if bad:
         raise ValueError(f"bad worker names {bad}: use letters, digits, - and _, and not a role name")
-    team = {**TEAM_DEFAULTS, **team}
+    return {**TEAM_DEFAULTS, **team}
+
+
+def save_team(ws, team):
+    """Validate, then write team.json and any missing rule file (one per role, one per worker)."""
+    team = validate_team(team)
+    workers = team["workers"]
     ws.write_json("team.json", team)
     write_rules(ws)
     for n, w in workers.items():
@@ -247,6 +298,19 @@ def new_run(ws, goal, auto_approve=False):
     if dirty:
         ws.event("warn", f"{len(dirty)} uncommitted change(s) are NOT visible to agents (they start from {base[:10]}); commit first if they matter")
     return e
+
+
+def spawn_engine(ws, *args):
+    """The engine as its own background process (it outlives the web UI or MCP call that started it); its console output goes
+    to .orch/engine.log. args = a CLI command, e.g. ("resume", "--exit-on-wait")."""
+    load_team(ws)
+    if EngineLock(ws).held_elsewhere():
+        raise ValueError("an engine is already running on this workspace")
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    with open(ws.dir / "engine.log", "a", encoding="utf-8") as log:
+        subprocess.Popen([sys.executable, "-m", "orch", "--ws", str(ws.project), *args], cwd=ROOT, stdin=subprocess.DEVNULL,
+                         stdout=log, stderr=subprocess.STDOUT, creationflags=flags, start_new_session=os.name != "nt")
+    return {"ok": f"engine started: {args[0]}"}
 
 
 class Fail(Exception):
@@ -377,14 +441,6 @@ class Engine:
         return self.ws.q("SELECT coalesce(sum(tokens_in + tokens_out), 0) n FROM attempts WHERE run=?", self.run)[0]["n"]
 
     # --- one agent call with its output contract ------------------------------------------------------------
-    def parse(self, text, contract_name, check):
-        try:
-            obj = validate(extract_json(text or ""), schema(contract_name))
-        except ValueError as e:
-            return None, str(e)
-        errs = check(obj) if check else []
-        return obj, "; ".join(errs) or None
-
     def ask(self, role, who, prompt, contract_name, task, kind, cwd, readonly=True, session=None, fresh=None, **kw):
         """Workers rotate in route(). The lead, reviewer and skill architect get a stand-in while their account is out of
         usage; fresh = the same request without the session's context, since a stand-in cannot resume that session."""
@@ -424,21 +480,7 @@ class Engine:
             run = lambda p, sub, sess: agents.run_agent(aid, model, p, cwd, sub, schema=contract_name, session=sess, timeout=timeout,
                                                         readonly=readonly, on_start=started, env={"ORCH_WS": str(self.ws.project)},
                                                         mcp=self.ws.project if self.team["mcp"] else None)
-            r = run(prompt, d, session)
-            calls, obj, err = [r], None, None
-            if r["ok"]:
-                obj, err = self.parse(r["text"], contract_name, check)
-                if err and not self.cancelled(task):
-                    can = bool(r["session"] and agents.catalog()[aid].get("resume"))
-                    fix = (f"{prompt.splitlines()[0]} repair=1\nYour previous reply was rejected by the engine: {err}\n"
-                           "Reply again with ONLY the corrected JSON object for the same output contract.")
-                    r2 = run(fix if can else f"{prompt}\n\n{fix}\nRejected reply:\n{r['text'][:4000]}", d / "repair", r["session"] if can else None)
-                    calls.append(r2)
-                    if r2["ok"]:
-                        obj, err = self.parse(r2["text"], contract_name, check)
-                        r["session"] = r2["session"] or r["session"]
-                    else:
-                        r = {**r, "ok": False, "failure": r2["failure"], "error": r2["error"]}
+            r, calls, obj, err = checked_call(run, prompt, d, session, aid, contract_name, check, lambda: self.cancelled(task))
             self.kills.pop(task, None)
             costs = [c["cost"] for c in calls if c["cost"] is not None]
             self.ws.x("UPDATE attempts SET tokens_in=?, tokens_out=?, cost=?, session=? WHERE id=?",
@@ -772,6 +814,9 @@ class Engine:
                 git(self.ws.project, "worktree", "remove", "--force", str(p), codes=None)
         git(self.ws.project, "worktree", "remove", "--force", str(self.main_wt), codes=None)
         git(self.ws.project, "worktree", "prune", codes=None)
+        for d in (self.wt_dir, self.wt_dir.parent):  # only when empty: a worktree that could not be removed stays visible
+            with contextlib.suppress(OSError):
+                d.rmdir()
 
     # --- jobs -----------------------------------------------------------------------------------------------
     def job_plan(self, t):
@@ -1177,7 +1222,7 @@ class Engine:
         for i, v in enumerate(verdicts, 1):
             lines += ["", f"## Review round {i}: {v['verdict']}", *[f"- {x['severity']} [{x['task_id'] or 'plan'}] {x['message']}" for x in v["issues"]]]
         self.rdir.mkdir(parents=True, exist_ok=True)
-        (self.rdir / "plan.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        write_atomic(self.rdir / "plan.md", "\n".join(lines) + "\n")
         return self.rdir / "plan.md"
 
     def report(self, status):
@@ -1185,7 +1230,7 @@ class Engine:
         use = self.ws.q("SELECT agent, model, count(*) n, sum(tokens_in) i, sum(tokens_out) o, sum(cost) c FROM attempts "
                         "WHERE run=? GROUP BY agent, model", self.run)
         pend = [t for t in ts if t["status"] == "pending_user"]
-        lines = [f"# Orchestra run {self.run}: {status}", "", f"Goal: {self.goal}", "",
+        lines = [f"# Orctram run {self.run}: {status}", "", f"Goal: {self.goal}", "",
                  f"Integration branch `orch/{self.run}/main` ({self.tip()[:10]}, base {self.rmeta('base')[:10]}). "
                  f"Merge when satisfied: `git merge orch/{self.run}/main`", "", "## Tasks", "",
                  "| task | status | worker | attempts | commit | title |", "|---|---|---|---|---|---|",
@@ -1195,7 +1240,7 @@ class Engine:
         if pend:
             lines += ["", "## Waiting for you", "", *[f"- **{t['id']}**: {t['question']}\n  `python -m orch answer {t['id']} \"...\"`" for t in pend]]
         self.rdir.mkdir(parents=True, exist_ok=True)
-        (self.rdir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        write_atomic(self.rdir / "report.md", "\n".join(lines) + "\n")
         return self.rdir / "report.md"
 
     def pause(self):
@@ -1204,8 +1249,8 @@ class Engine:
         return "waiting"
 
     def finish(self, status, why=""):
+        path = self.report(status)  # before the status: whoever sees "done" (UI, MCP status) must find the final report
         self.rmeta("status", status)
-        path = self.report(status)
         self.cleanup()
         self.ws.event("run", f"{status}{': ' + why if why else ''} (report: {path})")
         self.notify(f"[{self.ws.project.name}] run {self.run}: {status}")

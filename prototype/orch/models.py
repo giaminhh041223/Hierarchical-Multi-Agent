@@ -2,11 +2,12 @@
 import bisect, csv, io, json, re, time, urllib.request, zipfile
 
 from . import agents
-from .core import CATALOG, history
+from .core import HOME, ROOT, history
 
 EPOCH_URL = "https://epoch.ai/data/benchmark_data.zip"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/models"
-DB_FILE = CATALOG / "models.json"
+DB_FILE = HOME / "models.json"  # downloaded data: never inside the installed package
+LEGACY = ROOT / "catalog" / "models.json"  # where `models refresh` wrote it before 0.1.0
 
 # csv file in Epoch zip -> (model column, score column, our field)
 BENCH = {
@@ -70,12 +71,14 @@ def refresh():
                     "prices_context": "openrouter.ai/api/v1/models (USD per 1M tokens)"},
         "models": dict(sorted(models.items())),
     }
+    DB_FILE.parent.mkdir(parents=True, exist_ok=True)
     DB_FILE.write_text(json.dumps(db, indent=1, ensure_ascii=False), encoding="utf-8", newline="\n")
     return db
 
 
 def load():
-    return json.loads(DB_FILE.read_text(encoding="utf-8")) if DB_FILE.exists() else {"models": {}}
+    f = DB_FILE if DB_FILE.exists() else LEGACY
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {"models": {}}
 
 
 def info(model_id, db=None):

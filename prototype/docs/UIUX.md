@@ -258,10 +258,11 @@ Trạng thái (2026-10-05): pha 1–3 xong; pha 4 làm được một phần.
 - Pha 4, Gemini viết thêm (đã đọc diff, chưa xem trên trình duyệt):
   - toast co theo bề rộng màn hình, không tràn ở 360px;
   - nút "Cần bạn" cuộn tức thì, không cuộn êm, khi bật `prefers-reduced-motion`.
-- Pha 4, còn lại cho máy của bạn:
-  - audit bằng web-design-guidelines bản ghim (cần cài, §13);
-  - thử với Narrator;
-  - ảnh chụp cho README.
+- Pha 4, audit bằng script Playwright (chưa cài web-design-guidelines, vì cần bạn đồng ý), trên mọi tab và trình sửa plan: tên dễ hiểu của control, nhãn form, landmark, `lang`, `tabindex` dương, id trùng, tên của SVG, thứ tự heading, vùng bấm 24px (WCAG 2.5.8). Đã sửa:
+  - các mục là h3 nằm ngay dưới h1 của run: thành h2, giữ cỡ chữ;
+  - nút sắp xếp bảng Model (cao 17px) và nút task trong bảng (19px): lên 24px. Vạch của Tổng phổ vẫn hẹp, theo ngoại lệ "control tương đương": nút task trong bảng mở cùng panel.
+- Ảnh chụp cho README: `docs/screenshots/` (trình sửa plan tối, run xong sáng, tab Team trên điện thoại).
+- Pha 4, còn lại cho máy của bạn: thử với Narrator; nếu muốn, audit thêm bằng web-design-guidelines bản ghim (§13).
 
 | Pha | Nội dung | Xong khi |
 |---|---|---|

@@ -2,14 +2,14 @@
 skills, models. Binds 127.0.0.1 only. Every /api call needs the per-launch token (kept in the URL fragment, sent as
 X-Orch-Token) and a local Host / Origin: other web pages and DNS-rebinding sites cannot drive it. The page renders all
 data as text (no innerHTML) under a nonce CSP; vault values never leave the process unmasked."""
-import hmac, json, os, secrets, subprocess, sys, webbrowser
+import hmac, json, os, secrets, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from . import agents, models, remote, skills
-from .core import ROOT, EngineLock, mask, redact, vault, vault_set
-from .engine import Engine, load_team, save_team
+from .core import EngineLock, mask, redact, vault, vault_set
+from .engine import Engine, load_team, save_team, spawn_engine
 
 UI = Path(__file__).with_name("ui.html")
 MAX_BODY = 100_000
@@ -18,18 +18,6 @@ MAX_PATCH = 50_000_000  # a remote runner's result: the binary patch, base64
 
 def _file(path, limit=60_000):
     return path.read_text(encoding="utf-8", errors="replace")[-limit:] if path.exists() else ""
-
-
-def spawn_engine(ws, *args):
-    """The engine runs as its own process (survives the UI); its console output goes to .orch/engine.log."""
-    load_team(ws)
-    if EngineLock(ws).held_elsewhere():
-        raise ValueError("an engine is already running on this workspace")
-    flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-    with open(ws.dir / "engine.log", "a", encoding="utf-8") as log:
-        subprocess.Popen([sys.executable, "-m", "orch", "--ws", str(ws.project), *args], cwd=ROOT, stdin=subprocess.DEVNULL,
-                         stdout=log, stderr=subprocess.STDOUT, creationflags=flags, start_new_session=os.name != "nt")
-    return {"ok": f"engine started: {args[0]}"}
 
 
 def api_state(ws, b, q):
@@ -227,7 +215,7 @@ def make_server(ws, port=8765):
 
 def serve(ws, port=8765, browser=True):
     srv = make_server(ws, port)
-    print(f"Orchestra UI for {ws.project}:\n  {srv.url}\n(the link holds this session's access token; Ctrl+C stops the UI, not a running engine)")
+    print(f"Orctram UI for {ws.project}:\n  {srv.url}\n(the link holds this session's access token; Ctrl+C stops the UI, not a running engine)")
     if srv.remote_token or srv.remote_short:  # never the token itself
         print("remote runners: on (ORCH_REMOTE_TOKEN)" if srv.remote_token else
               "remote runners: OFF, ORCH_REMOTE_TOKEN is shorter than 16 characters")

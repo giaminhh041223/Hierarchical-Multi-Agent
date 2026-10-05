@@ -1,0 +1,65 @@
+name: release
+
+# Push a tag vX.Y.Z (equal to orch.__version__) to publish. PyPI side, once: add a "trusted publisher" for this repository,
+# workflow release.yml, environment pypi (https://docs.pypi.org/trusted-publishers/). No token is stored anywhere.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: The tag is the package version
+        run: |
+          v=$(python -c "import sys; sys.path.insert(0, 'prototype'); import orch; print(orch.__version__)")
+          test "v$v" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME does not match orch.__version__ $v"; exit 1; }
+      - name: Tests (mock agents)
+        working-directory: prototype
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONPATH: "."
+        run: python tests/test_e2e.py
+      - name: Build the sdist and the wheel
+        run: |
+          python -m pip install --quiet build
+          python -m build prototype --outdir dist
+      - uses: actions/upload-artifact@v6
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # Trusted Publishing: a short-lived token, minted for this job only
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist/
+      - name: GitHub release with the built files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "Orctram $GITHUB_REF_NAME" --generate-notes
