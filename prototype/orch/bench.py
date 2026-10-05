@@ -38,10 +38,11 @@ def solo(ws, goal, who, base, bid, timeout, out_dir):
     branch, wt = f"orch/bench-{bid}/solo", HOME / "wt" / f"bench-{bid}" / "solo"
     git(ws.project, "worktree", "add", "-q", "-b", branch, str(wt), base)
     try:
-        prompt = "\n\n".join([f"ORCH-CALL role=worker task=SOLO run=bench-{bid}", RULES["common"], RULES["worker"], contract("handoff"), "---",
-                              f"## Goal\n{goal}",
-                              "You work alone: no plan, no other workers. Scope: the whole repository. Make the goal true, run the "
-                              "project's tests if it has any, then reply with the handoff JSON."])
+        prompt = "\n\n".join(filter(None, [f"ORCH-CALL role=worker task=SOLO run=bench-{bid}", RULES["common"], RULES["worker"],
+                                           contract("handoff"), "---", f"## Goal\n{goal}",
+                                           "You work alone: no plan, no other workers. Scope: the whole repository. Make the goal true, "
+                                           "run the project's tests if it has any, then reply with the handoff JSON.",
+                                           agents.catalog()[aid].get("note")]))  # the CLI's quirks, as the engine adds them (agy cannot run commands)
         t0 = time.time()
         r = agents.run_agent(aid, model, prompt, wt, out_dir / "agent", schema="handoff", timeout=timeout, readonly=False)
         seconds = time.time() - t0

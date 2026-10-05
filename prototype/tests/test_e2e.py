@@ -919,7 +919,11 @@ def test_bench_solo_versus_team():
     sc = two_tasks()
     sc["steps"]["worker:SOLO"] = [{"write": {"app.py": "def add(a, b):\n    return a - b\n"}}]
     r = Repo(sc)
+    (r.tmp / "home").mkdir(exist_ok=True)
+    (r.tmp / "home" / "agents.json").write_text(json.dumps({"mock": {"note": "## This CLI cannot run commands"}}), encoding="utf-8")
     assert r.orch("bench", "demo goal", "--check", 'python -c "import app; assert app.add(2, 3) == 5"', "--solo", "mock/mock-fast") == 0, r.out
+    prompt = next((r.repo / ".orch" / "bench").glob("*/solo/agent/prompt.md")).read_text(encoding="utf-8")
+    assert "This CLI cannot run commands" in prompt, "the CLI's quirks reach the solo agent too (a real agy returned nothing without it)"
     report = next((r.repo / ".orch" / "bench").glob("*/report.md")).read_text(encoding="utf-8")
     solo_row = next(l for l in report.splitlines() if l.startswith("| solo mock/mock-fast"))
     team_row = next(l for l in report.splitlines() if l.startswith("| team (lead mock, 2 worker(s))"))
