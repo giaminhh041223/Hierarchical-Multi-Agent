@@ -180,6 +180,19 @@ def entity(fact, tid):
     return head.strip() if sep and 0 < len(head.strip()) <= 60 else tid
 
 
+def write_atomic(path, text):
+    """Readers (web UI, MCP status) never see a half-written file: write a sibling, then replace."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8", newline="\n")
+    for _ in range(40):
+        try:
+            return os.replace(tmp, path)
+        except PermissionError:  # Windows: a reader holds the file open for a moment
+            time.sleep(0.05)
+    path.write_text(text, encoding="utf-8", newline="\n")  # still busy after 2 s: a plain write beats no report
+    tmp.unlink(missing_ok=True)
+
+
 def crash_point(name):
     """Test hook: die like a power cut at a named point (no cleanup, no finally)."""
     if os.environ.get("ORCH_CRASH_AT") == name:
@@ -1196,7 +1209,7 @@ class Engine:
         for i, v in enumerate(verdicts, 1):
             lines += ["", f"## Review round {i}: {v['verdict']}", *[f"- {x['severity']} [{x['task_id'] or 'plan'}] {x['message']}" for x in v["issues"]]]
         self.rdir.mkdir(parents=True, exist_ok=True)
-        (self.rdir / "plan.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        write_atomic(self.rdir / "plan.md", "\n".join(lines) + "\n")
         return self.rdir / "plan.md"
 
     def report(self, status):
@@ -1214,7 +1227,7 @@ class Engine:
         if pend:
             lines += ["", "## Waiting for you", "", *[f"- **{t['id']}**: {t['question']}\n  `python -m orch answer {t['id']} \"...\"`" for t in pend]]
         self.rdir.mkdir(parents=True, exist_ok=True)
-        (self.rdir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        write_atomic(self.rdir / "report.md", "\n".join(lines) + "\n")
         return self.rdir / "report.md"
 
     def pause(self):
@@ -1223,8 +1236,8 @@ class Engine:
         return "waiting"
 
     def finish(self, status, why=""):
+        path = self.report(status)  # before the status: whoever sees "done" (UI, MCP status) must find the final report
         self.rmeta("status", status)
-        path = self.report(status)
         self.cleanup()
         self.ws.event("run", f"{status}{': ' + why if why else ''} (report: {path})")
         self.notify(f"[{self.ws.project.name}] run {self.run}: {status}")
