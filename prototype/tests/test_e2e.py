@@ -77,6 +77,9 @@ class Repo:
     def main(self):  # the run's integration branch
         return f"orch/{self.q('SELECT v FROM meta WHERE k=?', 'run')[0][0]}/main"
 
+    def show_file(self, pattern):  # a file under the project, by glob
+        return next(self.repo.glob(pattern)).read_text(encoding="utf-8")
+
     def show(self, path):
         return self.git("show", f"{self.main}:{path}")
 
@@ -94,8 +97,12 @@ def two_tasks():
 
 
 def test_happy_path():
-    r = Repo(two_tasks())
+    sc = two_tasks()
+    sc["steps"]["worker:T1"][0]["write"]["build/gen.txt"] = "generated\n"  # git-ignored: verify sees it, the commit does not
+    r = Repo(sc, files={".gitignore": "build/\n"})
     assert r.run() == 0, r.out
+    assert [b for _, b in r.events("warn", "T1")] == ["verify ran with 1 git-ignored path(s) that are not committed: build/"]
+    assert not r.events("warn", "T2") and "build/" not in r.git("ls-tree", "-r", "--name-only", r.main)
     assert r.status() == {"PLAN": "done", "T1": "done", "T2": "done", "REVIEW": "done"}, r.status()
     assert "return a + b" in r.show("app.py") and "assert" in r.show("test_app.py")
     assert r.git("rev-parse", "HEAD") == r.base, "the user's branch must stay untouched"
@@ -164,7 +171,7 @@ def test_malformed_handoff_is_repaired():
 
 def test_timeout_then_lead_reassigns():
     sc = {"plan": [task("T1", "w1", ["a.txt"], OK)],
-          "steps": {"worker:T1": [{"sleep": 60}, {"write": {"a.txt": "a\n"}}],
+          "steps": {"worker:T1": [{"write": {"a.txt": "draft\n"}, "sleep": 60}, {"write": {"a.txt": "a\n"}}],
                     "lead:T1": [{"reply": {"action": "reassign", "assignee": "w2", "note": "w1 timed out; w2 takes over"}}]}}
     r = Repo(sc, timeout=3)
     t0 = time.time()
@@ -172,6 +179,9 @@ def test_timeout_then_lead_reassigns():
     assert time.time() - t0 < 45, "the stuck agent must be killed at the timeout"
     assert r.outcomes("T1") == ["timeout", "integrated"], r.outcomes("T1")
     assert r.q("SELECT assignee FROM tasks WHERE id='T1'")[0][0] == "w2"
+    patch = next((r.repo / ".orch" / "runs").glob("*/attempts/T1-abandoned-*.patch"))  # evidence of the reset, as git wrote it
+    assert subprocess.run(GIT + ["apply", "--check", str(patch)], cwd=r.repo, capture_output=True).returncode == 0
+    assert b"+draft" in patch.read_bytes() and b"\r\n" not in patch.read_bytes()
 
 
 def test_usage_limit_rotates_and_switches_back():
@@ -419,14 +429,21 @@ def test_merge_conflict_is_resolved_by_the_worker():
 def test_plan_review_user_approval_and_amendment():
     """Reviewer blocks plan v1 -> lead revises; user approves; final review blocks -> recorded amendment -> REVIEW2."""
     blocker = lambda msg, tid=None: {"reply": {"verdict": "revise", "issues": [{"task_id": tid, "severity": "blocker", "message": msg}]}}
-    sc = {"plan": [task("T1", "w1", ["a.txt"], OK)], "amend": [task("T3", "w2", ["README.md"], OK, ["T1"])],
+    readme = [["python", "-c", "assert 'usage' in open('README.md').read()"]]
+    sc = {"plan": [task("T1", "w1", ["a.txt"], OK)], "amend": [task("T3", "w2", ["README.md"], OK + readme, ["T1"])],
           "steps": {"reviewer:PLAN": [blocker("T1 lacks a test", "T1"), {}], "reviewer:REVIEW": [blocker("README not updated")],
                     "worker:T1": [{"write": {"a.txt": "a\n"}}], "worker:T3": [{"write": {"README.md": "demo\nusage\n"}}]}}
     r = Repo(sc)
     assert r.orch("run", "demo goal", "--exit-on-wait") == 3, r.out
     assert r.status() == {"PLAN": "pending_user"} and r.calls("lead", "PLAN") == 2 and r.calls("reviewer", "PLAN") == 2
     assert "revision=1" in (Path(f"{r.scenario}.state") / "calls.log").read_text(encoding="utf-8")
-    assert r.orch("answer", "PLAN", "yes") == 0 and r.orch("resume", "--exit-on-wait") == 0, r.out
+    assert "commands added later by an amendment are asked" in r.show_file(".orch/runs/*/plan.md")
+    assert r.orch("answer", "PLAN", "yes") == 0 and r.orch("resume", "--exit-on-wait") == 3, r.out
+    # the approval covered the plan's commands only: the amendment's new one waits, before any worker call
+    assert r.status()["T3"] == "pending_user" and r.calls("worker", "T3") == 0, r.status()
+    q = r.q("SELECT question FROM tasks WHERE id='T3'")[0][0]
+    assert "amendment" in q and "README.md" in q and "print('ok')" not in q, q
+    assert r.orch("answer", "T3", "yes") == 0 and r.orch("resume", "--exit-on-wait") == 0, r.out
     assert r.status() == {"PLAN": "done", "T1": "done", "REVIEW": "done", "T3": "done", "REVIEW2": "done"}, r.status()
     assert r.show("README.md") == "demo\nusage"
 
@@ -522,6 +539,7 @@ def ui_server(project):
                 return resp.status, resp.read().decode()
         except urllib.error.HTTPError as e:
             return e.code, e.read().decode()
+    call.base = base
     try:
         yield call
     finally:
@@ -566,6 +584,8 @@ def test_ui_server_security():
         assert call("/api/vault", {"name": "bad name", "value": "x"})[0] == 400
         team = json.loads((r.repo / ".orch" / "team.json").read_text(encoding="utf-8"))
         assert call("/api/team", {"team": {**team, "workers": {"../evil": {"agent": "mock", "model": "m"}}}})[0] == 400
+        code, body = call("/api/answer", {"task": "PLAN", "text": "  "})
+        assert code == 400 and "empty" in body, "an empty answer must never count as 'yes'"
         code, body = call("/api/state")
         assert code == 200 and json.loads(body)["has_team"] and json.loads(body)["run"] is None, body
 
@@ -717,6 +737,96 @@ def test_kg_search_vectors():
     ws.db.close()
     ro.db.close()
     shutil.rmtree(d, ignore_errors=True)
+
+
+def test_remote_worker():
+    """A worker on another machine: a runner that claims the attempt and goes silent is detected (heartbeat), the retry is
+    served by a real runner process, its patch goes through scope and verify here. The two tokens open disjoint routes."""
+    import secrets
+    tok = secrets.token_urlsafe(24)  # generated here, written nowhere
+    sc = {"plan": [task("T1", "far", ["far.txt"], [["python", "-c", "assert open('far.txt').read().strip() == 'far'"]])],
+          "steps": {"worker:T1": [{"write": {"far.txt": "far\n"}}]}}
+    r = Repo(sc, workers={"far": {"agent": "remote", "model": "mock:mock-fast", "max": 1}})
+    with unittest.mock.patch.dict(os.environ, ORCH_REMOTE_TOKEN=tok), ui_server(r.repo) as call:
+        out = open(r.tmp / "engine.out", "w")  # a file, not a pipe: a full pipe hangs the child on Windows
+        eng = subprocess.Popen([sys.executable, "-m", "orch", "--ws", str(r.repo), "run", "demo goal", "--yes", "--exit-on-wait"],
+                               cwd=ROOT, env={**r.env, "ORCH_REMOTE_STALE": "2", "ORCH_REMOTE_WAIT": "60"},
+                               stdout=out, stderr=subprocess.STDOUT)
+        try:
+            deadline, got = time.time() + 60, None
+            while time.time() < deadline and not got:  # a "ghost" runner takes the attempt, then never beats
+                code, body = call("/api/lease", {"agents": ["mock"], "runner": "ghost"}, token=tok)
+                assert code == 200, body
+                got = json.loads(body)["lease"] and json.loads(body)
+                time.sleep(0.3)
+            assert got, "the engine never opened a lease"
+            lease = got["lease"]
+            assert (lease["agent"], lease["model"], lease["schema"], lease["readonly"]) == ("mock", "mock-fast", "handoff", 0), lease
+            assert lease["prompt"].startswith("ORCH-CALL role=worker task=T1") and got["bundle"], lease
+            while time.time() < deadline and r.q("SELECT 1 FROM leases WHERE id=?", lease["id"]):
+                time.sleep(0.3)  # the proxy gives up after 2s without a heartbeat and removes its lease
+            assert call("/api/lease/beat", {"id": lease["id"], "runner": "ghost"}, token=tok) == (200, '{"cancel": true}')
+            code, body = call("/api/lease/done", {"id": lease["id"], "runner": "ghost", "ok": True, "patch": ""}, token=tok)
+            assert code == 400 and "gone" in body, body
+            assert call("/api/lease", {"agents": ["mock"], "runner": "x"})[0] == 403, "the UI token must not open runner routes"
+            assert call("/api/state", token=tok)[0] == 403, "the runner token must not open the UI"
+            run = subprocess.run([sys.executable, "-m", "orch", "remote", "run", "--url", call.base, "--name", "box1", "--agents", "mock",
+                                  "--once"], cwd=ROOT, env={**r.env, "ORCH_REMOTE_TOKEN": tok, "ORCH_HOME": str(r.tmp / "remote-home")},
+                                 capture_output=True, encoding="utf-8", errors="replace", timeout=120)
+            assert run.returncode == 0 and "serving mock" in run.stdout and ": ok" in run.stdout, run.stdout + run.stderr
+            assert eng.wait(timeout=120) == 0, (r.tmp / "engine.out").read_text(encoding="utf-8", errors="replace")
+        finally:
+            if eng.poll() is None:
+                eng.kill()
+            out.close()
+    assert r.status() == {"PLAN": "done", "T1": "done", "REVIEW": "done"}, r.status()
+    assert r.show("far.txt").strip() == "far"
+    assert r.outcomes("T1") == ["error", "integrated"], r.outcomes("T1")
+    first = r.q("SELECT failure FROM attempts WHERE task='T1' AND kind='work' ORDER BY id")[0][0]
+    assert "remote runner ghost stopped responding" in first, first
+    assert any("box1 took" in b for _, b in r.q("SELECT id, body FROM events WHERE kind='remote'"))
+    assert r.q("SELECT count(*) FROM leases") == [(0,)] and not list((r.repo / ".orch" / "leases").iterdir())
+    assert agents.account("remote", "codex:gpt-5.5") == "remote/codex"
+
+
+def test_cli_parsers_failure_classes_and_env():
+    """Parsers on real CLI output (docs/probes), failure classes that ignore project text, the verify allowlist env."""
+    probes, tmp = ROOT / "docs" / "probes", Path(tempfile.mkdtemp(prefix="orch-parse-"))
+    agy = agents._agy((probes / "agy.json").read_text(encoding="utf-8"), None)
+    assert agy["text"].strip() == "OK" and agy["error"] is None and agy["tokens_in"] == 16627, agy
+    claude = agents._claude((probes / "claude.json").read_text(encoding="utf-8"), None)
+    assert agents.classify(claude["error"]) == "auth" and claude["session"], claude
+    oc = agents._opencode((probes / "opencode.jsonl").read_text(encoding="utf-8"), None)  # opencode's own sqlite crash
+    assert oc["session"] and oc["error"].startswith("Unexpected server error") and agents.classify(oc["error"]) == "error", oc
+    ev = [{"type": "thread.started", "thread_id": "th-1"},
+          {"type": "item.completed", "item": {"type": "agent_message", "text": '{"status": "done"}'}},
+          {"type": "turn.completed", "usage": {"input_tokens": 120, "output_tokens": 30}}]
+    cx = agents._codex("\n".join(map(json.dumps, ev)), tmp / "missing.txt")
+    assert (cx["text"], cx["session"], cx["tokens_in"], cx["tokens_out"], cx["error"]) == ('{"status": "done"}', "th-1", 120, 30, None)
+    err = agents._codex(json.dumps({"type": "error", "message": "You've hit your usage limit. Try again at Oct 4th, 2026 8:58 AM."}), tmp / "x")
+    assert agents.classify(err["error"]) == "quota" and agents.reset_at(err["error"]), err
+    for text, kind in [("Error: Not logged in. Please run /login", "auth"), ("HTTP 401 Unauthorized", "auth"),
+                       ("status: 429 Too Many Requests", "rate_limit"), ("Quota exceeded for quota metric", "quota"),
+                       ("RESOURCE_EXHAUSTED", "quota"), ('{"type": "authentication_error"}', "auth"), ("code: invalid_api_key", "auth"),
+                       ("You exceeded your current quota", "quota"), ("insufficient_quota", "quota"), ("model gpt-x is not supported when using ChatGPT", "model"),
+                       # project text an agent prints: none of these is about the account
+                       ("FAILED test_login_returns_401 (route /login)", "error"), ('File "app.py", line 429, in handler', "error"),
+                       ("tests for quota.py failed", "error"), ("def authenticate(user):", "error")]:
+        assert agents.classify(text) == kind, (text, agents.classify(text), kind)
+    # run_agent: a reply that is not the CLI's JSON is classified on stderr only, never on the transcript it quotes
+    scen = tmp / "scenario.json"
+    scen.write_text(json.dumps({"steps": {"worker:T1": [{"exit": 1, "stderr": "Traceback: line 429 in test_quota_401"}]}}), encoding="utf-8")
+    with unittest.mock.patch.dict(os.environ, ORCH_MOCK=str(scen)):
+        r = agents.run_agent("mock", "mock-fast", "ORCH-CALL role=worker task=T1\nwork", tmp, tmp / "out", schema="handoff")
+    assert not r["ok"] and r["failure"] == "error", r
+    secrets_env = {"SSH_AUTH_SOCK": "/tmp/agent.sock", "DATABASE_URL": "postgres://u:pw@db/x", "GH_PAT": "x", "MY_FLAG": "1",
+                   "SESSION_COOKIE": "c", "PLAIN_SETTING": "kept for agents"}
+    with unittest.mock.patch.dict(os.environ, secrets_env):
+        agent_env, ver, more = agents.clean_env(), agents.verify_env(), agents.verify_env(["my_flag", "GH_PAT"])
+    assert agent_env["PLAIN_SETTING"] and not {"SSH_AUTH_SOCK", "DATABASE_URL", "GH_PAT", "SESSION_COOKIE"} & set(agent_env)
+    assert "PATH" in ver and "PLAIN_SETTING" not in ver and "MY_FLAG" not in ver and ver["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert more["MY_FLAG"] == "1" and "GH_PAT" not in more, "team verify_env adds names, never secret-looking ones"
+    shutil.rmtree(tmp, ignore_errors=True)
 
 
 def test_scope_and_plan_checks():

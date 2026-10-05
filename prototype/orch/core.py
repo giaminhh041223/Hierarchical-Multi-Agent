@@ -7,7 +7,8 @@ ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "catalog"
 SCHEMAS = CATALOG / "schemas"
 HOME = Path(os.environ.get("ORCH_HOME") or Path.home() / ".orchestra")
-SECRET_NAME = re.compile(r"(API_?KEY|ACCESS_KEY|PRIVATE_KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)", re.I)
+SECRET_NAME = re.compile(r"(API_?KEY|ACCESS_KEY|PRIVATE_KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDS|AUTH|COOKIE|DSN|_PAT$)", re.I)
+SECRET_VALUE = re.compile(r"://[^/\s:@]+:[^/\s@]+@")  # a URL with user:password@ (DATABASE_URL, proxies with credentials)
 
 # Task states. Failure edges always record an attempt outcome first, then go to todo / needs_lead / pending_user / failed.
 #   todo -> running -> verifying -> integrating -> done
@@ -33,6 +34,8 @@ CREATE TABLE IF NOT EXISTS skills(
 CREATE VIRTUAL TABLE IF NOT EXISTS facts USING fts5(entity, fact, task UNINDEXED, actor UNINDEXED, sha UNINDEXED, run UNINDEXED);
 CREATE TABLE IF NOT EXISTS links(src TEXT, rel TEXT, dst TEXT, task TEXT, UNIQUE(src, rel, dst));
 CREATE TABLE IF NOT EXISTS vectors(digest TEXT PRIMARY KEY, vec BLOB);
+CREATE TABLE IF NOT EXISTS leases(id TEXT PRIMARY KEY, task TEXT, agent TEXT, model TEXT, prompt TEXT, schema TEXT, readonly INT,
+  base TEXT, pid INT, pid_ctime TEXT, stale REAL, status TEXT DEFAULT 'open', runner TEXT, beat REAL, result TEXT, created REAL);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 """
 
@@ -79,7 +82,7 @@ class Workspace:
         return json.loads(f.read_text(encoding="utf-8")) if f.exists() else default
 
     def write_json(self, name, data):
-        (self.dir / name).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        (self.dir / name).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8", newline="\n")
 
     def meta(self, k, v=None):
         if v is None:

@@ -202,7 +202,7 @@ def pretest(pairs, timeout=300, hard=False):
                 h = validate(extract_json(r["text"]), schema("handoff"))
             except ValueError as e:
                 h, detail = None, str(e)
-            passed = subprocess.run([sys.executable, "-c", check], cwd=d / "wt", env=agents.clean_env(), capture_output=True,
+            passed = subprocess.run([sys.executable, "-c", check], cwd=d / "wt", env=agents.verify_env(), capture_output=True,
                                     timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode == 0
             outcome = "invalid" if h is None else "blocked" if h["status"] != "done" else "ok" if passed else "verify"
             detail = detail if h is None else h["summary"]

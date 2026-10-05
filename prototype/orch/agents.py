@@ -2,7 +2,7 @@
 import datetime, json, os, re, shutil, signal, subprocess, sys, time, urllib.request
 from pathlib import Path
 
-from .core import CATALOG, HOME, ROOT, SCHEMAS, SECRET_NAME, vault
+from .core import CATALOG, HOME, ROOT, SCHEMAS, SECRET_NAME, SECRET_VALUE, vault
 
 RESOURCES = HOME / "resources.json"
 OVERRIDES = HOME / "agents.json"  # this machine's changes (a router's port, its own profiles); the repo catalog stays untouched
@@ -24,6 +24,8 @@ def account(aid, model=None):
     """The quota a call spends. An agent id is one login; a router holds one account per provider prefix of its model ids
     (cx/, ag/ ...), and "shares" maps the prefixes that are also a CLI's subscription: those run out together with the CLI."""
     a = catalog().get(aid) or {}
+    if a.get("remote"):  # model = "<agent>:<model>". ponytail: every runner of one CLI counts as one account; name runners if not
+        return f"{aid}/{(model or '').split(':', 1)[0]}"
     if not a.get("router") or "/" not in (model or ""):
         return aid
     pre = model.split("/", 1)[0]
@@ -99,7 +101,7 @@ def discover(probe=False, only=None):
                 info["probe"] = probe_agent(aid, a.get("probe_model") or info["models"][-1])
         res[aid] = info
     HOME.mkdir(parents=True, exist_ok=True)
-    RESOURCES.write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8")
+    RESOURCES.write_text(json.dumps(res, indent=1, ensure_ascii=False), encoding="utf-8", newline="\n")
     return res
 
 
@@ -127,13 +129,30 @@ def probe_agent(aid, model):
 
 
 # --- environments ----------------------------------------------------------------------------------
-def clean_env(extra=None):
-    """Everything except secret-looking variables. Used as-is for verification commands (they run repo code)."""
-    env = {k: val for k, val in os.environ.items() if not SECRET_NAME.search(k)}
+# what verify commands (repo code, written by workers) may see: system, locale, temp dirs and language toolchains; team.json
+# "verify_env" adds more names. Secret-looking names and values are dropped even when listed.
+VERIFY_ENV = re.compile(r"^(PATH|PATHEXT|SYSTEMROOT|SYSTEMDRIVE|WINDIR|COMSPEC|OS|TEMP|TMP|TMPDIR|HOME|HOMEDRIVE|HOMEPATH|USERPROFILE|"
+                        r"APPDATA|LOCALAPPDATA|PROGRAMDATA|PROGRAMFILES.*|COMMONPROGRAMFILES.*|PROCESSOR_\w+|NUMBER_OF_PROCESSORS|"
+                        r"USER|USERNAME|LOGNAME|SHELL|TERM|LANG|LANGUAGE|LC_\w+|TZ|XDG_\w+|CI|PYTHON\w*|VIRTUAL_ENV|CONDA_\w+|"
+                        r"PYENV\w*|UV_\w+|PIP_\w+|JAVA_HOME|GOPATH|GOROOT|GOBIN|GOCACHE|GOMODCACHE|GOFLAGS|CARGO_HOME|RUSTUP_\w+|"
+                        r"NODE_\w+|NVM_\w+|PNPM_HOME|BUN_INSTALL|DENO_\w+|DOTNET_\w+|GIT_EXEC_PATH)$", re.I)
+
+
+def clean_env(extra=None, keep=None):
+    """Everything except secret-looking names and values (agents need their own configuration); keep(name) narrows it."""
+    env = {k: val for k, val in os.environ.items()
+           if (keep is None or keep(k)) and not SECRET_NAME.search(k) and not SECRET_VALUE.search(val)}
     # no bytecode / pytest cache: build junk in a worktree would be committed or flagged as out-of-scope
     env.update(PYTHONIOENCODING="utf-8", PYTHONDONTWRITEBYTECODE="1", PYTEST_ADDOPTS="-p no:cacheprovider")
     env.update(extra or {})
     return env
+
+
+def verify_env(more=()):
+    """The environment of verify commands and pre-test checks: an allowlist, not "everything but secrets", since they run code
+    the workers wrote (SSH_AUTH_SOCK, cloud profiles or a DATABASE_URL must not reach it). more = team.json "verify_env"."""
+    more = {str(n).upper() for n in more or ()}
+    return clean_env(keep=lambda k: bool(VERIFY_ENV.match(k)) or k.upper() in more)
 
 
 def worker_env(a, extra=None):
@@ -278,7 +297,7 @@ def run_agent(aid, model, prompt, cwd, out_dir, schema=None, session=None, timeo
     exe = resolve_bin(a["bin"])
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "prompt.md").write_text(prompt, encoding="utf-8")
+    (out_dir / "prompt.md").write_text(prompt, encoding="utf-8", newline="\n")
     result = {"ok": False, "text": "", "session": session, "tokens_in": 0, "tokens_out": 0, "cost": None,
               "error": None, "failure": None, "seconds": 0}
     if not exe:
@@ -287,7 +306,7 @@ def run_agent(aid, model, prompt, cwd, out_dir, schema=None, session=None, timeo
     if a["prompt"] == "arg" and len(subprocess.list2cmdline([prompt])) > ARG_LIMIT:
         pf = Path(cwd) / ".orch" / f"prompt-{abs(hash(str(out_dir))) % 10 ** 8}.md"  # inside cwd: sandboxes allow reading it
         pf.parent.mkdir(exist_ok=True)
-        pf.write_text(prompt, encoding="utf-8")
+        pf.write_text(prompt, encoding="utf-8", newline="\n")
         prompt = f"Your complete task packet is in the file {pf} . Read all of it first, then do exactly what it says."
     sch = SCHEMAS / f"{schema}.json" if schema else None
     fill = {"model": model, "session": session or "", "out": str(out_dir / "last.txt"), "prompt": prompt,
@@ -319,14 +338,18 @@ def run_agent(aid, model, prompt, cwd, out_dir, schema=None, session=None, timeo
         return result
     stdout = (out_dir / "stdout.txt").read_text(encoding="utf-8", errors="replace")
     stderr = (out_dir / "stderr.txt").read_text(encoding="utf-8", errors="replace")
+    unparsed = False
     try:
         result.update({k: v for k, v in PARSERS[a["parse"]](stdout, out_dir / "last.txt").items() if v is not None or k == "error"})
     except (ValueError, KeyError, TypeError) as e:
-        result["error"] = f"unparseable output ({e}): {(stdout or stderr)[-400:]}"
+        result["error"], unparsed = f"unparseable output ({e}): {(stdout or stderr)[-400:]}", True
     result["ok"] = code == 0 and not result["error"]
     if not result["ok"]:
+        # classify the CLI's own error and its stderr, never the stdout transcript: it quotes the project ("/login" routes,
+        # "line 429", quota.py), which must not cool an account or ask the user to log in
+        why = None if unparsed else result["error"]
         result["error"] = result["error"] or (stderr or stdout)[-600:] or f"exit code {code}"
-        result["failure"] = classify(result["error"], stderr[-2000:])
+        result["failure"] = classify(why, stderr[-2000:])
     return result
 
 
@@ -339,10 +362,13 @@ def router_config(a, model):
 
 
 FAILURES = [  # first match wins: a usage-limit message that links a billing or login page is still "quota"
-    ("quota", r"usage limit|hit your (usage )?limit|(5-hour|weekly|daily|monthly) limit|quota|resource.?exhausted|"
-              r"out of credits|more credits|credit balance|insufficient.?(credit|balance|funds)"),
-    ("rate_limit", r"rate.?limit|\b429\b|too many requests|overloaded"),
-    ("auth", r"not logged in|unauthori[sz]ed|\b401\b|/login|login required|invalid api key|authenticat"),
+    # status codes only next to an HTTP word: a bare 429 / 401 is as likely a line number or a test name
+    ("quota", r"usage limit|hit your (usage )?limit|(5-hour|weekly|daily|monthly) limit|quota.{0,20}(exceeded|exhausted|reached)|"
+              r"exceeded.{0,40}quota|insufficient.?quota|resource.?exhausted|out of credits|more credits|credit balance|"
+              r"insufficient.?(credit|balance|funds)"),
+    ("rate_limit", r"rate.?limit|(status|code|error|http)\W{0,3}429\b|\b429\W{0,3}(too|rate)|too many requests|overloaded"),
+    ("auth", r"not logged in|unauthori[sz]ed|(status|code|error|http)\W{0,3}401\b|(run|use|type) /login|login required|"
+             r"please log ?in|invalid[ _-]?api[ _-]?key|authentication[ _-](failed|required|error)|failed to authenticate"),
     ("model", r"model.{0,40}not supported|not supported.{0,40}model|unknown model|model .{0,30}not found|invalid model"),
 ]
 

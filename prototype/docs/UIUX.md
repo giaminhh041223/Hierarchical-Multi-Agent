@@ -245,7 +245,23 @@ Pha 2 chỉ đổi giao diện, giữ nguyên hành vi và API.
 
 Mỗi pha một commit; chạy đủ bộ test trên Windows và WSL. Code giao diện do Gemini 3.8 Flash (high, qua agy) viết theo tài liệu này; Claude soát, sửa và kiểm tra trên trình duyệt.
 
-Trạng thái: pha 1 xong.
+Trạng thái (2026-10-05): pha 1–3 xong; pha 4 làm được một phần.
+- Pha 3 (Gemini viết) đã được đọc diff: mọi chữ đi qua `h()`/`svg()`, form Team chỉ POST khi bấm "Lưu team" và giữ đúng schema của `save_team`.
+- QA trên Chromium (1280px sáng, 375px tối, mọi tab, không lỗi console) tìm ra và đã sửa:
+  - đường dẫn dài trong câu hỏi tràn khỏi thẻ, làm trang cuộn ngang ở 375px;
+  - đổi tên worker trùng tên worker khác làm mất một worker;
+  - tab đang chọn nằm ngoài vùng nhìn thấy của thanh tab trên màn hẹp.
+- Pha 4, đã kiểm:
+  - duyệt plan chỉ bằng bàn phím: 12 lần Tab, mọi điểm dừng có viền focus;
+  - `prefers-reduced-motion` tắt nhịp badge;
+  - thu phóng 200% (khung 640px): không tab nào cuộn ngang.
+- Pha 4, Gemini viết thêm (đã đọc diff, chưa xem trên trình duyệt):
+  - toast co theo bề rộng màn hình, không tràn ở 360px;
+  - nút "Cần bạn" cuộn tức thì, không cuộn êm, khi bật `prefers-reduced-motion`.
+- Pha 4, còn lại cho máy của bạn:
+  - audit bằng web-design-guidelines bản ghim (cần cài, §13);
+  - thử với Narrator;
+  - ảnh chụp cho README.
 
 | Pha | Nội dung | Xong khi |
 |---|---|---|

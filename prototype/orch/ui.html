@@ -39,7 +39,7 @@ nav button.on { color: var(--ink); background: color-mix(in srgb, var(--ink) 10%
 main { padding: 16px; max-width: 1200px; margin: 0 auto; }
 h1, h2, h3, .heading { font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; font-weight: 600; color: var(--ink); margin: 20px 0 8px; }
 h1, h2 { font-size: 20px; line-height: 1.25; } h3 { font-size: 16px; line-height: 1.25; }
-p, .prose { max-width: 75ch; margin: 6px 0 12px; }
+p, .prose { max-width: 75ch; margin: 6px 0 12px; overflow-wrap: anywhere; } /* long paths in questions must wrap, not overflow */
 .question { white-space: pre-wrap; }
 .mono, pre, code { font-family: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", Menlo, monospace; }
 .tabular { font-variant-numeric: tabular-nums; }
@@ -163,7 +163,7 @@ pre { white-space: pre-wrap; word-break: break-word; background: color-mix(in sr
 .nowrap { white-space: nowrap; }
 .align-right { text-align: right; display: block; }
 
-#toasts { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 1000; max-width: 400px; pointer-events: none; }
+#toasts { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 1000; max-width: min(400px, calc(100vw - 32px)); pointer-events: none; }
 .toast { pointer-events: auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-radius: 4px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 4px 12px color-mix(in srgb, var(--ink) 16%, transparent); font-size: 13px; line-height: 1.4; }
 .toast.ok { border-color: var(--done); background: color-mix(in srgb, var(--done) 10%, var(--surface)); color: var(--done); }
 .toast.err { border-color: var(--failed); background: color-mix(in srgb, var(--failed) 10%, var(--surface)); color: var(--failed); }
@@ -199,7 +199,7 @@ const VI = {
   "Main navigation": "Điều hướng chính", "! Needs you {n}": "! Cần bạn {n}", "{n} task(s) waiting for you": "{n} task đang chờ bạn", "Close notification": "Đóng thông báo",
   "Missing access token": "Thiếu access token",
   "Open the link printed by {cmd}: it carries this session's access token.": "Mở liên kết được in bởi {cmd}: liên kết mang access token của phiên này.",
-  "waiting": "chờ", "running": "đang chạy", "verifying": "đang kiểm", "integrating": "đang tích hợp", "done": "xong",
+  "waiting": "chờ", "running": "đang chạy", "verifying": "đang kiểm", "integrating": "đang tích hợp", "integrated": "đã tích hợp", "done": "xong",
   "needs you": "cần bạn", "with lead": "chờ lead", "failed": "lỗi", "cancelled": "đã huỷ", "todo": "chờ",
   "Cancel all": "Huỷ tất cả",
   "Cancel every unfinished task? Running and queued work will be stopped.": "Huỷ mọi task chưa hoàn thành? Công việc đang chạy và trong hàng đợi sẽ dừng lại.",
@@ -281,7 +281,7 @@ const VI = {
   "Curated sources (pinned commits): {sources} + skills installed for your local agents. Refreshing downloads the index from github.com.": "Nguồn chọn lọc (commit đã ghim): {sources} + các skill đã cài cho agent trên máy. Làm mới sẽ tải chỉ mục từ github.com.",
   "Refresh index": "Làm mới chỉ mục", "Skill index is empty.": "Chỉ mục skill đang trống.", "This run": "Run này", "Tasks": "Task", "Reason / Scan": "Lý do / Quét", "Approve": "Duyệt", "Reject": "Từ chối", "Index ({n})": "Chỉ mục ({n})", "Id": "ID", "Description": "Mô tả",
   "team saved": "Đã lưu team", "recorded": "Đã ghi nhận", "recorded; press Resume to continue": "Đã ghi nhận; bấm Tiếp tục để chạy tiếp", "saved": "Đã lưu",
-  "that task is not waiting for an answer any more": "Task đó không còn chờ câu trả lời nữa", "an engine is already running on this workspace": "Engine đang chạy trên workspace này rồi", "the goal must be 1-8000 characters": "Mục tiêu phải từ 1-8000 ký tự", "unknown agent": "Agent không xác định", "a JSON object is expected": "Cần một đối tượng JSON"
+  "that task is not waiting for an answer any more": "Task đó không còn chờ câu trả lời nữa", "the answer is empty: type it, or use a button": "Câu trả lời đang trống: hãy nhập, hoặc dùng một nút", "an engine is already running on this workspace": "Engine đang chạy trên workspace này rồi", "the goal must be 1-8000 characters": "Mục tiêu phải từ 1-8000 ký tự", "unknown agent": "Agent không xác định", "a JSON object is expected": "Cần một đối tượng JSON"
 };
 
 let lang = "vi";
@@ -548,7 +548,7 @@ function scoreView(s) {
     const isOk = a.outcome === "ok" || a.outcome === "integrated", isRunning = a.ended == null, isFailed = !isOk && !isRunning;
     const color = isOk ? "var(--done)" : (isRunning ? "var(--running)" : "var(--failed)");
     const durSec = Math.round(aEnd - a.started), tokIn = a.tokens_in || 0, tokOut = a.tokens_out || 0;
-    const titleText = `${a.task} (${a.agent} / ${a.model})\n${t("Result")}: ${a.outcome || (isRunning ? t("running") : t("failed"))}${a.failure ? " (" + a.failure + ")" : ""}\n${t("Duration")}: ${durSec}s\nToken: ${tokIn.toLocaleString()} in, ${tokOut.toLocaleString()} out`;
+    const titleText = `${a.task} (${a.agent} / ${a.model})\n${t("Result")}: ${t(a.outcome) || (isRunning ? t("running") : t("failed"))}${a.failure ? " (" + a.failure + ")" : ""}\n${t("Duration")}: ${durSec}s\nToken: ${tokIn.toLocaleString()} in, ${tokOut.toLocaleString()} out`;
 
     return svg("g", {
       class: "score-bar",
@@ -1204,6 +1204,10 @@ async function Team() {
       ariaDescribedby: err ? `werr-${idx}` : null,
       onchange: e => {
         const newName = e.target.value.trim();
+        if (newName !== wName && Object.prototype.hasOwnProperty.call(teamObj.workers, newName)) {
+          e.target.value = wName;  // renaming onto another worker would silently drop one of them
+          return say(t("Worker names must be unique"), "err");
+        }
         if (newName && newName !== wName) {
           const newWorkers = {};
           for (const [k, v] of Object.entries(teamObj.workers)) newWorkers[k === wName ? newName : k] = v;
@@ -1472,6 +1476,11 @@ function renderNav() {
       onclick: () => { tab = n; render(); }
     }, t(n));
   }));
+  const on = tabsEl.querySelector(".on");  // narrow screens scroll the tab bar: keep the current tab in view
+  if (on) {
+    const a = on.getBoundingClientRect(), b = tabsEl.getBoundingClientRect();
+    if (a.left < b.left || a.right > b.right) tabsEl.scrollLeft += a.left - b.left - 16;
+  }
 
   const rightEl = document.getElementById("header-right");
   if (rightEl) {
@@ -1489,7 +1498,7 @@ function renderNav() {
         await render();
         const first = document.querySelector(".card-waiting");
         if (first) {
-          first.scrollIntoView({behavior: "smooth", block: "start"});
+          first.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start"});
           const focusable = first.querySelector("button, input, textarea, select");
           if (focusable) focusable.focus();
         }
