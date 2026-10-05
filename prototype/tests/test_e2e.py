@@ -915,9 +915,10 @@ def test_cli_parsers_failure_classes_and_env():
 
 def test_bench_solo_versus_team():
     """`bench`: one agent alone and the team on the same goal from the same commit, both judged by the user's check (not by
-    the agents' own verify): here the solo agent writes a wrong add(), the team a right one."""
+    the agents' own verify): here the solo agent writes a wrong add() and replies nothing (as a real agy denied a command),
+    not even on its repair turn; the team writes a right one."""
     sc = two_tasks()
-    sc["steps"]["worker:SOLO"] = [{"write": {"app.py": "def add(a, b):\n    return a - b\n"}}]
+    sc["steps"]["worker:SOLO"] = [{"write": {"app.py": "def add(a, b):\n    return a - b\n"}, "raw": ""}, {"raw": "Done!"}]
     r = Repo(sc)
     (r.tmp / "home").mkdir(exist_ok=True)
     (r.tmp / "home" / "agents.json").write_text(json.dumps({"mock": {"note": "## This CLI cannot run commands"}}), encoding="utf-8")
@@ -927,7 +928,9 @@ def test_bench_solo_versus_team():
     report = next((r.repo / ".orch" / "bench").glob("*/report.md")).read_text(encoding="utf-8")
     solo_row = next(l for l in report.splitlines() if l.startswith("| solo mock/mock-fast"))
     team_row = next(l for l in report.splitlines() if l.startswith("| team (lead mock, 2 worker(s))"))
-    assert "| done | 0/1 |" in solo_row and "| 1 | 0 |" in solo_row, solo_row  # one call, no question for the user
+    assert "| no valid handoff | 0/1 | 2,000 | 200 |" in solo_row and "| 1 | 0 |" in solo_row, solo_row  # one call (+ its repair), no question
+    log = (Path(f"{r.scenario}.state") / "calls.log").read_text(encoding="utf-8")
+    assert "worker SOLO 2 resume" in log and "repair=1" in log, "the solo agent gets the repair turn every engine call gets"
     assert "| done | 1/1 |" in team_row and "| 0 |" in team_row, team_row
     assert "failed `python -c" in report and "AssertionError" in report, report
     bid = next((r.repo / ".orch" / "bench").glob("*")).name

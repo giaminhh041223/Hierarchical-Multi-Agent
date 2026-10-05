@@ -175,6 +175,38 @@ def check_handoff(h):
     return ["status blocked needs a non-empty question"] if h["status"] == "blocked" and not (h["question"] or "").strip() else []
 
 
+def parse(text, contract_name, check=None):
+    """The reply as its output contract: (obj, None), or (obj or None, the error the agent is asked to fix)."""
+    try:
+        obj = validate(extract_json(text or ""), schema(contract_name))
+    except ValueError as e:
+        return None, str(e)
+    errs = check(obj) if check else []
+    return obj, "; ".join(errs) or None
+
+
+def checked_call(run, prompt, d, session, aid, contract_name, check=None, cancelled=lambda: False):
+    """One agent call, validated strictly, repaired once (in the same session when the CLI can resume it: a headless agy
+    denied a command on its first turn replies nothing, its repair turn answers). run(prompt, out_dir, session) runs the
+    agent. Returns (result, the results of every run, obj, error)."""
+    r = run(prompt, d, session)
+    calls, obj, err = [r], None, None
+    if r["ok"]:
+        obj, err = parse(r["text"], contract_name, check)
+        if err and not cancelled():
+            can = bool(r["session"] and agents.catalog()[aid].get("resume"))
+            fix = (f"{prompt.splitlines()[0]} repair=1\nYour previous reply was rejected by the engine: {err}\n"
+                   "Reply again with ONLY the corrected JSON object for the same output contract.")
+            r2 = run(fix if can else f"{prompt}\n\n{fix}\nRejected reply:\n{r['text'][:4000]}", d / "repair", r["session"] if can else None)
+            calls.append(r2)
+            if r2["ok"]:
+                obj, err = parse(r2["text"], contract_name, check)
+                r["session"] = r2["session"] or r["session"]
+            else:
+                r = {**r, "ok": False, "failure": r2["failure"], "error": r2["error"]}
+    return r, calls, obj, err
+
+
 def entity(fact, tid):
     head, sep, _ = fact.partition(":")
     return head.strip() if sep and 0 < len(head.strip()) <= 60 else tid
@@ -409,14 +441,6 @@ class Engine:
         return self.ws.q("SELECT coalesce(sum(tokens_in + tokens_out), 0) n FROM attempts WHERE run=?", self.run)[0]["n"]
 
     # --- one agent call with its output contract ------------------------------------------------------------
-    def parse(self, text, contract_name, check):
-        try:
-            obj = validate(extract_json(text or ""), schema(contract_name))
-        except ValueError as e:
-            return None, str(e)
-        errs = check(obj) if check else []
-        return obj, "; ".join(errs) or None
-
     def ask(self, role, who, prompt, contract_name, task, kind, cwd, readonly=True, session=None, fresh=None, **kw):
         """Workers rotate in route(). The lead, reviewer and skill architect get a stand-in while their account is out of
         usage; fresh = the same request without the session's context, since a stand-in cannot resume that session."""
@@ -456,21 +480,7 @@ class Engine:
             run = lambda p, sub, sess: agents.run_agent(aid, model, p, cwd, sub, schema=contract_name, session=sess, timeout=timeout,
                                                         readonly=readonly, on_start=started, env={"ORCH_WS": str(self.ws.project)},
                                                         mcp=self.ws.project if self.team["mcp"] else None)
-            r = run(prompt, d, session)
-            calls, obj, err = [r], None, None
-            if r["ok"]:
-                obj, err = self.parse(r["text"], contract_name, check)
-                if err and not self.cancelled(task):
-                    can = bool(r["session"] and agents.catalog()[aid].get("resume"))
-                    fix = (f"{prompt.splitlines()[0]} repair=1\nYour previous reply was rejected by the engine: {err}\n"
-                           "Reply again with ONLY the corrected JSON object for the same output contract.")
-                    r2 = run(fix if can else f"{prompt}\n\n{fix}\nRejected reply:\n{r['text'][:4000]}", d / "repair", r["session"] if can else None)
-                    calls.append(r2)
-                    if r2["ok"]:
-                        obj, err = self.parse(r2["text"], contract_name, check)
-                        r["session"] = r2["session"] or r["session"]
-                    else:
-                        r = {**r, "ok": False, "failure": r2["failure"], "error": r2["error"]}
+            r, calls, obj, err = checked_call(run, prompt, d, session, aid, contract_name, check, lambda: self.cancelled(task))
             self.kills.pop(task, None)
             costs = [c["cost"] for c in calls if c["cost"] is not None]
             self.ws.x("UPDATE attempts SET tokens_in=?, tokens_out=?, cost=?, session=? WHERE id=?",

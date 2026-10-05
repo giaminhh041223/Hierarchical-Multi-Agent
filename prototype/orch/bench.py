@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import agents
 from .core import HOME, contract, record
-from .engine import RULES, ensure_excluded, git, git_ok, load_team, new_run
+from .engine import RULES, check_handoff, checked_call, ensure_excluded, git, git_ok, load_team, new_run
 
 
 def run_checks(project, ref, checks, timeout, out_dir, wt):
@@ -44,16 +44,19 @@ def solo(ws, goal, who, base, bid, timeout, out_dir):
                                            "run the project's tests if it has any, then reply with the handoff JSON.",
                                            agents.catalog()[aid].get("note")]))  # the CLI's quirks, as the engine adds them (agy cannot run commands)
         t0 = time.time()
-        r = agents.run_agent(aid, model, prompt, wt, out_dir / "agent", schema="handoff", timeout=timeout, readonly=False)
+        run = lambda p, sub, sess: agents.run_agent(aid, model, p, wt, sub, schema="handoff", session=sess, timeout=timeout, readonly=False)
+        r, calls, h, err = checked_call(run, prompt, out_dir / "agent", None, aid, "handoff", check_handoff)  # repaired once, as in a run
         seconds = time.time() - t0
         git(wt, "add", "-A")
         if not git_ok(wt, "diff", "--cached", "--quiet"):
             git(wt, "commit", "-q", "--no-verify", "-m", f"bench {bid}: solo {aid}/{model}")
-        record(str(ws.project), "SOLO", aid, model, "bench", "ok" if r["ok"] else (r["failure"] or "error"), round(seconds, 1),
-               r["tokens_in"], r["tokens_out"], r["cost"])
-        return {"arm": f"solo {aid}/{model}", "ref": branch, "status": "done" if r["ok"] else f"failed ({r['failure']})",
-                "seconds": seconds, "calls": 1, "tokens_in": r["tokens_in"] or 0, "tokens_out": r["tokens_out"] or 0,
-                "cost": r["cost"], "questions": 0}
+        tin, tout = sum(c["tokens_in"] or 0 for c in calls), sum(c["tokens_out"] or 0 for c in calls)
+        costs = [c["cost"] for c in calls if c["cost"] is not None]
+        cost = sum(costs) if costs else None
+        record(str(ws.project), "SOLO", aid, model, "bench", (r["failure"] or "error") if not r["ok"] else "invalid" if err else "ok",
+               round(seconds, 1), tin, tout, cost)
+        return {"arm": f"solo {aid}/{model}", "ref": branch, "status": f"failed ({r['failure']})" if not r["ok"] else "no valid handoff" if err
+                else h["status"], "seconds": seconds, "calls": 1, "tokens_in": tin, "tokens_out": tout, "cost": cost, "questions": 0}
     finally:
         git(ws.project, "worktree", "remove", "--force", str(wt), codes=None)
 
