@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hoatau"
+dynamic = ["version"]
+description = "Local, git-native orchestration of AI coding agent CLIs: many agents propose, the engine verifies and merges."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "giaminhh041223" }]
+keywords = ["ai", "agents", "coding-agents", "orchestration", "codex", "claude-code", "mcp", "git-worktree"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development",
+]
+dependencies = []  # standard library only
+
+[project.urls]
+Homepage = "https://github.com/giaminhh041223/Hierarchical-Multi-Agent"
+Documentation = "https://github.com/giaminhh041223/Hierarchical-Multi-Agent/blob/main/prototype/README.md"
+Issues = "https://github.com/giaminhh041223/Hierarchical-Multi-Agent/issues"
+
+[project.scripts]
+hoatau = "orch.__main__:main"
+
+[tool.setuptools]
+packages = ["orch"]
+
+[tool.setuptools.dynamic]
+version = { attr = "orch.__version__" }
+
+[tool.setuptools.package-data]
+orch = ["ui.html", "catalog/*.json", "catalog/schemas/*.json"]

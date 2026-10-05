@@ -3,8 +3,8 @@ import array, base64, collections, contextlib, functools, hashlib, json, math, o
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-CATALOG = ROOT / "catalog"
+ROOT = Path(__file__).resolve().parent.parent  # the directory holding the orch package: PYTHONPATH for agents and MCP servers
+CATALOG = Path(__file__).resolve().parent / "catalog"  # ships inside the package (pip install)
 SCHEMAS = CATALOG / "schemas"
 HOME = Path(os.environ.get("ORCH_HOME") or Path.home() / ".orchestra")
 SECRET_NAME = re.compile(r"(API_?KEY|ACCESS_KEY|PRIVATE_KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDS|AUTH|COOKIE|DSN|_PAT$)", re.I)

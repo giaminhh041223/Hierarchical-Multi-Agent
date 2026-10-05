@@ -44,7 +44,7 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | 4 | Lead cùng reviewer lập plan chi tiết, rồi lead giao việc | Job PLAN, lần lượt:<ol><li>Lead viết plan JSON.</li><li>Engine kiểm tra DAG.</li><li>Reviewer review tối đa 2 vòng.</li><li>Bạn duyệt.</li><li>Scheduler giao task.</li></ol> |
 | 5 | Lead xử lý lỗi, vượt quyền thì ping bạn; task lỗi chờ, task khác vẫn chạy | <ul><li>`route()` tất định, rồi lead triage.</li><li>Ngoài quyền lead thì chuyển `pending_user` (inbox + webhook).</li><li>Task độc lập vẫn chạy tiếp.</li></ul> |
 | 6 | Khu vực nhập API key, môi trường kết nối, đăng nhập tài khoản agent | <ul><li>Vault mã hoá bằng DPAPI (`orch vault`, tab Vault).</li><li>`orch login <agent>` mở luồng đăng nhập của chính CLI đó.</li></ul> |
-| 7 | (tuỳ chọn) DB benchmark model, mạng thông tin model riêng | <ul><li>`catalog/models.json` lấy từ Epoch AI và OpenRouter.</li><li>`~/.orchestra/history.db` ghi kết quả từng lần gọi, để thẻ model có số liệu "của mình".</li></ul> |
+| 7 | (tuỳ chọn) DB benchmark model, mạng thông tin model riêng | <ul><li>`~/.orchestra/models.json` lấy từ Epoch AI và OpenRouter.</li><li>`~/.orchestra/history.db` ghi kết quả từng lần gọi, để thẻ model có số liệu "của mình".</li></ul> |
 | 8 | Skill architect trên mọi task: tìm skill/plugin GitHub, cài, phân phối | Task SKILLS mỗi run:<ul><li>Chọn tối đa 3 skill từ chỉ mục curated.</li><li>Cài theo commit đã ghim, kèm sha256 và quét tĩnh.</li><li>Đặt vào worktree của đúng task.</li><li>Repo ngoài danh sách phải chờ bạn duyệt.</li></ul> |
 | 9 | (tuỳ chọn) Knowledge graph nhanh, dùng chung | <ul><li>Bảng SQLite FTS5 `facts` và bảng `links`; tìm bằng từ khoá kết hợp vector (§10).</li><li>Agent tra bằng `python -m orch kg search`.</li></ul> |
 | 10 | Resource determine: lên kế hoạch tài nguyên trước, gồm:<ul><li>usage còn bao nhiêu, bao giờ hồi;</li><li>model tương đương nằm sẵn trong pool backup đã test trước;</li><li>hẹn giờ bật lại model chính.</li></ul> | Resource planner (`orch/pool.py`, §6.1):<ul><li>Đầu mỗi run: đọc quota, ghi mục Resources trong `plan.md`, khoá trước tài khoản đã hết.</li><li>`orch pool plan`: xếp hạng theo tiêu chí bạn tick hoặc 3 preset, pre-test, lưu backup riêng cho từng worker.</li><li>Hết usage giữa chừng: backup làm tiếp ngay trong worktree đó; tới giờ reset thì trả task về model chính.</li></ul> |
@@ -60,7 +60,7 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
                                   │  một engine mỗi workspace (khoá file của OS)
                          Engine (orch/engine.py)
           lập lịch DAG · định tuyến lỗi · tích hợp git · verify · ngân sách · webhook
-                                  │  spawn qua adapter manifest (catalog/agents.json), trong Windows Job Object
+                                  │  spawn qua adapter manifest (orch/catalog/agents.json), trong Windows Job Object
        ┌──────────────┬───────────┴───┬────────────────┬───────────────────┐
      codex         claude            agy        opencode/gemini/…       mock (test)
        │  mỗi worker chạy trong worktree riêng: ~/.orchestra/wt/<repo>-<hash>/<run>/<task>
@@ -80,7 +80,7 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | [orch/remote.py](orch/remote.py) | Worker chạy từ xa: proxy phía engine (bundle, lease, áp patch), route lease của web UI, vòng lặp runner |
 | [orch/\_\_main\_\_.py](orch/__main__.py) | CLI |
 | [orch/mock.py](orch/mock.py) | Agent giả theo kịch bản, để test không tốn token |
-| [catalog/](catalog/) | `agents.json` (adapter), `skills.json` (nguồn curated), `schemas/*.json` (contract), `models.json` (có sau `models refresh`) |
+| [orch/catalog/](orch/catalog/) | `agents.json` (adapter), `skills.json` (nguồn curated), `schemas/*.json` (contract). Nằm trong gói nên có sẵn khi `pip install`; `models.json` (có sau `models refresh`) nằm ở `~/.orchestra/`. |
 
 Dữ liệu được lưu ở hai nơi.
 
@@ -261,7 +261,7 @@ Mục tiêu: hết usage là chuyện thường ngày, không phải lỗi, nên
 
 ## 7. Hợp đồng JSON
 
-Mỗi lời gọi agent phải trả về đúng một object theo schema nghiêm ngặt trong [catalog/schemas/](catalog/schemas/):
+Mỗi lời gọi agent phải trả về đúng một object theo schema nghiêm ngặt trong [orch/catalog/schemas/](orch/catalog/schemas/):
 - mọi trường đều bắt buộc;
 - `additionalProperties: false`;
 - trường tuỳ chọn dùng `null`.
@@ -288,7 +288,7 @@ Dù nhận theo cách nào, engine vẫn kiểm tra như nhau.
 
 ## 8. Adapter và tiến trình
 
-Adapter là dữ liệu, không phải class. Mỗi mục trong [catalog/agents.json](catalog/agents.json) khai báo:
+Adapter là dữ liệu, không phải class. Mỗi mục trong [orch/catalog/agents.json](orch/catalog/agents.json) khai báo:
 - binary;
 - cờ `run` và `resume`, với các placeholder `{model} {session} {out} {schema} {schema_json} {prompt} {mode}`;
 - chế độ `rw` (worker sửa file) và `ro` (lead, reviewer, probe);
@@ -399,7 +399,7 @@ Xếp theo mức tác động (thống nhất với Codex ở vòng 1):
 - **Epoch AI** `benchmark_data.zip` (CC-BY): ECI, SWE-bench Verified, Terminal-Bench, WebDev Arena, GPQA Diamond, HLE, METR time horizon;
 - **OpenRouter** `/models`: context và giá.
 
-Kết quả ghi vào `catalog/models.json`. File này chưa có cho đến khi bạn chạy lệnh.
+Kết quả ghi vào `~/.orchestra/models.json` (bản cũ ghi ở `orch/catalog/models.json` vẫn được đọc). File này chưa có cho đến khi bạn chạy lệnh.
 
 **Tách bạch bốn lớp** theo khuyến nghị của Codex:
 - **model:** benchmark;
@@ -420,7 +420,7 @@ Giá OpenRouter chỉ là "giá API tham khảo", không áp cho CLI dùng subsc
 ## 12. Skill architect
 
 **Nguồn curated, ghim commit:**
-- `anthropics/skills` và `openai/skills` ([catalog/skills.json](catalog/skills.json));
+- `anthropics/skills` và `openai/skills` ([orch/catalog/skills.json](orch/catalog/skills.json));
 - thư mục skill local: `~/.claude/skills`, `~/.codex/skills`, `~/.agents/skills`.
 
 `orch skills refresh` lập chỉ mục mọi `SKILL.md`. Lệnh này cần Internet và do bạn tự chạy.

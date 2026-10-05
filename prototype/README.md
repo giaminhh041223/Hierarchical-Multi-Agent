@@ -13,13 +13,23 @@ Thiết kế đầy đủ, trạng thái hiện tại và biên bản trao đổ
 ## Yêu cầu
 
 - Windows 10/11. Trên Linux (WSL) bộ test đã chạy qua, nhưng chưa chạy với agent thật. macOS chưa thử.
-- Python 3.11 trở lên. Chỉ dùng thư viện chuẩn, không cần `pip install`.
+- Python 3.11 trở lên. Chỉ dùng thư viện chuẩn, không có dependency nào.
 - git.
 - Ít nhất một agent CLI đã cài và đăng nhập. Trên máy này đã dùng được `codex`, `agy` và `opencode@free` (model free của OpenCode Zen, không cần tài khoản).
 
+## Cài đặt
+
+Cài thành lệnh `hoatau` trong một môi trường riêng (chưa có trên PyPI; cài thẳng từ GitHub):
+
+```bash
+pipx install "git+https://github.com/giaminhh041223/Hierarchical-Multi-Agent.git#subdirectory=prototype"
+```
+
+Hoặc `uv tool install` với cùng địa chỉ. Sau khi cài, `hoatau <lệnh>` tương đương `python -m orch <lệnh>` trong tài liệu này, và chạy được từ bất kỳ thư mục nào. Không cài cũng được: chạy `python -m orch` từ thư mục `prototype/` như dưới đây.
+
 ## Bắt đầu nhanh
 
-Mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn bằng `--ws <thư mục>`, đặt **trước** tên lệnh. Cũng có thể đặt biến `ORCH_WS`, hoặc đứng trong thư mục dự án và thêm `prototype/` vào `PYTHONPATH`.
+Không cài thì mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn bằng `--ws <thư mục>`, đặt **trước** tên lệnh. Cũng có thể đặt biến `ORCH_WS`, hoặc đứng trong thư mục dự án và thêm `prototype/` vào `PYTHONPATH`.
 
 1. Tìm agent, model và trạng thái đăng nhập. `--probe` gửi một lời gọi rất nhỏ tới từng agent để chắc chắn nó dùng được.
 
@@ -371,7 +381,7 @@ Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi b
 
 | Trường | Ý nghĩa |
 |---|---|
-| `agent` | Id trong [catalog/agents.json](catalog/agents.json): `codex`, `claude`, `claude@zai`, `agy`, `opencode`, `opencode@free`, `opencode@9router`, `gemini`, `cursor-agent`. Một id là một tài khoản, tức một quota; router thì mỗi nhà cung cấp một tài khoản ([Hết usage](#hết-usage-xoay-vòng-và-pool-backup)). |
+| `agent` | Id trong [orch/catalog/agents.json](orch/catalog/agents.json): `codex`, `claude`, `claude@zai`, `agy`, `opencode`, `opencode@free`, `opencode@9router`, `gemini`, `cursor-agent`. Một id là một tài khoản, tức một quota; router thì mỗi nhà cung cấp một tài khoản ([Hết usage](#hết-usage-xoay-vòng-và-pool-backup)). |
 | `max` | Số task một worker chạy cùng lúc. |
 | `backup` | Worker chỉ đứng thay, không có trong danh sách lead dùng để lập plan. |
 | `for` | Danh sách worker chính mà backup này được lập riêng cho. `pool plan` tự ghi trường này. Thiếu `for` thì backup đứng thay cho tất cả. |

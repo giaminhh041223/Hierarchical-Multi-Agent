@@ -829,6 +829,20 @@ def test_cli_parsers_failure_classes_and_env():
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_package_ships_its_data():
+    """pip install hoatau: every catalog file and the UI are package data, the version and the command resolve."""
+    import fnmatch, tomllib, orch, orch.__main__
+    cfg = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    globs = cfg["tool"]["setuptools"]["package-data"]["orch"]
+    data = [p.relative_to(ROOT / "orch").as_posix() for p in (ROOT / "orch").rglob("*")
+            if p.is_file() and p.suffix not in (".py", ".pyc") and "__pycache__" not in p.parts]
+    missing = [d for d in data if not any(fnmatch.fnmatchcase(d, g) for g in globs)]
+    assert not missing and "catalog/agents.json" in data and "ui.html" in data, f"not shipped by pip install: {missing}"
+    assert cfg["project"]["scripts"]["hoatau"] == "orch.__main__:main" and callable(orch.__main__.main)
+    assert cfg["project"]["dependencies"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", orch.__version__)
+    assert (ROOT / "LICENSE").read_text(encoding="utf-8").lstrip().startswith("Apache License")
+
+
 def test_scope_and_plan_checks():
     assert in_scope("src/a.py", ["src/"]) and in_scope("src/a.py", ["src"]) and not in_scope("srcx/a.py", ["src"])
     assert in_scope("a/b/c.py", ["**/*.py"]) and in_scope("src/a.py", ["src/**/*.py"]) and in_scope("any/x", ["."])

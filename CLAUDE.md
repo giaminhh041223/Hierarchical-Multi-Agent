@@ -54,9 +54,9 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 | `mock.py` | Agent giả theo kịch bản, dùng cho test. |
 | `__main__.py` | CLI `python -m orch <lệnh>`. |
 
-- `catalog/`: `agents.json` (profile agent CLI), `skills.json`, `schemas/` (JSON schema cho plan, verdict, triage, handoff, skills).
+- `orch/catalog/`: `agents.json` (profile agent CLI), `skills.json`, `schemas/` (JSON schema cho plan, verdict, triage, handoff, skills).
 - Dữ liệu chạy: `~/.orchestra` (`ORCH_HOME`: resources.json, history.db, vault, worktree) và `<dự án>/.orch/`. Không bao giờ commit hai chỗ này.
-- `~/.orchestra/agents.json` ghi đè `catalog/agents.json` theo từng profile, chỉ trên máy người dùng (ví dụ port của router). Không sửa catalog trong repo cho nhu cầu của một máy.
+- `~/.orchestra/agents.json` ghi đè `orch/catalog/agents.json` theo từng profile, chỉ trên máy người dùng (ví dụ port của router). Không sửa catalog trong repo cho nhu cầu của một máy.
 
 ## Quy ước
 
