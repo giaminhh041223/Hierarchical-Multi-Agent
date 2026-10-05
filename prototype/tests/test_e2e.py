@@ -1022,6 +1022,46 @@ def test_bench_repeats_modes_and_team_files():
     assert not [w for w in r.git("worktree", "list").splitlines()[1:] if "bench-" in w]
 
 
+def test_benchmark_tasks_are_sound():
+    """Every benchmark task's hidden checks fail on its seed and pass with its reference solution, so a pass means something;
+    run_suite.py drives `bench` over a task (mock agents); --check paths keep their backslashes on Windows."""
+    from orch import bench
+    tasks = sorted(p for p in (ROOT / "benchmarks" / "tasks").iterdir() if p.is_dir())
+    assert [t.name[:2] for t in tasks] == ["01", "02", "03"], tasks
+    for t in tasks:
+        assert (t / "goal.md").read_text(encoding="utf-8").strip() and list((t / "checks").glob("*.py")), t
+        for c in sorted((t / "checks").glob("*.py")):
+            for with_solution in (False, True):
+                d = Path(tempfile.mkdtemp(prefix="orch-bt-"))
+                shutil.copytree(t / "seed", d, dirs_exist_ok=True)
+                if with_solution:
+                    shutil.copytree(t / "solution", d, dirs_exist_ok=True)
+                p = subprocess.run([sys.executable, str(c)], cwd=d, capture_output=True, encoding="utf-8", errors="replace")
+                shutil.rmtree(d, ignore_errors=True)
+                assert (p.returncode == 0) == with_solution, (c, with_solution, p.stdout + p.stderr)
+    with unittest.mock.patch.object(os, "name", "nt"):
+        assert bench.split_cmd('python "D:\\du an\\check.py"') == ["python", "D:\\du an\\check.py"]
+    assert bench.split_cmd('python -c "import a; a.f()"') == ["python", "-c", "import a; a.f()"]
+    # the suite runner, on task 01, with mock agents that write the reference solution
+    sol = (ROOT / "benchmarks" / "tasks" / "01-small-slugify" / "solution" / "textkit.py").read_text(encoding="utf-8")
+    tmp = Path(tempfile.mkdtemp(prefix="orch-suite-"))
+    sc = {"plan": [task("T1", "w1", ["textkit.py"], [["python", "-c", "import textkit"]])],
+          "steps": {"worker:SOLO": [{"write": {"textkit.py": sol}}], "worker:T1": [{"write": {"textkit.py": sol}}]}}
+    (tmp / "scenario.json").write_text(json.dumps(sc), encoding="utf-8")
+    mock = lambda m: {"agent": "mock", "model": m}
+    (tmp / "team.json").write_text(json.dumps({"lead": mock("mock-strong"), "reviewer": mock("mock-strong"), "skill_architect": mock("mock-fast"),
+                                               "workers": {"w1": mock("mock-fast")}, "skills": False}), encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if k not in ("ORCH_WS", "ORCH_CRASH_AT")}
+    env.update(ORCH_HOME=str(tmp / "home"), ORCH_MOCK=str(tmp / "scenario.json"))
+    p = subprocess.run([sys.executable, str(ROOT / "benchmarks" / "run_suite.py"), "--team", str(tmp / "team.json"), "--tasks", "01",
+                        "--solo", "mock/mock-fast"], cwd=ROOT, env=env, capture_output=True, encoding="utf-8", errors="replace", timeout=300)
+    assert p.returncode == 0, p.stdout[-3000:] + p.stderr[-3000:]
+    summary = next((tmp / "home" / "bench-suite").glob("*/summary.md")).read_text(encoding="utf-8")
+    rows = [l for l in summary.splitlines() if l.startswith("| 1 |")]
+    assert "## 01-small-slugify" in summary and len(rows) == 2 and all("| 1/1 |" in l for l in rows), summary
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_doctor():
     """Local readiness report: machine, project, team, workspace DB; a team agent missing here fails; secrets never printed."""
     r = Repo(two_tasks())

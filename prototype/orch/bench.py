@@ -6,7 +6,7 @@
 Every result is judged by the same checks the user gives (e.g. the project's test command), never by the agents' own verify
 commands, and compared on checks passed, tokens, dollars, wall time, agent calls and questions for the user. --repeat runs
 each arm N times, interleaved, and the summary gives medians: agents vary from run to run."""
-import contextlib, json, shlex, statistics, subprocess, time
+import contextlib, json, os, shlex, statistics, subprocess, time
 from pathlib import Path
 
 from . import agents, models
@@ -32,6 +32,13 @@ def run_checks(project, ref, checks, timeout, out_dir, wt):
     finally:
         git(project, "worktree", "remove", "--force", str(wt), codes=None)
     return res
+
+
+def split_cmd(text):
+    """A --check string into argv. Windows: no POSIX escapes, so D:\\proj\\check.py keeps its backslashes; quotes still group."""
+    if os.name != "nt":
+        return shlex.split(text, posix=True)
+    return [t[1:-1] if len(t) > 1 and t[0] == t[-1] and t[0] in "\"'" else t for t in shlex.split(text, posix=False)]
 
 
 def dollars(rows):
@@ -115,7 +122,7 @@ def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600, repe
     base, bid = git(ws.project, "rev-parse", "HEAD"), time.strftime("%Y%m%d-%H%M%S")
     out = ws.dir / "bench" / bid
     out.mkdir(parents=True, exist_ok=True)
-    checks = [shlex.split(c, posix=True) if isinstance(c, str) else list(c) for c in checks]
+    checks = [split_cmd(c) if isinstance(c, str) else list(c) for c in checks]
     samples = []
     for n in range(1, int(repeat) + 1):  # interleaved: a slow hour or a cooling account hits every arm alike
         got = [solo(ws, goal, who, base, bid, n, timeout, out / f"solo-{n}")]
