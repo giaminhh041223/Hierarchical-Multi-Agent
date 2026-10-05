@@ -1,6 +1,6 @@
-# Orchestra (prototype)
+# Hoatau
 
-Orchestra điều phối nhiều AI coding agent CLI (codex, claude, agy, opencode, gemini …) ngay trên máy của bạn.
+**Nhiều agent đề xuất, engine kiểm chứng.** Hoatau (từ "hòa tấu") điều phối nhiều AI coding agent CLI (codex, claude, agy, opencode, gemini …) ngay trên máy của bạn. Tên cũ của dự án là Orchestra; bên trong vẫn giữ gói `orch`, thư mục `.orch/` và `~/.orchestra` để dữ liệu cũ dùng tiếp được.
 
 Cách làm việc:
 - Một lead lập plan cùng reviewer.
@@ -440,3 +440,7 @@ python tests/test_e2e.py
 - Sandbox của codex trên Windows không thấy `python`: worker codex không tự chạy test được. Engine vẫn verify bên ngoài. Muốn worker tự test thì chỉnh sandbox của codex. Đây là cấu hình của bạn nên prototype không đổi.
 - Skill và rule toàn cục của codex (`~/.codex`) cũng được nạp vào worker codex. Hãy để ý nếu chúng mâu thuẫn với `rules/`.
 - Hai điểm va chạm với `AGENTS.md` ở thư mục cha cần bạn quyết định: lệnh verify lấy từ plan JSON, và việc tải skill curated tự động. Xem [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
+
+## License
+
+[Apache-2.0](LICENSE). Bạn được dùng, sửa và phân phối lại, kể cả cho mục đích thương mại, miễn là giữ thông báo license; license có điều khoản cấp quyền sáng chế.

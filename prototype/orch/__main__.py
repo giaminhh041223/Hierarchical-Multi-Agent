@@ -2,7 +2,7 @@
 import argparse, getpass, json, os, sqlite3, sys, time
 from pathlib import Path
 
-from . import agents, mcp, models, pool
+from . import __version__, agents, mcp, models, pool
 from .core import TERMINAL, EngineLock, Workspace, mask, vault, vault_set
 from .engine import Engine, ensure_excluded, git, git_ok, load_team, new_run, save_team
 
@@ -214,7 +214,8 @@ def cmd_remote(a):
 
 def main(argv=None):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    ap = argparse.ArgumentParser(prog="python -m orch", description="Orchestra: local multi-agent coding orchestration")
+    ap = argparse.ArgumentParser(prog="hoatau", description="Hoatau: local multi-agent coding orchestration (same as: python -m orch)")
+    ap.add_argument("--version", action="version", version=f"hoatau {__version__}")
     ap.add_argument("--ws", help="project folder (default: $ORCH_WS or the current directory)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("discover", help="find agent CLIs, their models and login state")

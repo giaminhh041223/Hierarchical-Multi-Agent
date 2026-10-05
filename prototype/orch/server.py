@@ -227,7 +227,7 @@ def make_server(ws, port=8765):
 
 def serve(ws, port=8765, browser=True):
     srv = make_server(ws, port)
-    print(f"Orchestra UI for {ws.project}:\n  {srv.url}\n(the link holds this session's access token; Ctrl+C stops the UI, not a running engine)")
+    print(f"Hoatau UI for {ws.project}:\n  {srv.url}\n(the link holds this session's access token; Ctrl+C stops the UI, not a running engine)")
     if srv.remote_token or srv.remote_short:  # never the token itself
         print("remote runners: on (ORCH_REMOTE_TOKEN)" if srv.remote_token else
               "remote runners: OFF, ORCH_REMOTE_TOKEN is shorter than 16 characters")

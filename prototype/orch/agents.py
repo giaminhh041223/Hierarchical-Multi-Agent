@@ -510,7 +510,7 @@ PARSERS = {"claude": _claude, "codex": _codex, "agy": _agy, "gemini": _gemini, "
 
 
 def launch_login(aid):
-    """Open the CLI's own login flow in a new console: Orchestra never sees passwords."""
+    """Open the CLI's own login flow in a new console: Hoatau never sees passwords."""
     a = catalog()[aid]
     if a.get("login", []) is None:  # nothing to launch: free tier, or a router whose providers log in on its dashboard
         return a.get("login_hint") or f"{aid} needs no login"

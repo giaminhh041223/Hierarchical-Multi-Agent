@@ -1,4 +1,4 @@
-# Orchestra: kế hoạch chi tiết và thiết kế
+# Hoatau (trước đây: Orchestra): kế hoạch chi tiết và thiết kế
 
 Đây là bản prototype chạy được của một môi trường local điều phối nhiều AI coding agent, lấy cảm hứng từ n8n. Tài liệu ghi lại:
 - thiết kế đã chốt sau hai vòng trao đổi giữa Claude (lead) và Codex (reviewer);

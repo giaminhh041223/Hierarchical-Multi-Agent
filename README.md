@@ -1,4 +1,4 @@
-> **Code đang phát triển nằm ở [`prototype/`](prototype/README.md)** (Orchestra: engine, CLI, web UI, test). Phần còn lại của thư mục gốc dưới đây là bộ đề xuất và mã nháp do Codex viết trước đó, giữ lại để tham khảo, chưa tích hợp với prototype.
+> **Code đang phát triển nằm ở [`prototype/`](prototype/README.md)**: Hoatau (trước đây Orchestra), gồm engine, CLI, web UI, test. License: [Apache-2.0](LICENSE). Phần còn lại của thư mục gốc dưới đây là bộ đề xuất và mã nháp do Codex viết trước đó, giữ lại để tham khảo, chưa tích hợp với prototype.
 
 # Agent Orchestra — bản đề xuất dự án
 

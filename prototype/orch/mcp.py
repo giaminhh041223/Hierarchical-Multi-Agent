@@ -46,7 +46,7 @@ def handle(msg, project):
     if method == "initialize":
         res = {"protocolVersion": p.get("protocolVersion") if p.get("protocolVersion") in VERSIONS else VERSIONS[0],
                "capabilities": {"tools": {"listChanged": False}}, "serverInfo": {"name": "orchestra", "version": "0.1"},
-               "instructions": f"Read-only view of the Orchestra run in {project}: the task board and the knowledge graph."}
+               "instructions": f"Read-only view of the Hoatau run in {project}: the task board and the knowledge graph."}
     elif method == "ping":
         res = {}
     elif method == "tools/list":

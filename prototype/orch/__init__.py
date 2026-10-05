@@ -1,1 +1,3 @@
-"""Orchestra: a local, git-native orchestrator for AI coding agents (lead + reviewer + workers + skill architect)."""
+"""Hoatau (from Vietnamese "hòa tấu", an ensemble performance): a local, git-native orchestrator for AI coding agents.
+Many agents propose; the engine verifies, merges and asks you only what is yours to decide."""
+__version__ = "0.1.0"

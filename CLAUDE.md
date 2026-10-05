@@ -4,7 +4,7 @@ Bối cảnh cho Claude Code (local hoặc cloud) khi làm việc trong repo nà
 
 ## Repo gồm gì
 
-- `prototype/`: **code đang phát triển**. Orchestra là môi trường local, lấy cảm hứng từ n8n, điều phối nhiều AI coding agent CLI (codex, agy/Antigravity, opencode, claude, gemini …):
+- `prototype/`: **code đang phát triển**. Hoatau (tên cũ Orchestra; license Apache-2.0) là môi trường local, lấy cảm hứng từ n8n, điều phối nhiều AI coding agent CLI (codex, agy/Antigravity, opencode, claude, gemini …):
   - lead và reviewer lập plan;
   - worker chạy song song, mỗi worker một git worktree;
   - engine verify rồi gộp kết quả;
