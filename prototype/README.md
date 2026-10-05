@@ -1,6 +1,6 @@
-# Hoatau
+# Orctram
 
-**Nhiều agent đề xuất, engine kiểm chứng.** Hoatau (từ "hòa tấu") điều phối nhiều AI coding agent CLI (codex, claude, agy, opencode, gemini …) ngay trên máy của bạn. Tên cũ của dự án là Orchestra; bên trong vẫn giữ gói `orch`, thư mục `.orch/` và `~/.orchestra` để dữ liệu cũ dùng tiếp được.
+**Nhiều agent đề xuất, engine kiểm chứng.** Orctram điều phối nhiều AI coding agent CLI (codex, claude, agy, opencode, gemini …) ngay trên máy của bạn. Tên cũ của dự án là Orchestra (rồi Hoatau); bên trong vẫn giữ gói `orch`, thư mục `.orch/` và `~/.orchestra` để dữ liệu cũ dùng tiếp được.
 
 Cách làm việc:
 - Một lead lập plan cùng reviewer.
@@ -19,19 +19,19 @@ Thiết kế đầy đủ, trạng thái hiện tại và biên bản trao đổ
 
 ## Cài đặt
 
-Cài thành lệnh `hoatau` trong một môi trường riêng (chưa có trên PyPI; cài thẳng từ GitHub):
+Cài thành lệnh `orctram` trong một môi trường riêng (chưa có trên PyPI; cài thẳng từ GitHub):
 
 ```bash
 pipx install "git+https://github.com/giaminhh041223/Hierarchical-Multi-Agent.git#subdirectory=prototype"
 ```
 
-Hoặc `uv tool install` với cùng địa chỉ. Sau khi cài, `hoatau <lệnh>` tương đương `python -m orch <lệnh>` trong tài liệu này, và chạy được từ bất kỳ thư mục nào. Không cài cũng được: chạy `python -m orch` từ thư mục `prototype/` như dưới đây.
+Hoặc `uv tool install` với cùng địa chỉ. Sau khi cài, `orctram <lệnh>` tương đương `python -m orch <lệnh>` trong tài liệu này, và chạy được từ bất kỳ thư mục nào. Không cài cũng được: chạy `python -m orch` từ thư mục `prototype/` như dưới đây.
 
 ## Bắt đầu nhanh
 
 Không cài thì mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn bằng `--ws <thư mục>`, đặt **trước** tên lệnh. Cũng có thể đặt biến `ORCH_WS`, hoặc đứng trong thư mục dự án và thêm `prototype/` vào `PYTHONPATH`.
 
-0. Kiểm tra máy đã sẵn sàng chưa: `python -m orch doctor` (hoặc `hoatau doctor`).
+0. Kiểm tra máy đã sẵn sàng chưa: `python -m orch doctor` (hoặc `orctram doctor`).
 
 1. Tìm agent, model và trạng thái đăng nhập. `--probe` gửi một lời gọi rất nhỏ tới từng agent để chắc chắn nó dùng được.
 
@@ -211,9 +211,9 @@ Chỉnh tiêu chí:
 
 ## 9router (tuỳ chọn): nhiều API AI free qua một endpoint
 
-> **Tự chịu rủi ro.** Router đưa quyền dùng của các gói thuê bao sang công cụ khác; điều đó có thể trái điều khoản của nhà cung cấp phía sau (xem lưu ý ở [Hết usage](#hết-usage-xoay-vòng-và-pool-backup)). Hoatau chỉ là client của router, không khuyến nghị dùng gói thuê bao theo cách này.
+> **Tự chịu rủi ro.** Router đưa quyền dùng của các gói thuê bao sang công cụ khác; điều đó có thể trái điều khoản của nhà cung cấp phía sau (xem lưu ý ở [Hết usage](#hết-usage-xoay-vòng-và-pool-backup)). Orctram chỉ là client của router, không khuyến nghị dùng gói thuê bao theo cách này.
 
-[9router](https://github.com/decolua/9router) là router chạy local, có endpoint tương thích OpenAI tại `http://127.0.0.1:20128/v1`. Nó gom nhiều nhà cung cấp, có cả gói free, nên làm pool backup rất hợp. Hoatau dùng nó qua profile `opencode@9router`: opencode gọi router, key lấy từ vault và không bao giờ ghi vào file cấu hình.
+[9router](https://github.com/decolua/9router) là router chạy local, có endpoint tương thích OpenAI tại `http://127.0.0.1:20128/v1`. Nó gom nhiều nhà cung cấp, có cả gói free, nên làm pool backup rất hợp. Orctram dùng nó qua profile `opencode@9router`: opencode gọi router, key lấy từ vault và không bao giờ ghi vào file cấu hình.
 
 Prototype không cài 9router. Tự cài nếu bạn muốn, theo các bước:
 
@@ -225,7 +225,7 @@ Prototype không cài 9router. Tự cài nếu bạn muốn, theo các bước:
    - Tắt Cloud Sync nếu không cần.
    - Không bật các tính năng MITM, cài chứng chỉ hay DNS.
 3. Trên dashboard (`http://127.0.0.1:20128`): kết nối các nhà cung cấp, tạo API key.
-4. Gửi key cho Hoatau và kiểm tra:
+4. Gửi key cho Orctram và kiểm tra:
 
    ```bash
    python -m orch vault set NINEROUTER_API_KEY
@@ -247,7 +247,7 @@ Engine gửi kèm header `X-9Router-Token-Saver: off`. Lý do: tính năng nén 
 
 ## Dùng Claude Code hoặc Codex làm lead tương tác
 
-Mở Claude Code hoặc Codex trong dự án của bạn và bảo nó điều khiển Hoatau qua CLI, ví dụ:
+Mở Claude Code hoặc Codex trong dự án của bạn và bảo nó điều khiển Orctram qua CLI, ví dụ:
 
 > dùng `python -m orch --ws . status`, `inbox`, `answer`, `kg search` để theo dõi và xử lý run
 
@@ -308,10 +308,10 @@ agy, gemini và cursor-agent chưa có cách truyền theo từng lời gọi, n
 - Agent bên trong run không bao giờ nhận `--control`: server mà engine truyền cho chúng vẫn chỉ đọc.
 
 ```bash
-claude mcp add hoatau -- hoatau --ws D:/du-an mcp --control
+claude mcp add orctram -- orctram --ws D:/du-an mcp --control
 ```
 
-**Chỉ đọc, cho phiên Claude Code hoặc Codex của bạn.** Bạn tự đăng ký, Hoatau không ghi cấu hình của bạn. Chưa cài `hoatau` thì đặt `PYTHONPATH` là thư mục `prototype/`:
+**Chỉ đọc, cho phiên Claude Code hoặc Codex của bạn.** Bạn tự đăng ký, Orctram không ghi cấu hình của bạn. Chưa cài `orctram` thì đặt `PYTHONPATH` là thư mục `prototype/`:
 
 ```bash
 claude mcp add orch -e PYTHONPATH=D:/Hierarchical-Multi-Agent/prototype -- python -m orch --ws D:/du-an mcp
@@ -359,10 +359,10 @@ Một máy khác, có agent CLI và login riêng, nhận task như một worker.
 
 ## GitHub Action (beta)
 
-Chạy một đội Hoatau trong GitHub Actions và mở pull request chứa kết quả đã verify. Action nằm ở [action/](action/); CI của repo này chạy nó với agent giả, **chưa chạy với agent thật**.
+Chạy một đội Orctram trong GitHub Actions và mở pull request chứa kết quả đã verify. Action nằm ở [action/](action/); CI của repo này chạy nó với agent giả, **chưa chạy với agent thật**.
 
 ```yaml
-# .github/workflows/hoatau.yml
+# .github/workflows/orctram.yml
 on:
   workflow_dispatch:
     inputs:
@@ -379,7 +379,7 @@ jobs:
       - uses: giaminhh041223/Hierarchical-Multi-Agent/prototype/action@main
         with:
           goal: ${{ inputs.goal }}
-          team: .github/hoatau-team.json
+          team: .github/orctram-team.json
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 ```

@@ -1,4 +1,4 @@
-# Hoatau (trước đây: Orchestra): kế hoạch chi tiết và thiết kế
+# Orctram (trước đây: Orchestra): kế hoạch chi tiết và thiết kế
 
 Đây là bản prototype chạy được của một môi trường local điều phối nhiều AI coding agent, lấy cảm hứng từ n8n. Tài liệu ghi lại:
 - thiết kế đã chốt sau hai vòng trao đổi giữa Claude (lead) và Codex (reviewer);
@@ -11,7 +11,7 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 
 | Hạng mục | Trạng thái |
 |---|---|
-| Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server (cả chế độ `--control`), worker chạy từ xa, `doctor`, GitHub Action | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+. Đóng gói thành lệnh `hoatau` (`pyproject.toml`, chưa lên PyPI), license Apache-2.0. |
+| Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server (cả chế độ `--control`), worker chạy từ xa, `doctor`, GitHub Action | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+. Đóng gói thành lệnh `orctram` (`pyproject.toml`, chưa lên PyPI), license Apache-2.0. |
 | Test end-to-end | 32/32 PASS với mock agent (không tốn token) trên Linux (Python 3.11). GitHub Actions chạy bộ test trên Windows và Linux (3.11, 3.13), macOS (không chặn), cùng job wheel và GitHub Action. Trên máy Windows của bạn đã pass 27 test (trước đợt đóng gói). |
 | Adapter đã kiểm chứng cờ dòng lệnh trên máy này | <ul><li>`codex` 0.153.4.</li><li>`agy` 1.2.15.</li><li>`opencode` 1.18.34, profile `opencode@free`:<ul><li>8/10 model free trả lời được;</li><li>`big-pickle` và `fledge-alpha-free` qua pre-test code.</li></ul></li></ul> |
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
@@ -621,10 +621,10 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `remote_worker` | <ul><li>Runner "ma" nhận lease rồi im lặng: proxy bỏ cuộc sau `ORCH_REMOTE_STALE`, lần thử ghi `error`, heartbeat nhận `cancel`, kết quả muộn bị từ chối.</li><li>Token UI không mở route runner và ngược lại.</li><li>Lần thử lại được một tiến trình `remote run` thật phục vụ; patch qua scope và verify rồi được tích hợp.</li><li>Không còn lease hay file lease nào.</li></ul> |
 | `cli_parsers_failure_classes_and_env` | <ul><li>Parser agy, claude, opencode chạy trên đầu ra thật trong `docs/probes/`; parser codex trên sự kiện mẫu.</li><li>Lớp lỗi: các thông báo thật được nhận đúng; chữ của dự án (`/login`, "line 429", `quota.py`, `authenticate`) không bị coi là lỗi tài khoản, kể cả qua `run_agent`.</li><li>Môi trường: agent mất `SSH_AUTH_SOCK`, `DATABASE_URL` có mật khẩu, `*_PAT`; lệnh verify chỉ nhận danh sách cho phép, `verify_env` thêm tên nhưng không thêm secret.</li></ul> |
 | `mcp_control_drives_a_run` | <ul><li>Qua MCP `--control`: `doctor`, `run`, chờ plan, `answer` rỗng bị từ chối, `run` thứ hai bị từ chối khi run cũ còn mở, `answer yes` khởi động lại engine, run xong và `status` trả về báo cáo.</li><li>Server không có `--control` chỉ có tool chỉ đọc; agent trong run không nhận `--control`.</li></ul> |
-| `github_action_runs_and_opens_a_pull_request` | <ul><li>`action/run.py` với team từ file, run tự duyệt, output và tóm tắt của job.</li><li>Nhánh `hoatau/<run>` được đẩy lên một remote bare, `gh` giả nhận đúng tham số tạo PR (Windows dừng trước bước PR).</li><li>Input đi vào script qua biến môi trường, không chèn vào dòng lệnh shell.</li></ul> |
+| `github_action_runs_and_opens_a_pull_request` | <ul><li>`action/run.py` với team từ file, run tự duyệt, output và tóm tắt của job.</li><li>Nhánh `orctram/<run>` được đẩy lên một remote bare, `gh` giả nhận đúng tham số tạo PR (Windows dừng trước bước PR).</li><li>Input đi vào script qua biến môi trường, không chèn vào dòng lệnh shell.</li></ul> |
 | `doctor` | Máy, dự án, team, DB, engine; agent của team chưa cài hoặc token remote quá ngắn thì mã thoát 1; không in secret. |
-| `db_schema_versions` | DB trước khi có phiên bản lên version 1 và có đủ bảng; migration chạy đúng một lần; DB của bản Hoatau mới hơn bị từ chối. |
-| `package_ships_its_data` | Mọi file dữ liệu trong `orch/` (catalog, `ui.html`) nằm trong package data; lệnh `hoatau`, version và LICENSE đúng; không có dependency. |
+| `db_schema_versions` | DB trước khi có phiên bản lên version 1 và có đủ bảng; migration chạy đúng một lần; DB của bản Orctram mới hơn bị từ chối. |
+| `package_ships_its_data` | Mọi file dữ liệu trong `orch/` (catalog, `ui.html`) nằm trong package data; lệnh `orctram`, version và LICENSE đúng; không có dependency. |
 | `scope_and_plan_checks` | Các kiểm tra plan, scope, allowlist lệnh verify và repo map ở dạng hàm thuần. |
 
 ## 16. Lộ trình
@@ -655,15 +655,15 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 
 **P3: thành sản phẩm, hướng A (công cụ local mã nguồn mở) và E (làm công cụ cho agent khác), 2026-10-05**
 - Đã xong:
-  - tên Hoatau, license Apache-2.0, version 0.1.0;
-  - đóng gói `pyproject.toml`, lệnh `hoatau`; catalog nằm trong gói; dữ liệu tải về ở `~/.orchestra`;
+  - tên Orctram, license Apache-2.0, version 0.1.0;
+  - đóng gói `pyproject.toml`, lệnh `orctram`; catalog nằm trong gói; dữ liệu tải về ở `~/.orchestra`;
   - migration SQLite theo `PRAGMA user_version`;
   - `doctor`;
   - CI GitHub Actions (Windows, Linux, macOS không chặn; wheel; Action);
   - MCP `--control`;
   - GitHub Action (beta).
 - Việc của bạn:
-  - giữ tên `hoatau` trên PyPI (cần tài khoản PyPI; nên dùng Trusted Publishing từ GitHub Actions);
+  - giữ tên `orctram` trên PyPI (cần tài khoản PyPI; nên dùng Trusted Publishing từ GitHub Actions);
   - chạy thử Action với agent thật và API key;
   - vài run thật trên repo thật.
 - Tiếp theo nên làm:

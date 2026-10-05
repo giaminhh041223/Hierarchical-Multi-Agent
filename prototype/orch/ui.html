@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hoatau</title>
+<title>Orctram</title>
 <style>
 :root {
   --paper: #F3F4F1; --surface: #FFFFFF; --ink: #1C2024; --muted: #545B63; --line: #DADDD8;
@@ -186,7 +186,7 @@ th.th-right .sort-th-btn { justify-content: flex-end; width: 100%; }
 </head>
 <body>
 <header>
-  <div class="header-brand"><strong>Hoatau</strong></div>
+  <div class="header-brand"><strong>Orctram</strong></div>
   <nav id="tabs" aria-label="Main navigation"></nav>
   <div id="header-right"></div>
 </header>
@@ -248,7 +248,7 @@ const VI = {
   "Search facts": "Tìm tri thức", "Search facts across tasks, e.g. auth api": "Tìm kiếm tri thức giữa các task, ví dụ: auth api", "Search": "Tìm kiếm",
   "No facts match: facts appear when tasks pass verification.": "Không có tri thức nào khớp: tri thức xuất hiện khi task vượt qua kiểm tra.",
   "Entity": "Thực thể", "Fact": "Tri thức", "From": "Từ", "Relation": "Quan hệ", "To": "Đến",
-  "Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Hoatau never sees passwords. A probe sends one tiny prompt per agent to prove the account works.": "Các agent CLI tìm thấy trên máy này. Đăng nhập sẽ mở cửa sổ của chính CLI: Hoatau không bao giờ nhìn thấy mật khẩu. Probe gửi một prompt nhỏ cho mỗi agent để kiểm tra tài khoản hoạt động.",
+  "Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orctram never sees passwords. A probe sends one tiny prompt per agent to prove the account works.": "Các agent CLI tìm thấy trên máy này. Đăng nhập sẽ mở cửa sổ của chính CLI: Orctram không bao giờ nhìn thấy mật khẩu. Probe gửi một prompt nhỏ cho mỗi agent để kiểm tra tài khoản hoạt động.",
   "Discover": "Tìm agent", "Discover + probe": "Tìm + probe", "Discover agents": "Tìm agent", "No agents discovered yet.": "Chưa tìm thấy agent nào.",
   "Installed": "Đã cài", "Auth": "Đăng nhập", "Keys it can use": "Key có thể dùng", "Log in": "Đăng nhập",
   "credentials found (not proven)": "có thông tin đăng nhập (chưa probe)", "not checked": "chưa kiểm tra", "missing key {keys}": "thiếu key {keys}", "Add key": "Thêm key",
@@ -802,7 +802,7 @@ async function Run(data) {
 
   const headerEl = h("div", {class: "run-header"},
     h("div", {class: "run-header-top"},
-      h("h1", {class: "run-title"}, s.goal || (s.run ? `${t("Run")} ${s.run}` : "Hoatau")),
+      h("h1", {class: "run-title"}, s.goal || (s.run ? `${t("Run")} ${s.run}` : "Orctram")),
       s.tasks.some(live) ? btn(t("Cancel all"), () => confirm(t("Cancel every unfinished task? Running and queued work will be stopped.")) && act(() => api("cancel", {task: "all"}), t("Cancelled all tasks")), "danger") : null
     ),
     h("div", {class: "run-meta-row"},
@@ -989,7 +989,7 @@ async function Agents() {
   const r = await api("agents");
   const agentEntries = Object.entries(r.agents || {});
 
-  const topHint = h("p", {class: "prose muted"}, t("Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Hoatau never sees passwords. A probe sends one tiny prompt per agent to prove the account works."));
+  const topHint = h("p", {class: "prose muted"}, t("Agent CLIs found on this machine. Logins open the CLI's own sign-in window: Orctram never sees passwords. A probe sends one tiny prompt per agent to prove the account works."));
 
   const actionRow = h("div", {class: "row"},
     btn(t("Discover"), () => act(() => api("discover", {})), "primary"),

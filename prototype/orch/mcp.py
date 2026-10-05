@@ -164,10 +164,10 @@ def handle(msg, project, control=False):
     p = p if isinstance(p, dict) else {}
     if method == "initialize":
         res = {"protocolVersion": p.get("protocolVersion") if p.get("protocolVersion") in VERSIONS else VERSIONS[0],
-               "capabilities": {"tools": {"listChanged": False}}, "serverInfo": {"name": "hoatau", "version": __version__},
-               "instructions": (f"Hoatau team for {project}: start a run, follow it with status, relay the user's answers. "
+               "capabilities": {"tools": {"listChanged": False}}, "serverInfo": {"name": "orctram", "version": __version__},
+               "instructions": (f"Orctram team for {project}: start a run, follow it with status, relay the user's answers. "
                                 "Questions to the user come back through status; never answer them yourself." if control else
-                                f"Read-only view of the Hoatau run in {project}: the task board and the knowledge graph.")}
+                                f"Read-only view of the Orctram run in {project}: the task board and the knowledge graph.")}
     elif method == "ping":
         res = {}
     elif method == "tools/list":
@@ -184,7 +184,7 @@ def handle(msg, project, control=False):
             writes = tool[4] if len(tool) > 4 else False  # None: the tool needs no workspace database
             if writes is False and not (Path(project) / ".orch" / "orch.db").exists():
                 return {"jsonrpc": "2.0", "id": msg["id"], "result": {"isError": False, "content": [{"type": "text", "text":
-                        f"no run yet: no hoatau workspace in {project} (start one with the run tool, or python -m orch init)"}]}}
+                        f"no run yet: no orctram workspace in {project} (start one with the run tool, or python -m orch init)"}]}}
             ws = types.SimpleNamespace(project=project) if writes is None else Workspace(project, readonly=not writes)
             ws.quiet = True  # stdout carries protocol messages only
             try:
@@ -193,7 +193,7 @@ def handle(msg, project, control=False):
                 if writes is not None:
                     ws.db.close()
         except (sqlite3.Error, ValueError, TypeError, RuntimeError, OSError, SystemExit) as e:  # load_team raises SystemExit
-            text, bad = f"error: {e}" + (" (no hoatau workspace here?)" if isinstance(e, sqlite3.OperationalError) else ""), True
+            text, bad = f"error: {e}" + (" (no orctram workspace here?)" if isinstance(e, sqlite3.OperationalError) else ""), True
         res = {"content": [{"type": "text", "text": text}], "isError": bad}
     else:
         return {"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32601, "message": f"method not found: {method}"}}

@@ -20,7 +20,7 @@ TEAM_DEFAULTS = {"max_parallel": 4, "timeout": 1800, "verify_timeout": 600, "bud
                  "verify_allow": None, "verify_env": [], "mcp": False, "embeddings": None}
 
 RULES = {
-    "common": """You are one agent in Hoatau, a local multi-agent coding team. The engine (a program, not an LLM) owns git, scheduling and integration.
+    "common": """You are one agent in Orctram, a local multi-agent coding team. The engine (a program, not an LLM) owns git, scheduling and integration.
 - Never run git commands that write (commit, merge, rebase, reset, checkout, stash, push, branch): the engine commits and merges your work.
 - Work only inside your current directory (a git worktree of the project). Never touch .orch/.
 - Be economical with context: read only what you need, prefer targeted search over reading whole trees.
@@ -1217,7 +1217,7 @@ class Engine:
         use = self.ws.q("SELECT agent, model, count(*) n, sum(tokens_in) i, sum(tokens_out) o, sum(cost) c FROM attempts "
                         "WHERE run=? GROUP BY agent, model", self.run)
         pend = [t for t in ts if t["status"] == "pending_user"]
-        lines = [f"# Hoatau run {self.run}: {status}", "", f"Goal: {self.goal}", "",
+        lines = [f"# Orctram run {self.run}: {status}", "", f"Goal: {self.goal}", "",
                  f"Integration branch `orch/{self.run}/main` ({self.tip()[:10]}, base {self.rmeta('base')[:10]}). "
                  f"Merge when satisfied: `git merge orch/{self.run}/main`", "", "## Tasks", "",
                  "| task | status | worker | attempts | commit | title |", "|---|---|---|---|---|---|",

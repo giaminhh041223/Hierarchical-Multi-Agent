@@ -49,9 +49,9 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           python -m venv venv
-          venv/bin/pip install --quiet "$GITHUB_WORKSPACE"/dist/hoatau-*.whl
-          venv/bin/hoatau --version
-          venv/bin/hoatau doctor
+          venv/bin/pip install --quiet "$GITHUB_WORKSPACE"/dist/orctram-*.whl
+          venv/bin/orctram --version
+          venv/bin/orctram doctor
       - uses: actions/upload-artifact@v6
         with:
           name: wheel
@@ -79,7 +79,7 @@ jobs:
                      "scope_paths": ["hello.txt"], "verify": [["python", "-c", "assert open('hello.txt').read()"]]}],
            "steps": {"worker:T1": [{"write": {"hello.txt": "hello\n"}}]}}
           JSON
-      - id: hoatau
+      - id: orctram
         uses: ./prototype/action
         with:
           goal: Write hello.txt
@@ -89,8 +89,8 @@ jobs:
       - name: The run integrated its task
         working-directory: ${{ runner.temp }}/demo
         env:
-          RUN: ${{ steps.hoatau.outputs.run }}
-          STATUS: ${{ steps.hoatau.outputs.status }}
+          RUN: ${{ steps.orctram.outputs.run }}
+          STATUS: ${{ steps.orctram.outputs.status }}
         run: |
           test "$STATUS" = done
           git show "orch/$RUN/main:hello.txt" | grep -q hello

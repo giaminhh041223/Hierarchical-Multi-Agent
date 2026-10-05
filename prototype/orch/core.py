@@ -51,8 +51,8 @@ def upgrade(db, migrations, what):
     (engine, UI, CLI): each step re-reads PRAGMA user_version inside its own write transaction."""
     latest = max([1, *(v for v, _ in migrations)])
     if db.execute("PRAGMA user_version").fetchone()[0] > latest:
-        raise RuntimeError(f"{what} was written by a newer Hoatau (schema {db.execute('PRAGMA user_version').fetchone()[0]}, "
-                           f"this version knows {latest}): upgrade hoatau")
+        raise RuntimeError(f"{what} was written by a newer Orctram (schema {db.execute('PRAGMA user_version').fetchone()[0]}, "
+                           f"this version knows {latest}): upgrade orctram")
     for v, stmts in [(1, []), *sorted(migrations)]:
         db.execute("BEGIN IMMEDIATE")
         try:

@@ -1,4 +1,4 @@
-"""`hoatau doctor`: is this machine (and this project) ready for a run? Local checks only: no network, no agent calls, no
+"""`orctram doctor`: is this machine (and this project) ready for a run? Local checks only: no network, no agent calls, no
 quota spent, no secret printed. Each check is (level, what, detail) with level ok / warn / fail."""
 import json, os, shutil, socket, sqlite3, subprocess, sys, tempfile, types
 from pathlib import Path
@@ -16,7 +16,7 @@ def _run(cmd):
 
 
 def machine():
-    out = [("ok" if sys.version_info >= (3, 11) else "fail", "python", f"{sys.version.split()[0]} ({sys.executable}); hoatau {__version__}")]
+    out = [("ok" if sys.version_info >= (3, 11) else "fail", "python", f"{sys.version.split()[0]} ({sys.executable}); orctram {__version__}")]
     code, text = _run(["git", "--version"])
     out.append(("ok", "git", text) if code == 0 else ("fail", "git", f"not found ({text}): install git"))
     try:
@@ -117,7 +117,7 @@ def project(path):
             v, latest = con.execute("PRAGMA user_version").fetchone()[0], max([1, *(m for m, _ in WS_MIGRATIONS)])
         finally:
             con.close()
-        out.append(("fail", "workspace db", f"schema {v} is newer than this hoatau ({latest}): upgrade") if v > latest else
+        out.append(("fail", "workspace db", f"schema {v} is newer than this orctram ({latest}): upgrade") if v > latest else
                    ("ok", "workspace db", f"schema {v}" + (f", upgraded to {latest} on next use" if v < latest else "")))
         lock = p / ".orch" / "engine.lock"
         out.append(("ok", "engine", "running on this workspace" if lock.exists() and _locked(lock) else "not running"))

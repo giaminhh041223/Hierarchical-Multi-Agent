@@ -713,7 +713,7 @@ def test_mcp_control_drives_a_run():
         text, bad = call("answer", {"task": "PLAN", "text": "yes"})
         assert not bad and "answer recorded" in text, text
         text = until(lambda t: ": done |" in t.splitlines()[0])
-        assert "# Hoatau run" in text and "| T2 | done |" in text, text
+        assert "# Orctram run" in text and "| T2 | done |" in text, text
     assert r.git("rev-parse", "HEAD") == r.base and "return a + b" in r.show("app.py")
     ro = mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, r.repo)["result"]["tools"]
     full = mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, r.repo, control=True)["result"]["tools"]
@@ -726,7 +726,7 @@ def test_mcp_control_drives_a_run():
 
 def test_github_action_runs_and_opens_a_pull_request():
     """action/run.py as the composite action runs it: team from a file, an auto-approved run, outputs and the step summary,
-    then the integration branch pushed as hoatau/<run> and a pull request (a fake gh on POSIX; Windows stops before the PR)."""
+    then the integration branch pushed as orctram/<run> and a pull request (a fake gh on POSIX; Windows stops before the PR)."""
     r = Repo(two_tasks())
     team = json.loads((r.repo / ".orch" / "team.json").read_text(encoding="utf-8"))
     shutil.rmtree(r.repo / ".orch")  # CI starts from a clean checkout: the team comes from a file in the repository
@@ -742,21 +742,21 @@ def test_github_action_runs_and_opens_a_pull_request():
     fake_gh.chmod(0o755)
     posix = os.name != "nt"
     env = {**r.env, "PYTHONPATH": str(ROOT), "PATH": str(bin_dir) + os.pathsep + r.env["PATH"], "GITHUB_OUTPUT": str(out),
-           "GITHUB_STEP_SUMMARY": str(summary), "HOATAU_GOAL": "demo goal\nsecond line", "HOATAU_TEAM": "ci-team.json",
-           "HOATAU_OPEN_PR": "true" if posix else "false", "HOATAU_BASE": "main", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+           "GITHUB_STEP_SUMMARY": str(summary), "ORCTRAM_GOAL": "demo goal\nsecond line", "ORCTRAM_TEAM": "ci-team.json",
+           "ORCTRAM_OPEN_PR": "true" if posix else "false", "ORCTRAM_BASE": "main", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
     p = subprocess.run([sys.executable, str(ROOT / "action" / "run.py")], cwd=r.repo, env=env, capture_output=True, encoding="utf-8",
                        errors="replace", timeout=300)
     assert p.returncode == 0, p.stdout + p.stderr
     outputs = dict(line.split("=", 1) for line in out.read_text(encoding="utf-8").splitlines())
     run = outputs["run"]
-    assert outputs["status"] == "done" and f"# Hoatau run {run}: done" in summary.read_text(encoding="utf-8"), outputs
+    assert outputs["status"] == "done" and f"# Orctram run {run}: done" in summary.read_text(encoding="utf-8"), outputs
     if posix:
-        assert outputs["branch"] == f"hoatau/{run}" and outputs["pr-url"] == "https://github.com/o/r/pull/7", outputs
-        pushed = subprocess.run(GIT + ["show", f"hoatau/{run}:app.py"], cwd=remote, capture_output=True, encoding="utf-8").stdout
+        assert outputs["branch"] == f"orctram/{run}" and outputs["pr-url"] == "https://github.com/o/r/pull/7", outputs
+        pushed = subprocess.run(GIT + ["show", f"orctram/{run}:app.py"], cwd=remote, capture_output=True, encoding="utf-8").stdout
         assert "return a + b" in pushed, pushed
         args = json.loads((r.tmp / "gh_args").read_text(encoding="utf-8"))
-        assert args[:6] == ["pr", "create", "--base", "main", "--head", f"hoatau/{run}"] and args[7] == "Hoatau: demo goal", args
+        assert args[:6] == ["pr", "create", "--base", "main", "--head", f"orctram/{run}"] and args[7] == "Orctram: demo goal", args
         assert args[9].endswith("report.md"), args
     action = (ROOT / "action" / "action.yml").read_text(encoding="utf-8")
     assert "${{ inputs.goal }}" not in action.split("run:")[-1], "inputs must reach the script as env, never inside the shell line"
@@ -940,7 +940,7 @@ def test_doctor():
 
 def test_db_schema_versions():
     """A workspace from before versioning becomes version 1 with any missing table; a later migration runs once; a database
-    from a newer Hoatau is refused instead of being misread."""
+    from a newer Orctram is refused instead of being misread."""
     from orch import core
     d = Path(tempfile.mkdtemp(prefix="orch-db-"))
     ws = core.Workspace(d)
@@ -959,12 +959,12 @@ def test_db_schema_versions():
         core.Workspace(d)
         raise AssertionError("a newer database was opened")
     except RuntimeError as e:
-        assert "newer Hoatau" in str(e), e
+        assert "newer Orctram" in str(e), e
     shutil.rmtree(d, ignore_errors=True)
 
 
 def test_package_ships_its_data():
-    """pip install hoatau: every catalog file and the UI are package data, the version and the command resolve."""
+    """pip install orctram: every catalog file and the UI are package data, the version and the command resolve."""
     import fnmatch, tomllib, orch, orch.__main__
     cfg = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     globs = cfg["tool"]["setuptools"]["package-data"]["orch"]
@@ -972,7 +972,7 @@ def test_package_ships_its_data():
             if p.is_file() and p.suffix not in (".py", ".pyc") and "__pycache__" not in p.parts]
     missing = [d for d in data if not any(fnmatch.fnmatchcase(d, g) for g in globs)]
     assert not missing and "catalog/agents.json" in data and "ui.html" in data, f"not shipped by pip install: {missing}"
-    assert cfg["project"]["scripts"]["hoatau"] == "orch.__main__:main" and callable(orch.__main__.main)
+    assert cfg["project"]["scripts"]["orctram"] == "orch.__main__:main" and callable(orch.__main__.main)
     assert cfg["project"]["dependencies"] == [] and re.fullmatch(r"\d+\.\d+\.\d+", orch.__version__)
     assert (ROOT / "LICENSE").read_text(encoding="utf-8").lstrip().startswith("Apache License")
 

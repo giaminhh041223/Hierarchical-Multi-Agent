@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hoatau"
+name = "orctram"
 dynamic = ["version"]
 description = "Local, git-native orchestration of AI coding agent CLIs: many agents propose, the engine verifies and merges."
 readme = "README.md"
@@ -31,7 +31,7 @@ Documentation = "https://github.com/giaminhh041223/Hierarchical-Multi-Agent/blob
 Issues = "https://github.com/giaminhh041223/Hierarchical-Multi-Agent/issues"
 
 [project.scripts]
-hoatau = "orch.__main__:main"
+orctram = "orch.__main__:main"
 
 [tool.setuptools]
 packages = ["orch"]

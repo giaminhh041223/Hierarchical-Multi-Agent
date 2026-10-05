@@ -82,7 +82,7 @@ def cmd_init(a):
     p = ws.project
     if not git_ok(p, "rev-parse", "--verify", "HEAD"):
         if not (a.yes or confirm(f"{p} has no git commit. Run git init and commit the current files? [y/N] ")):
-            raise SystemExit("hoatau needs a git repository with at least one commit")
+            raise SystemExit("orctram needs a git repository with at least one commit")
         if not git_ok(p, "rev-parse", "--git-dir"):
             git(p, "init", "-q")
         ensure_excluded(p)
@@ -221,8 +221,8 @@ def cmd_remote(a):
 
 def main(argv=None):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    ap = argparse.ArgumentParser(prog="hoatau", description="Hoatau: local multi-agent coding orchestration (same as: python -m orch)")
-    ap.add_argument("--version", action="version", version=f"hoatau {__version__}")
+    ap = argparse.ArgumentParser(prog="orctram", description="Orctram: local multi-agent coding orchestration (same as: python -m orch)")
+    ap.add_argument("--version", action="version", version=f"orctram {__version__}")
     ap.add_argument("--ws", help="project folder (default: $ORCH_WS or the current directory)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("discover", help="find agent CLIs, their models and login state")
