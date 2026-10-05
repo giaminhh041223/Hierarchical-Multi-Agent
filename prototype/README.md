@@ -12,7 +12,7 @@ Thiết kế đầy đủ, trạng thái hiện tại và biên bản trao đổ
 
 ## Yêu cầu
 
-- Windows 10/11. Trên Linux (WSL) bộ test đã chạy qua, nhưng chưa chạy với agent thật. macOS chưa thử.
+- Windows 10/11 (đã chạy với agent thật). Linux và macOS: bộ test chạy qua trên CI ở mỗi lần push, nhưng chưa chạy với agent thật.
 - Python 3.11 trở lên. Chỉ dùng thư viện chuẩn, không có dependency nào.
 - git.
 - Ít nhất một agent CLI đã cài và đăng nhập. Trên máy này đã dùng được `codex`, `agy` và `opencode@free` (model free của OpenCode Zen, không cần tài khoản).
