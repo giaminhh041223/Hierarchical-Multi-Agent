@@ -205,6 +205,13 @@ def cmd_pool(a):
     print("\n".join(pool.describe(team, ws)))
 
 
+def cmd_remote(a):
+    from . import remote
+    if a.action == "proxy":
+        return remote.proxy(a.spec or "", a.mode, a.schema)
+    remote.run(a.url, a.name, a.agents.split(",") if a.agents else None, a.once)
+
+
 def main(argv=None):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(prog="python -m orch", description="Orchestra: local multi-agent coding orchestration")
@@ -248,6 +255,15 @@ def main(argv=None):
     s = sub.add_parser("ui", help="local web UI")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--no-browser", action="store_true", help="only print the link")
+    s = sub.add_parser("remote", help="remote worker: run = serve the agent CLIs of this machine to an engine (over ssh -R)")
+    s.add_argument("action", choices=["run", "proxy"])
+    s.add_argument("spec", nargs="?", help=argparse.SUPPRESS)
+    s.add_argument("--url", default="http://127.0.0.1:8765", help="the engine machine's web UI, through the tunnel")
+    s.add_argument("--name", help="this runner's name in events (default: the host name)")
+    s.add_argument("--agents", help="comma-separated agent ids to serve (default: every installed agent CLI)")
+    s.add_argument("--once", action="store_true", help="exit after one attempt")
+    s.add_argument("--mode", default="rw", help=argparse.SUPPRESS)
+    s.add_argument("--schema", help=argparse.SUPPRESS)
     s = sub.add_parser("skills", help="skill catalog")
     s.add_argument("action", choices=["list", "refresh", "approve", "reject"])
     s.add_argument("id", nargs="?")

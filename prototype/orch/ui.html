@@ -39,7 +39,7 @@ nav button.on { color: var(--ink); background: color-mix(in srgb, var(--ink) 10%
 main { padding: 16px; max-width: 1200px; margin: 0 auto; }
 h1, h2, h3, .heading { font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; font-weight: 600; color: var(--ink); margin: 20px 0 8px; }
 h1, h2 { font-size: 20px; line-height: 1.25; } h3 { font-size: 16px; line-height: 1.25; }
-p, .prose { max-width: 75ch; margin: 6px 0 12px; }
+p, .prose { max-width: 75ch; margin: 6px 0 12px; overflow-wrap: anywhere; } /* long paths in questions must wrap, not overflow */
 .question { white-space: pre-wrap; }
 .mono, pre, code { font-family: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", Menlo, monospace; }
 .tabular { font-variant-numeric: tabular-nums; }
@@ -195,16 +195,11 @@ th.th-right .sort-th-btn { justify-content: flex-end; width: 100%; }
 <script>
 "use strict";
 const VI = {
-  "Run": "Run", "Task": "Task", "Worker": "Worker", "Worker:": "Worker:", "Worker: ": "Worker: ",
-  "Lead": "Lead", "Reviewer": "Reviewer", "Skill architect": "Skill architect",
-  "Model": "Model", "Agent": "Agent", "Probe": "Probe", "Skill": "Skill", "Plan": "Plan",
-  "Agent / Model": "Agent / Model", "probe ok": "probe ok", "engine": "engine", "run": "run",
-  "ok": "ok", "integrated": "đã tích hợp",
   "Events": "Sự kiện", "Knowledge": "Tri thức", "Agents": "Agent", "Models": "Model", "Skills": "Skill",
   "Main navigation": "Điều hướng chính", "! Needs you {n}": "! Cần bạn {n}", "{n} task(s) waiting for you": "{n} task đang chờ bạn", "Close notification": "Đóng thông báo",
   "Missing access token": "Thiếu access token",
   "Open the link printed by {cmd}: it carries this session's access token.": "Mở liên kết được in bởi {cmd}: liên kết mang access token của phiên này.",
-  "waiting": "chờ", "running": "đang chạy", "verifying": "đang kiểm", "integrating": "đang tích hợp", "done": "xong",
+  "waiting": "chờ", "running": "đang chạy", "verifying": "đang kiểm", "integrating": "đang tích hợp", "integrated": "đã tích hợp", "done": "xong",
   "needs you": "cần bạn", "with lead": "chờ lead", "failed": "lỗi", "cancelled": "đã huỷ", "todo": "chờ",
   "Cancel all": "Huỷ tất cả",
   "Cancel every unfinished task? Running and queued work will be stopped.": "Huỷ mọi task chưa hoàn thành? Công việc đang chạy và trong hàng đợi sẽ dừng lại.",
@@ -286,7 +281,7 @@ const VI = {
   "Curated sources (pinned commits): {sources} + skills installed for your local agents. Refreshing downloads the index from github.com.": "Nguồn chọn lọc (commit đã ghim): {sources} + các skill đã cài cho agent trên máy. Làm mới sẽ tải chỉ mục từ github.com.",
   "Refresh index": "Làm mới chỉ mục", "Skill index is empty.": "Chỉ mục skill đang trống.", "This run": "Run này", "Tasks": "Task", "Reason / Scan": "Lý do / Quét", "Approve": "Duyệt", "Reject": "Từ chối", "Index ({n})": "Chỉ mục ({n})", "Id": "ID", "Description": "Mô tả",
   "team saved": "Đã lưu team", "recorded": "Đã ghi nhận", "recorded; press Resume to continue": "Đã ghi nhận; bấm Tiếp tục để chạy tiếp", "saved": "Đã lưu",
-  "that task is not waiting for an answer any more": "Task đó không còn chờ câu trả lời nữa", "an engine is already running on this workspace": "Engine đang chạy trên workspace này rồi", "the goal must be 1-8000 characters": "Mục tiêu phải từ 1-8000 ký tự", "unknown agent": "Agent không xác định", "a JSON object is expected": "Cần một đối tượng JSON"
+  "that task is not waiting for an answer any more": "Task đó không còn chờ câu trả lời nữa", "the answer is empty: type it, or use a button": "Câu trả lời đang trống: hãy nhập, hoặc dùng một nút", "an engine is already running on this workspace": "Engine đang chạy trên workspace này rồi", "the goal must be 1-8000 characters": "Mục tiêu phải từ 1-8000 ký tự", "unknown agent": "Agent không xác định", "a JSON object is expected": "Cần một đối tượng JSON"
 };
 
 let lang = "vi";
@@ -330,6 +325,7 @@ async function api(path, body) {
   return j;
 }
 
+// Every string becomes a text node: nothing coming from agents, repos or the DB is ever parsed as HTML.
 function h(tag, props, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
@@ -361,7 +357,7 @@ function say(text, cls) {
   const toasts = document.getElementById("toasts");
   if (!toasts) return;
   const isErr = cls === "err";
-  const el = h("div", {class: "toast " + (cls || ""), role: isErr ? "alert" : null},
+  const el = h("div", {class: "toast " + (cls || ""), role: isErr ? "alert" : null},  // the container is the polite live region
     h("span", {class: "toast-msg"}, text),
     h("button", {class: "toast-close", ariaLabel: t("Close notification"), onclick: () => el.remove()}, "✕")
   );
@@ -406,7 +402,7 @@ function detailsBlock(key, title, content) {
   return d;
 }
 
-function selectTask(id, opener) {
+function selectTask(id, opener) {  // opener = id of the node, row button or bar to focus again on close (renders replace elements)
   selectedTaskId = id;
   panelOpener = opener;
   render().then(() => {
@@ -501,7 +497,7 @@ function scoreView(s) {
   const tMax = Math.max(...endedTimes, tMin + 10);
   const totalDur = Math.max(10, tMax - tMin);
   const lane = a => `${a.agent} / ${a.model}`, lanes = [...new Set(attempts.map(lane))].sort();
-  const ends = Object.fromEntries(lanes.map(l => [l, []])), row = attempts.map(a => {
+  const ends = Object.fromEntries(lanes.map(l => [l, []])), row = attempts.map(a => {  // first free sub-row of its lane
     const e = ends[lane(a)];
     let r = e.findIndex(end => end <= a.started);
     if (r < 0) r = e.length;
@@ -552,7 +548,7 @@ function scoreView(s) {
     const isOk = a.outcome === "ok" || a.outcome === "integrated", isRunning = a.ended == null, isFailed = !isOk && !isRunning;
     const color = isOk ? "var(--done)" : (isRunning ? "var(--running)" : "var(--failed)");
     const durSec = Math.round(aEnd - a.started), tokIn = a.tokens_in || 0, tokOut = a.tokens_out || 0;
-    const titleText = `${a.task} (${a.agent} / ${a.model})\n${t("Result")}: ${a.outcome || (isRunning ? t("running") : t("failed"))}${a.failure ? " (" + a.failure + ")" : ""}\n${t("Duration")}: ${durSec}s\nToken: ${tokIn.toLocaleString()} in, ${tokOut.toLocaleString()} out`;
+    const titleText = `${a.task} (${a.agent} / ${a.model})\n${t("Result")}: ${t(a.outcome) || (isRunning ? t("running") : t("failed"))}${a.failure ? " (" + a.failure + ")" : ""}\n${t("Duration")}: ${durSec}s\nToken: ${tokIn.toLocaleString()} in, ${tokOut.toLocaleString()} out`;
 
     return svg("g", {
       class: "score-bar",
@@ -581,12 +577,15 @@ function scoreView(s) {
   );
 }
 
+// The run's task graph, left to right: one column per dependency depth. Dashed = implicit order (work starts after PLAN and
+// SKILLS). edit = the plan editor's graph: lines can be clicked away, tasks dragged onto each other (connect).
+// ponytail: one barycenter pass done; remaining: more passes (backward/iterative), edge routing around intermediate nodes.
 function dag(tasks, edit) {
   const by = Object.fromEntries(tasks.map(tNode => [tNode.id, tNode])), depth = {}, pos = {}, W = 200, H = 56, GX = 48, GY = 14;
   const up = tNode => (tNode.deps.length ? tNode.deps : tNode.kind === "work" ? [by.SKILLS ? "SKILLS" : "PLAN"] : tNode.kind === "skills" ? ["PLAN"] : [])
     .filter(d => by[d] && d !== tNode.id);
   const col = tNode => {
-    if (!(tNode.id in depth)) { depth[tNode.id] = 0; depth[tNode.id] = Math.max(0, ...up(tNode).map(d => col(by[d]) + 1)); }
+    if (!(tNode.id in depth)) { depth[tNode.id] = 0; depth[tNode.id] = Math.max(0, ...up(tNode).map(d => col(by[d]) + 1)); }  // 0 first: a cycle cannot loop
     return depth[tNode.id];
   };
 
@@ -689,7 +688,7 @@ function dag(tasks, edit) {
     }
   }, svgEl);
 
-  setTimeout(() => {
+  setTimeout(() => {  // runs once render() has attached the view (a frame callback never comes while the window is hidden)
     wrap.scrollLeft = dagScroll.left;
     wrap.scrollTop = dagScroll.top;
   });
@@ -711,7 +710,7 @@ function dag(tasks, edit) {
   );
 }
 
-function connect(e, from) {
+function connect(e, from) {  // a line follows the pointer; dropped on another task, that task waits for `from`
   e.preventDefault();
   const root = e.currentTarget.ownerSVGElement;
   const at = ev => {
@@ -736,7 +735,7 @@ function connect(e, from) {
   for (const [k, f] of on) addEventListener(k, f);
 }
 
-function addDep(tNode, d) {
+function addDep(tNode, d) {  // t waits for d; refused when d already waits for t, directly or not (a cycle)
   const by = Object.fromEntries(drafts.plan.tasks.map(x => [x.id, x])), seen = new Set(), todo = [d];
   while (todo.length) {
     const x = todo.pop();
@@ -747,6 +746,7 @@ function addDep(tNode, d) {
   render();
 }
 
+// Edit the plan waiting for approval (drafts.plan): who does each task and what it waits for. The table is the keyboard route.
 function planEditor(s) {
   const p = drafts.plan, drop = (tNode, d) => { tNode.deps = tNode.deps.filter(x => x !== d); render(); };
   return h("div", {class: "plan-editor"},
@@ -1139,6 +1139,7 @@ async function Team() {
     return h("div", {}, errCard, advBlock, modelsBlock);
   }
 
+  // Ensure roles exist
   if (!teamObj.lead) teamObj.lead = { agent: cands[0][0], model: cands[0][1] };
   if (!teamObj.reviewer) teamObj.reviewer = { agent: cands[0][0], model: cands[0][1] };
   if (!teamObj.skill_architect) teamObj.skill_architect = { agent: cands[0][0], model: cands[0][1] };
@@ -1203,6 +1204,10 @@ async function Team() {
       ariaDescribedby: err ? `werr-${idx}` : null,
       onchange: e => {
         const newName = e.target.value.trim();
+        if (newName !== wName && Object.prototype.hasOwnProperty.call(teamObj.workers, newName)) {
+          e.target.value = wName;  // renaming onto another worker would silently drop one of them
+          return say(t("Worker names must be unique"), "err");
+        }
         if (newName && newName !== wName) {
           const newWorkers = {};
           for (const [k, v] of Object.entries(teamObj.workers)) newWorkers[k === wName ? newName : k] = v;
@@ -1471,6 +1476,11 @@ function renderNav() {
       onclick: () => { tab = n; render(); }
     }, t(n));
   }));
+  const on = tabsEl.querySelector(".on");  // narrow screens scroll the tab bar: keep the current tab in view
+  if (on) {
+    const a = on.getBoundingClientRect(), b = tabsEl.getBoundingClientRect();
+    if (a.left < b.left || a.right > b.right) tabsEl.scrollLeft += a.left - b.left - 16;
+  }
 
   const rightEl = document.getElementById("header-right");
   if (rightEl) {
@@ -1488,8 +1498,7 @@ function renderNav() {
         await render();
         const first = document.querySelector(".card-waiting");
         if (first) {
-          const motionSafe = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-          first.scrollIntoView({behavior: motionSafe ? "smooth" : "auto", block: "start"});
+          first.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start"});
           const focusable = first.querySelector("button, input, textarea, select");
           if (focusable) focusable.focus();
         }
@@ -1500,6 +1509,8 @@ function renderNav() {
   }
 }
 
+// Auto refresh never clobbers a field the user is typing in or a plan edit, and leaves the page alone when the data did not
+// change: selection, focus and scroll positions survive. User actions always redraw.
 async function render(auto) {
   clearTimeout(timer);
   const name = tab, live = name === "Run" || name === "Events", main = document.getElementById("main");
@@ -1521,7 +1532,7 @@ async function render(auto) {
   again();
 }
 
-function start() {
+function start() {  // the token lives in the URL fragment: it is never sent to a server or written to logs
   if (location.hash.length < 2) return document.getElementById("main").replaceChildren(h("div", {class: "card card-err", role: "alert"},
     h("h3", {}, t("Missing access token")),
     h("p", {class: "prose"}, t("Open the link printed by {cmd}: it carries this session's access token.", {cmd: "python -m orch ui"}))));

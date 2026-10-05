@@ -11,14 +11,12 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 
 | Hạng mục | Trạng thái |
 |---|---|
-| Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+, không cần `pip install`. |
-| Web UI (Pha 1–4) | Đã hoàn thành toàn bộ 4 pha: Pha 1 (token màu, dark/light mode, bảo mật CSP), Pha 2 (tab Run, sơ đồ DAG, tổng phổ run), Pha 3 (tab thiết lập, song ngữ VI/EN, visual team builder, huy hiệu agent, bảng models sắp xếp), Pha 4 (audit WCAG 2.2 AA, focus-visible, prefers-reduced-motion, 360px responsiveness, dung lượng < 90 KB, 0 innerHTML). |
-| Test end-to-end | 25/25 PASS với mock agent (không tốn token). Đã chạy trên Windows (Python 3.13) và Linux/WSL (Python 3.14). |
+| Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server, worker chạy từ xa | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+, không cần `pip install`. |
+| Test end-to-end | 27/27 PASS với mock agent (không tốn token) trên Linux (Python 3.11) và Windows (Python 3.13). WSL (Python 3.14) mới chạy 25 test cũ. |
 | Adapter đã kiểm chứng cờ dòng lệnh trên máy này | <ul><li>`codex` 0.153.4.</li><li>`agy` 1.2.15.</li><li>`opencode` 1.18.34, profile `opencode@free`:<ul><li>8/10 model free trả lời được;</li><li>`big-pickle` và `fledge-alpha-free` qua pre-test code.</li></ul></li></ul> |
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
-| Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả. 9router đã có trên máy nhưng chưa nối (§16 P0).</li></ul> |
+| Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả. 9router đã có trên máy nhưng chưa nối (§16 P0).</li><li>Worker chạy từ xa với CLI thật qua đường hầm SSH: mới qua test với mock agent (§10).</li></ul> |
 | Chưa chạy | <ul><li>`models refresh` / `skills refresh`: tải dữ liệu từ Internet, bạn tự chạy.</li><li>Nối 9router: cần bạn thao tác (§16 P0).</li></ul> |
-| Cố ý chưa làm | Worker chạy từ xa. |
 
 ## 1. Ý tưởng cốt lõi
 
@@ -79,6 +77,7 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | [orch/skills.py](orch/skills.py) | Chỉ mục skill, cài đặt, skill architect, đặt skill vào worktree, duyệt repo |
 | [orch/server.py](orch/server.py), [orch/ui.html](orch/ui.html) | Web UI local |
 | [orch/mcp.py](orch/mcp.py) | MCP server qua stdio: board và knowledge graph thành tool chỉ đọc |
+| [orch/remote.py](orch/remote.py) | Worker chạy từ xa: proxy phía engine (bundle, lease, áp patch), route lease của web UI, vòng lặp runner |
 | [orch/\_\_main\_\_.py](orch/__main__.py) | CLI |
 | [orch/mock.py](orch/mock.py) | Agent giả theo kịch bản, để test không tốn token |
 | [catalog/](catalog/) | `agents.json` (adapter), `skills.json` (nguồn curated), `schemas/*.json` (contract), `models.json` (có sau `models refresh`) |
@@ -188,6 +187,8 @@ Trạng thái của run:
 | Không gọi được lead | Hỏi bạn. |
 | Đã thử ≥ 6 lần (`HARD_CAP`) | Hỏi bạn. |
 | Vượt ngân sách token | Tạo task cổng `BUDGET<n>` và ngừng khởi động lời gọi mới. Bạn trả lời ngân sách mới (`500k`, `2m`) hoặc `stop`. |
+
+Lớp lỗi lấy từ lỗi có cấu trúc của chính CLI và stderr, không bao giờ từ transcript stdout của agent: transcript trích dẫn dự án (route `/login`, "line 429", file `quota.py`), và một lần đoán nhầm `quota` khoá cả tài khoản. Mã HTTP chỉ được tính khi đứng cạnh một từ như `status`, `error`, `HTTP`. Các mẫu được kiểm bằng đầu ra thật trong [docs/probes/](docs/probes/).
 
 Hai nguyên tắc:
 - Không bao giờ lặp lại y hệt một lần thử quá một lần.
@@ -379,6 +380,14 @@ Xếp theo mức tác động (thống nhất với Codex ở vòng 1):
   - agy, gemini, cursor-agent: chưa có cách truyền theo lời gọi.
 - Lệnh khởi động server ghi rõ `PYTHONPATH` và `ORCH_HOME`. Lý do: CLI chỉ đưa cho MCP server một môi trường tối thiểu, và trên Windows thiếu thư mục home thì `orch` không import được.
 
+**Worker chạy từ xa** ([orch/remote.py](orch/remote.py)). Một máy khác (có CLI và login riêng) làm worker; engine, scope, verify và merge vẫn ở máy chính.
+- Team khai báo `{"agent": "remote", "model": "codex:gpt-5.5"}`. Engine gọi profile `remote` như mọi CLI khác: `python -m orch remote proxy <agent>:<model>`, prompt qua stdin, kết quả dạng JSON của agy. Engine không cần biết worker ở xa.
+- Proxy chụp worktree (cả thay đổi chưa commit, dùng một index riêng để không đụng index thật) thành commit không cha, đóng `git bundle`, ghi lease vào bảng `leases`, rồi chờ.
+- Runner (`python -m orch remote run --url …`) nối vào web UI qua `ssh -R`, nhận lease, dựng repo tạm từ bundle, chạy CLI thật bằng `agents.run_agent` và gửi heartbeat mỗi `stale/6` giây; cuối cùng gửi patch nhị phân và kết quả.
+- Proxy áp patch bằng `git apply` rồi in JSON. Engine verify và gộp như với worker local.
+- Đây là chỗ cần lease/heartbeat (§14, vòng 2): runner im lặng quá `ORCH_REMOTE_STALE` giây thì lần thử lỗi và `route()` thử lại. Engine kill proxy (timeout, cancel) thì `finally` của proxy không chạy; `sweep()` dọn lease có proxy đã chết (PID + thời điểm tạo), và heartbeat của runner nhận `cancel`.
+- Mỗi CLI ở xa là một tài khoản `remote/<agent>` khi xoay vòng quota. Worker từ xa không có MCP hay knowledge graph.
+
 **Rule.**
 - File chung: `.orch/rules/common.md`, `lead.md`, `reviewer.md`, `worker.md`, `skill_architect.md`.
 - Thêm một file cho mỗi worker.
@@ -439,9 +448,9 @@ Ma trận quyền:
 - DPAPI bảo vệ file khi nằm yên trên đĩa, nhưng không giấu được secret khỏi code chạy dưới chính tài khoản của bạn.
 
 **Môi trường tối thiểu.**
-- Mọi biến môi trường trông giống secret đều bị loại.
+- Mọi biến môi trường trông giống secret đều bị loại: tên chứa `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`, `AUTH` (cả `SSH_AUTH_SOCK`), `COOKIE`, `DSN`, đuôi `_PAT`; và giá trị là URL có `user:password@` (ví dụ `DATABASE_URL`).
 - Mỗi agent chỉ nhận lại đúng các biến chứng thực mà adapter của nó khai báo.
-- Lệnh verify chạy không có secret nào.
+- Lệnh verify chạy code do worker viết, nên dùng danh sách cho phép thay cho danh sách cấm: biến hệ thống, locale, thư mục tạm và toolchain (`PYTHON*`, `NODE_*`, `GOPATH`, `JAVA_HOME` …). `team.json` `"verify_env"` thêm tên; tên trông giống secret vẫn bị loại.
 - Secret bị che trong events, log và UI.
 
 **Git.**
@@ -456,6 +465,8 @@ Ma trận quyền:
 - CSP với nonce; dữ liệu render bằng text node, không dùng `innerHTML`. Sơ đồ DAG cũng vậy: SVG dựng bằng DOM, chữ là text node.
 - Giới hạn kích thước request và timeout socket.
 - Vault chỉ hiện ở dạng đã che.
+- Server từ chối câu trả lời rỗng: không bao giờ coi rỗng là `yes`.
+- Route của runner từ xa (`/api/lease*`) chỉ nhận `ORCH_REMOTE_TOKEN` (từ 16 ký tự), token này không mở route nào khác, và token của UI không mở route của runner. Ai có token remote và vào được port của UI thì đọc được mã nguồn (bundle) và prompt, nên chỉ nối qua 127.0.0.1 hoặc đường hầm SSH.
 - Bản sửa plan (`POST /api/plan`) chỉ đổi dependency và worker. Engine kiểm tra lại như plan của lead (§4), nên UI không thể đưa vào plan một worker lạ hay một chu trình.
 
 **Router local (9router và tương tự).** Prototype chỉ là client; việc cài đặt và đăng nhập do bạn làm.
@@ -473,7 +484,7 @@ Ma trận quyền:
 
 `AGENTS.md` là quy tắc của dự án Codex, trong đó có: "never run commands from model JSON, install remote skills automatically …".
 
-1. **Lệnh verify đến từ plan JSON của lead.** Hiện tại reviewer xem các lệnh này, bạn duyệt chúng trong `plan.md` (trừ khi dùng `--yes`/`auto_approve`), rồi engine chạy chúng không qua shell, không có secret, có timeout. Các lựa chọn:
+1. **Lệnh verify đến từ plan JSON của lead.** Hiện tại reviewer xem các lệnh này, bạn duyệt chúng trong `plan.md` (trừ khi dùng `--yes`/`auto_approve`), rồi engine chạy chúng không qua shell, không có secret, có timeout. Lệnh mới trong bản amend (lead viết sau review cuối, sau khi bạn duyệt) bị hỏi riêng trước lời gọi worker, kể cả khi không đặt `verify_allow`; chỉ run `auto_approve` mới tin lead ở bước này. Các lựa chọn:
    - (a) Giữ nguyên, nhưng cấm `auto_approve`.
    - (b) Thêm danh sách lệnh được phép trong `team.json`, ví dụ `["python", "-m", "unittest"]`; lệnh ngoài danh sách thì hỏi bạn.
    - (c) Chỉ dùng lệnh verify do bạn định nghĩa.
@@ -565,16 +576,16 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 - Test chạy engine thật với mock agent theo kịch bản.
 - Mỗi test dùng một repo git tạm: tự xoá khi pass, giữ lại khi fail để điều tra.
 - `ORCH_HOME` trỏ vào một thư mục tạm, nên test không đụng `~/.orchestra` thật.
-- Thời gian: Linux khoảng 40 giây, Windows khoảng 2–3 phút.
+- Thời gian: Linux khoảng 50 giây, Windows khoảng 2–3 phút.
 
 | Test | Chứng minh |
 |---|---|
-| `happy_path` | <ul><li>Plan → 2 task phụ thuộc nhau → tích hợp → review → done.</li><li>Nhánh của bạn không bị đụng tới.</li><li>Facts đến được task phụ thuộc.</li><li>Tìm được trong KG; lệnh verify hiển thị có quote.</li></ul> |
+| `happy_path` | <ul><li>Plan → 2 task phụ thuộc nhau → tích hợp → review → done.</li><li>File bị `.gitignore` có trong worktree lúc verify thì có cảnh báo, và không vào commit.</li><li>Nhánh của bạn không bị đụng tới.</li><li>Facts đến được task phụ thuộc.</li><li>Tìm được trong KG; lệnh verify hiển thị có quote.</li></ul> |
 | `crash_during_integration` | <ul><li>Crash sau merge, trước khi DB ghi xong.</li><li>Resume tích hợp đúng một lần; task phụ thuộc chạy đúng một lần.</li><li>Bằng chứng được giữ lại.</li></ul> |
 | `untrustworthy_completion` | <ul><li>Handoff báo "done" nhưng sửa ngoài scope, rồi verify thất bại.</li><li>Kết quả: không merge, không ghi facts, không chạy task phụ thuộc.</li><li>File bị từ chối không lọt vào lịch sử git.</li></ul> |
 | `blocked_branch_live_sibling` | <ul><li>Một worker lỗi auth và chờ bạn; nhánh kia vẫn hoàn thành.</li><li>Trả lời `retry` thì chạy lại đúng một lần.</li></ul> |
 | `malformed_handoff_is_repaired` | <ul><li>Worker trả lời không phải JSON.</li><li>Engine repair một lần qua session cũ.</li></ul> |
-| `timeout_then_lead_reassigns` | <ul><li>Agent treo bị kill khi hết timeout.</li><li>Lead triage và giao cho worker khác.</li></ul> |
+| `timeout_then_lead_reassigns` | <ul><li>Agent treo bị kill khi hết timeout.</li><li>Lead triage và giao cho worker khác.</li><li>Patch bằng chứng của lần thử bị bỏ là byte nguyên bản của git, `git apply --check` được.</li></ul> |
 | `usage_limit_rotates_and_switches_back` | <ul><li>Worker hết usage giữa task, backup làm tiếp ngay trong worktree đó.</li><li>Tới giờ reset, task quay về worker chính.</li><li>Vai trò hết usage có người đứng thay.</li></ul> |
 | `pre_rotation_skips_an_exhausted_worker` | Task đang xếp hàng sau một tài khoản vừa hết usage được chuyển sang backup trước khi chạy. Không có ghi chú "phần việc dở". |
 | `quota_outlook_from_codex_rollouts` | <ul><li>Đọc `rate_limits` từ rollout giả.</li><li>Tính % đã dùng, tốc độ dùng, dự báo "hết lúc ~", trạng thái at risk.</li><li>Bản ghi 100% thì khoá tới giờ reset.</li></ul> |
@@ -584,15 +595,17 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `suggest_shrinks_benchmarks_toward_history` | <ul><li>Prior benchmark co về lịch sử: model mạnh mà hay báo "done" sai mất vị trí lead.</li><li>Lỗi quota không tính; mỗi tài khoản một worker.</li></ul> |
 | `pool_plan_ranks_pretests_and_backs_up` | <ul><li>`pool plan` xếp hạng và pre-test. Preset `precise` dùng bài khó, `pool test` mặc định dùng bài dễ.</li><li>Model báo "done" mà kiểm tra trượt bị ghi `verify` và xếp sau.</li><li>Lưu backup riêng cho từng worker.</li><li>Trong run, backup đó thật sự nhận task khi worker chính hết usage.</li></ul> |
 | `merge_conflict_is_resolved_by_the_worker` | <ul><li>Hai task sửa cùng một file.</li><li>Worker đến sau nhận dấu xung đột, tự gộp, rồi được tích hợp.</li></ul> |
-| `plan_review_user_approval_and_amendment` | <ul><li>Reviewer chặn → lead sửa plan bằng session cũ.</li><li>Bạn duyệt.</li><li>Review cuối chặn → amend → REVIEW2.</li></ul> |
+| `plan_review_user_approval_and_amendment` | <ul><li>Reviewer chặn → lead sửa plan bằng session cũ.</li><li>Bạn duyệt.</li><li>Review cuối chặn → amend → REVIEW2.</li><li>Lệnh verify mới trong bản amend dừng task trước lời gọi worker và hỏi bạn (lệnh đã duyệt trong plan thì không).</li></ul> |
 | `budget_gate_then_stop` | <ul><li>Chạm ngân sách → cổng BUDGET.</li><li>`stop` huỷ run; task còn lại không chạy.</li></ul> |
 | `skill_architect_installs_and_places` | <ul><li>Cài skill, quét ra script đáng xem.</li><li>Đặt đúng worktree của task, không commit skill.</li><li>Repo ngoài danh sách thành đề xuất và được `approve`.</li></ul> |
 | `opt_in_gates_verify_allowlist_and_skill_proposals` | <ul><li>`skills: propose`: skill chờ bạn duyệt, task work chờ theo.</li><li>`verify_allow`: lệnh ngoài danh sách dừng task trước lời gọi worker, kể cả trong run auto-approve. Một `yes` thả mọi task chờ cùng lệnh.</li></ul> |
 | `skills_index_offline` | <ul><li>Lập chỉ mục từ cây GitHub (giả lập mạng).</li><li>Cài đặt dùng lại cache theo commit.</li></ul> |
-| `ui_server_security` | Token, Host, Origin, CSP; vault được che; kiểm tra input. |
+| `ui_server_security` | Token, Host, Origin, CSP; vault được che; kiểm tra input; câu trả lời rỗng bị từ chối. |
 | `plan_edit_from_the_ui` | <ul><li>Sửa dependency và worker của plan đang chờ duyệt qua `POST /api/plan`, lưu thành v2.</li><li>Từ chối chu trình, worker lạ, bản sửa thiếu task, phiên bản cũ, và khi đã có câu trả lời.</li><li>Một `yes` đọc trước bản sửa không hiện thực hoá v1. Run chạy theo bản sửa.</li></ul> |
 | `mcp_server_read_only_tools` | <ul><li>Với `"mcp": true`, agent của T2 tự khởi động server từ cấu hình được truyền, trong môi trường tối thiểu, và tìm thấy fact mà T1 công bố.</li><li>Giao thức: echo phiên bản, notification không được trả lời, chỉ có tool chỉ đọc, các mã lỗi JSON-RPC.</li><li>Lệnh gọi codex, claude, opencode khi bật và khi tắt MCP.</li></ul> |
 | `kg_search_vectors` | <ul><li>FTS5 bỏ sót "parsing brackets" và "dang nhap"; trigram tìm ra.</li><li>Endpoint embeddings giả: tìm theo nghĩa, key trong vault đi qua header Bearer, kết quả trả về lộn thứ tự vẫn khớp.</li><li>Mỗi fact chỉ gửi một lần; workspace chỉ đọc vẫn tìm được, không lưu.</li><li>Endpoint chết thì quay về trigram, có thông báo.</li></ul> |
+| `remote_worker` | <ul><li>Runner "ma" nhận lease rồi im lặng: proxy bỏ cuộc sau `ORCH_REMOTE_STALE`, lần thử ghi `error`, heartbeat nhận `cancel`, kết quả muộn bị từ chối.</li><li>Token UI không mở route runner và ngược lại.</li><li>Lần thử lại được một tiến trình `remote run` thật phục vụ; patch qua scope và verify rồi được tích hợp.</li><li>Không còn lease hay file lease nào.</li></ul> |
+| `cli_parsers_failure_classes_and_env` | <ul><li>Parser agy, claude, opencode chạy trên đầu ra thật trong `docs/probes/`; parser codex trên sự kiện mẫu.</li><li>Lớp lỗi: các thông báo thật được nhận đúng; chữ của dự án (`/login`, "line 429", `quota.py`, `authenticate`) không bị coi là lỗi tài khoản, kể cả qua `run_agent`.</li><li>Môi trường: agent mất `SSH_AUTH_SOCK`, `DATABASE_URL` có mật khẩu, `*_PAT`; lệnh verify chỉ nhận danh sách cho phép, `verify_env` thêm tên nhưng không thêm secret.</li></ul> |
 | `scope_and_plan_checks` | Các kiểm tra plan, scope, allowlist lệnh verify và repo map ở dạng hàm thuần. |
 
 ## 16. Lộ trình
@@ -618,12 +631,15 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
   - Plan đang chờ duyệt sửa được bằng kéo-thả (§4, bước 4).
 - Embeddings cho knowledge graph: đã có (§10). Trigram tại chỗ mặc định; endpoint embeddings là opt-in.
 - MCP server cho board và knowledge graph: đã có (§10).
-- Web UI (Pha 1–4 hoàn thành đầy đủ theo [docs/UIUX.md](docs/UIUX.md)):
-  - **Pha 1 (Nền tảng)**: Đã xong — token màu tĩnh, dark/light theme, typography hệ thống, badge ký hiệu + chữ, toast `aria-live`, CSP nghiêm ngặt không CDN/font ngoài.
-  - **Pha 2 (Tab Run & Tổng phổ)**: Đã xong — thanh tiến độ, token, hộp "Chờ bạn", sơ đồ DAG tương tác, panel chi tiết task, tổng phổ execution score thời gian thực từ bảng `attempts`.
-  - **Pha 3 (Tab Thiết lập & Song ngữ)**: Đã xong — Visual Team builder tương tác (chọn Lead, Reviewer, Skill Architect, quản lý Worker động kèm raw JSON editor), huy hiệu trạng thái Agent (phiên bản, auth, probe, login trigger), bảng Model 9 cột điểm chuẩn & giá thành có `aria-sort` và nút refresh dữ liệu công khai, nút chuyển song ngữ Tiếng Việt / Tiếng Anh lưu `localStorage`.
-  - **Pha 4 (Soát & Hoàn thiện WCAG 2.2 AA)**: Đã xong — tuân thủ chuẩn WCAG 2.2 AA (tương phản >= 4.5:1, viền focus `:focus-visible` 2px rõ ràng, điều hướng toàn diện bằng bàn phím), `@media (prefers-reduced-motion)` tắt hiệu ứng nhịp và cuộn êm, tương thích màn hình hẹp 360px (toast clamping), dung lượng tệp tối ưu an toàn < 90 KB (89.010 bytes), 0 innerHTML/eval.
-- Worker chạy từ xa; khi đó mới cần lease/heartbeat.
+- Worker chạy từ xa: đã có (§10), kèm lease và heartbeat. Còn phải chạy thử với CLI thật qua đường hầm SSH.
+- Thiết kế lại giao diện web UI: pha 1–3 xong và đã QA trên Chromium; pha 4 đã có toast vừa màn 360px và cuộn theo `prefers-reduced-motion`, còn audit theo bộ quy tắc ghim, thử Narrator và ảnh chụp README ([docs/UIUX.md](docs/UIUX.md) §12).
+
+**Sửa sau đợt review 2026-10-04**
+- Lớp lỗi chỉ lấy từ lỗi của CLI và stderr (§6).
+- Lệnh verify của bản amend được hỏi khi không đặt `verify_allow` (§13).
+- Lệnh verify chạy với danh sách biến môi trường cho phép; agent mất thêm `SSH_AUTH_SOCK`, `*_PAT`, URL có mật khẩu (§13).
+- Cảnh báo khi verify chạy cùng file bị `.gitignore` mà commit không mang theo: verify ở worktree thấy chúng, review cuối chạy lại verify trên nhánh tích hợp thì không.
+- File văn bản ghi LF; patch bằng chứng ghi đúng byte của git.
 
 **Giới hạn đã biết** (đánh dấu `ponytail:` trong code):
 - Repo map cắt ở cùng một độ sâu thư mục cho cả cây (tối đa 300 dòng).
@@ -632,6 +648,8 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 - Tài khoản at risk bị nhân hệ số cố định 0,75, không theo thời gian còn lại trước khi hết.
 - Knowledge graph so vector bằng brute force, tính lại tần suất trigram ở mỗi lần tìm: ổn dưới khoảng 10k fact. Endpoint embeddings treo thì mỗi lần tìm chờ tối đa 30 giây (chưa nhớ lỗi).
 - Chỉ mục skill bị cắt nếu cây repo có hơn 100k mục.
+- Worker từ xa: mọi runner của một CLI tính chung một tài khoản; bundle chở cả cây mỗi lần thử (chưa gửi phần chênh lệch); không có MCP hay knowledge graph.
+- Verify chạy trong worktree của worker, nên thấy cả file bị `.gitignore` mà commit không mang theo (có cảnh báo; review cuối chạy lại trên nhánh tích hợp). Verify trên một checkout sạch sẽ chặn sớm hơn, nhưng làm hỏng dự án cần thư mục phụ thuộc cục bộ như `node_modules`.
 - Một engine mỗi workspace.
 - Ưu tiên Windows (DPAPI, Job Object). Nhánh POSIX đã qua bộ test trên Linux/WSL, nhưng chưa chạy với agent thật.
 - Dự báo "hết lúc ~" dùng tốc độ dùng của giờ gần nhất, nên bi quan sau một đợt dùng dày.

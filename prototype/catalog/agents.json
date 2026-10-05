@@ -74,6 +74,12 @@
     "run": ["-p", "--output-format", "json", "--model", "{model}", "{prompt}"],
     "prompt": "arg", "parse": "claude"
   },
+  "remote": {
+    "name": "Remote runner (python -m orch remote run on another machine)", "bin": "python", "verified": false, "hidden": true,
+    "remote": true, "mode": {"rw": "rw", "ro": "ro"},
+    "run": ["-m", "orch", "remote", "proxy", "{model}", "--mode", "{mode}", "--schema", "{schema}"],
+    "prompt": "stdin", "parse": "agy"
+  },
   "mock": {
     "name": "Mock agent (zero-cost tests)", "bin": "python", "verified": true, "hidden": true,
     "models": ["mock-strong", "mock-fast"], "mode": {"rw": "rw", "ro": "ro"}, "mcp": "config",

@@ -180,7 +180,7 @@ Tab Run trên desktop (rộng ≥ 1100px):
 - handoff;
 - đường dẫn thư mục bằng chứng.
 
-Cần thêm endpoint `GET /api/task?id=`.
+Không cần endpoint mới: spec và handoff có sẵn trong `tasks` của `/api/state`, các lần thử lấy từ `attempts` (thêm ở pha 1).
 
 ## 8. Sơ đồ DAG và chế độ sửa plan
 
@@ -221,7 +221,7 @@ Pha 2 chỉ đổi giao diện, giữ nguyên hành vi và API.
   - mức song song thật;
   - agent nào đang rảnh;
   - task nào bị xoay vòng do hết usage (thanh nhảy sang dòng khác).
-- Dữ liệu: thêm `attempts` vào `/api/state`, chỉ các cột không nhạy cảm (task, kind, agent, model, started, ended, outcome, failure, token).
+- Dữ liệu: `attempts` trong `/api/state` (thêm ở pha 1), chỉ các cột không nhạy cảm: task, kind, agent, model, started, ended, outcome, failure, token, cost, thư mục bằng chứng. Không có session id hay pid.
 
 ## 10. Khả năng tiếp cận: mức sàn, không bàn lại
 
@@ -243,13 +243,31 @@ Pha 2 chỉ đổi giao diện, giữ nguyên hành vi và API.
 
 ## 12. Lộ trình
 
-Mỗi pha một commit; chạy đủ bộ test trên Windows và WSL.
+Mỗi pha một commit; chạy đủ bộ test trên Windows và WSL. Code giao diện do Gemini 3.8 Flash (high, qua agy) viết theo tài liệu này; Claude soát, sửa và kiểm tra trên trình duyệt.
+
+Trạng thái (2026-10-05): pha 1–3 xong; pha 4 làm được một phần.
+- Pha 3 (Gemini viết) đã được đọc diff: mọi chữ đi qua `h()`/`svg()`, form Team chỉ POST khi bấm "Lưu team" và giữ đúng schema của `save_team`.
+- QA trên Chromium (1280px sáng, 375px tối, mọi tab, không lỗi console) tìm ra và đã sửa:
+  - đường dẫn dài trong câu hỏi tràn khỏi thẻ, làm trang cuộn ngang ở 375px;
+  - đổi tên worker trùng tên worker khác làm mất một worker;
+  - tab đang chọn nằm ngoài vùng nhìn thấy của thanh tab trên màn hẹp.
+- Pha 4, đã kiểm:
+  - duyệt plan chỉ bằng bàn phím: 12 lần Tab, mọi điểm dừng có viền focus;
+  - `prefers-reduced-motion` tắt nhịp badge;
+  - thu phóng 200% (khung 640px): không tab nào cuộn ngang.
+- Pha 4, Gemini viết thêm (đã đọc diff, chưa xem trên trình duyệt):
+  - toast co theo bề rộng màn hình, không tràn ở 360px;
+  - nút "Cần bạn" cuộn tức thì, không cuộn êm, khi bật `prefers-reduced-motion`.
+- Pha 4, còn lại cho máy của bạn:
+  - audit bằng web-design-guidelines bản ghim (cần cài, §13);
+  - thử với Narrator;
+  - ảnh chụp cho README.
 
 | Pha | Nội dung | Xong khi |
 |---|---|---|
 | 0. Công cụ | Bạn chọn plugin/skill ở §13. | Đã cài, hoặc quyết định không cài. |
 | 1. Nền tảng | <ul><li>Token màu, chữ, khoảng cách; sáng/tối.</li><li>Nút, ô nhập có nhãn, bảng có tiêu đề dính.</li><li>Badge có ký hiệu và chữ.</li><li>Toast có `aria-live`.</li><li>`<details>` cho khối dài.</li><li>Không dựng lại khi dữ liệu không đổi, để giữ vùng chọn và vị trí cuộn.</li><li>Test mới: trang không chứa `http://` hay `https://`, chặn CDN và font ngoài.</li></ul> | <ul><li>Bộ test pass.</li><li>Script tương phản pass.</li><li>Ảnh chụp sáng/tối ở 1280px và 375px không vỡ.</li></ul> |
-| 2. Tab Run | <ul><li>Header run: thanh tiến độ, token.</li><li>"Chờ bạn" lên đầu, có nút trả lời nhanh.</li><li>DAG mới: thu phóng, barycenter, chọn node.</li><li>Panel chi tiết task (`/api/task`).</li><li>Tổng phổ (`attempts` trong `/api/state`).</li></ul> | <ul><li>Duyệt plan và gỡ kẹt được hoàn toàn bằng bàn phím.</li><li>Đã xem lại ảnh chụp.</li></ul> |
+| 2. Tab Run | <ul><li>Header run: thanh tiến độ, token.</li><li>"Chờ bạn" lên đầu, có nút trả lời nhanh.</li><li>DAG mới: thu phóng, barycenter, chọn node.</li><li>Panel chi tiết task (`tasks` và `attempts` trong `/api/state`).</li><li>Tổng phổ (`attempts` trong `/api/state`).</li></ul> | <ul><li>Duyệt plan và gỡ kẹt được hoàn toàn bằng bàn phím.</li><li>Đã xem lại ảnh chụp.</li></ul> |
 | 3. Tab thiết lập | <ul><li>Agent: danh sách có trạng thái đăng nhập và probe.</li><li>Team: form chọn lead, reviewer, worker từ danh sách model dùng được; JSON thành chế độ nâng cao.</li><li>Vault có nhãn; Model sắp xếp được.</li><li>Trạng thái trống có nút hành động.</li><li>Tiếng Việt/Anh.</li></ul> | Tạo team mới không cần gõ JSON. |
 | 4. Soát và hoàn thiện | <ul><li>Audit bằng web-design-guidelines (bản ghim).</li><li>Đi hết các luồng chỉ bằng bàn phím; thử với Narrator.</li><li>Reduced motion, thu phóng 200%.</li><li>Cập nhật ảnh chụp trong README.</li></ul> | Audit không còn lỗi mức bắt buộc. |
 

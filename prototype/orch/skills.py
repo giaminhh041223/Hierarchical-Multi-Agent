@@ -57,7 +57,7 @@ def refresh():
             index.append({"id": f"local/{meta.get('name') or f.parent.name}", "description": meta.get("description", "")[:300],
                           "local": str(f.parent)})
     CACHE.mkdir(parents=True, exist_ok=True)
-    INDEX.write_text(json.dumps(index, indent=1, ensure_ascii=False), encoding="utf-8")
+    INDEX.write_text(json.dumps(index, indent=1, ensure_ascii=False), encoding="utf-8", newline="\n")
     return index
 
 
@@ -164,7 +164,7 @@ def decide(ws, sid, action):
     owner, repo = sid.rstrip("/").split("/")[-2:]
     user = [s for s in (json.loads(USER_SOURCES.read_text(encoding="utf-8")) if USER_SOURCES.exists() else []) if s["repo"] != f"{owner}/{repo}"]
     CACHE.mkdir(parents=True, exist_ok=True)
-    USER_SOURCES.write_text(json.dumps(user + [{"id": owner, "repo": f"{owner}/{repo}", "ref": "HEAD"}], indent=1), encoding="utf-8")
+    USER_SOURCES.write_text(json.dumps(user + [{"id": owner, "repo": f"{owner}/{repo}", "ref": "HEAD"}], indent=1), encoding="utf-8", newline="\n")
     return f"{owner}/{repo} added to your skill sources; it is indexed (pinned to its current commit) on: python -m orch skills refresh"
 
 

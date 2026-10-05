@@ -70,7 +70,7 @@ def refresh():
                     "prices_context": "openrouter.ai/api/v1/models (USD per 1M tokens)"},
         "models": dict(sorted(models.items())),
     }
-    DB_FILE.write_text(json.dumps(db, indent=1, ensure_ascii=False), encoding="utf-8")
+    DB_FILE.write_text(json.dumps(db, indent=1, ensure_ascii=False), encoding="utf-8", newline="\n")
     return db
 
 
