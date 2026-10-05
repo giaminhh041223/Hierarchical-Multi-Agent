@@ -92,6 +92,15 @@ def info(model_id, db=None):
     return m
 
 
+def estimate(model_id, tokens_in, tokens_out, db=None):
+    """USD at the OpenRouter list price (models refresh), or None without a price: a yardstick to compare runs, not a bill
+    (subscription CLIs do not charge per token, free models cost 0)."""
+    m = (db or load())["models"].get(norm(model_id), {})
+    if m.get("price_in") is None or m.get("price_out") is None:
+        return None
+    return ((tokens_in or 0) * m["price_in"] + (tokens_out or 0) * m["price_out"]) / 1e6
+
+
 def card(model_id, db=None):
     """One compact line for prompts: the lead reads this instead of browsing the web."""
     m = info(model_id, db)

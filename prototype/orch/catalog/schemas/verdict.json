@@ -1,4 +1,1 @@
-{"type":"object","additionalProperties":false,"required":["verdict","issues"],
- "properties":{"verdict":{"type":"string","enum":["approve","revise"]},
-  "issues":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["task_id","severity","message"],
-   "properties":{"task_id":{"type":["string","null"]},"severity":{"type":"string","enum":["blocker","advisory"]},"message":{"type":"string"}}}}}}
+{"type":"object","additionalProperties":false,"required":["verdict","issues"],"properties":{"verdict":{"type":"string","enum":["approve","revise"]},"issues":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["task_id","severity","message","evidence"],"properties":{"task_id":{"type":["string","null"]},"severity":{"type":"string","enum":["blocker","advisory"]},"message":{"type":"string"},"evidence":{"type":["string","null"]}}}}}}

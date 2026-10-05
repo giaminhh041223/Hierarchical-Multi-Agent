@@ -111,7 +111,24 @@ def test_happy_path():
     assert '-c "import app; assert' in r.events("verify", "T1")[0][1], "commands are shown quoted"
     t2_prompt = Path(r.q("SELECT dir FROM attempts WHERE task='T2' AND kind='work'")[0][0]) / "prompt.md"
     assert "app: add(a, b) returns a + b" in t2_prompt.read_text(encoding="utf-8"), "dependency handoff must reach T2"
-    assert (r.repo / ".orch" / "runs" / r.main.split("/")[1] / "report.md").exists()
+    report = (r.repo / ".orch" / "runs" / r.main.split("/")[1] / "report.md").read_text(encoding="utf-8")
+    calls = [l for l in report.split("## Calls")[1].splitlines() if l.startswith("| ") and l[2].isdigit()]
+    assert len(calls) == 5 and all("mock / mock-" in l and "1,000 | 100 |" in l for l in calls), report  # plan, review, T1, T2, final review
+    assert all(float(l.rstrip(" |").rsplit("|", 1)[1]) > 0.5 for l in calls), "prompt sizes show where the tokens go"
+
+
+def test_report_estimates_cost_at_list_price():
+    """No CLI-reported cost: the report estimates it from the model DB's list price (models refresh), marked ~."""
+    from orch import models
+    r = Repo(two_tasks())
+    (r.tmp / "home").mkdir(exist_ok=True)
+    db = {"as_of": "2026-10-05", "models": {models.norm(m): {"price_in": 2.0, "price_out": 10.0} for m in ("mock-fast", "mock-strong")}}
+    (r.tmp / "home" / "models.json").write_text(json.dumps(db), encoding="utf-8")
+    assert r.run() == 0, r.out
+    report = r.show_file(".orch/runs/*/report.md")
+    usage = report.split("## Usage")[1].split("## Calls")[0]
+    # mock-fast ran T1 and T2: 2 x (1,000 in x $2 + 100 out x $10) per Mtok = $0.006
+    assert "| mock | mock-fast | 2 | 2,000 | 200 | ~0.0060 |" in usage and "~" in usage, usage
 
 
 def test_crash_during_integration():
@@ -428,7 +445,8 @@ def test_merge_conflict_is_resolved_by_the_worker():
 
 def test_plan_review_user_approval_and_amendment():
     """Reviewer blocks plan v1 -> lead revises; user approves; final review blocks -> recorded amendment -> REVIEW2."""
-    blocker = lambda msg, tid=None: {"reply": {"verdict": "revise", "issues": [{"task_id": tid, "severity": "blocker", "message": msg}]}}
+    blocker = lambda msg, tid=None: {"reply": {"verdict": "revise", "issues": [{"task_id": tid, "severity": "blocker", "message": msg,
+                                                                               "evidence": f"acceptance not met: {msg}"}]}}
     readme = [["python", "-c", "assert 'usage' in open('README.md').read()"]]
     sc = {"plan": [task("T1", "w1", ["a.txt"], OK)], "amend": [task("T3", "w2", ["README.md"], OK + readme, ["T1"])],
           "steps": {"reviewer:PLAN": [blocker("T1 lacks a test", "T1"), {}], "reviewer:REVIEW": [blocker("README not updated")],
@@ -446,6 +464,37 @@ def test_plan_review_user_approval_and_amendment():
     assert r.orch("answer", "T3", "yes") == 0 and r.orch("resume", "--exit-on-wait") == 0, r.out
     assert r.status() == {"PLAN": "done", "T1": "done", "REVIEW": "done", "T3": "done", "REVIEW2": "done"}, r.status()
     assert r.show("README.md") == "demo\nusage"
+
+
+def test_modes_solo_auto_and_evidence_for_blockers():
+    """mode solo: no planner, one task with the user's own checks, no approval, no reviewer call. mode auto: the lead returns
+    one task, so the plan review and the final reviewer call are skipped. A reviewer blocker without evidence is advisory."""
+    check = [["python", "-c", "import app; assert app.add(2, 3) == 5"]]
+    sc = {"plan": [], "steps": {"worker:T1": [{"write": {"app.py": ADD}}]}}
+    r = Repo(sc, mode="solo", solo="w2", verify=check)
+    assert r.orch("run", "make add() work", "--exit-on-wait") == 0, r.out  # no --yes: solo has nothing to approve
+    assert r.status() == {"PLAN": "done", "T1": "done", "REVIEW": "done"}, r.status()
+    assert r.q("SELECT assignee FROM tasks WHERE id='T1'")[0][0] == "w2" and "return a + b" in r.show("app.py")
+    assert r.calls("lead", "PLAN") == 0 and r.calls("reviewer", "PLAN") == 0 and r.calls("reviewer", "REVIEW") == 0, "only the worker is called"
+    assert json.loads(r.q("SELECT spec FROM tasks WHERE id='T1'")[0][0]) == {"acceptance": ["make add() work"], "scope_paths": ["."], "verify": check}
+    r2 = Repo({"plan": []}, mode="solo")
+    assert r2.orch("run", "x", "--exit-on-wait") == 3 and 'team.json "verify"' in r2.q("SELECT question FROM tasks WHERE id='PLAN'")[0][0]
+
+    sc = {"plan": [task("T1", "w1", ["app.py"], check[:1])], "steps": {"worker:T1": [{"write": {"app.py": ADD}}]}}
+    r3 = Repo(sc, mode="auto", verify=check, skills=True)
+    assert r3.run() == 0, r3.out
+    assert r3.calls("lead", "PLAN") == 1 and r3.calls("reviewer", "PLAN") == 0 and r3.calls("reviewer", "REVIEW") == 0, r3.out
+    assert "SKILLS" not in r3.status() and r3.calls("skill_architect", "SKILLS") == 0, "a one-task light run skips the skill architect"
+    prompt = Path(r3.q("SELECT dir FROM attempts WHERE task='PLAN' AND kind='plan'")[0][0]) / "prompt.md"
+    text = prompt.read_text(encoding="utf-8")
+    assert "Size the plan to the goal" in text and "Project checks (from the user" in text, text[-800:]
+
+    hunch = {"reply": {"verdict": "revise", "issues": [{"task_id": "T1", "severity": "blocker", "message": "feels incomplete", "evidence": None}]}}
+    sc = {"plan": [task("T1", "w1", ["a.txt"], OK)], "steps": {"reviewer:PLAN": [hunch], "reviewer:REVIEW": [hunch], "worker:T1": [{"write": {"a.txt": "a\n"}}]}}
+    r4 = Repo(sc)  # team mode: both reviews run, but a blocker without evidence stops nothing and asks nobody
+    assert r4.run() == 0 and set(r4.status().values()) == {"done"} and r4.calls("lead", "PLAN") == 1, r4.out
+    assert "blocker without evidence: counted as advisory" in r4.show_file(".orch/runs/*/plan.md")
+    assert not r4.q("SELECT 1 FROM tasks WHERE id LIKE 'REVIEW2'")
 
 
 def test_budget_gate_then_stop():

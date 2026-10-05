@@ -434,7 +434,9 @@ CONTRACT_HINT = {
             "scope_paths = files, dirs/ or globs relative to the repo root that the task may change; verify = argv arrays "
             "run from the repo root that must exit 0 (cross-platform, no shell operators, e.g. [\"python\",\"-m\",\"pytest\",\"-q\"]).",
     "verdict": "verdict = approve iff there is no blocker issue, else revise. blocker = must change; advisory = optional. "
-               "task_id = the task concerned, or null.",
+               "task_id = the task concerned, or null. evidence = for a blocker, the proof: a failing command with its output, "
+               "or the requirement / acceptance line it breaks, quoted; null for advisories. A blocker without evidence counts "
+               "as advisory.",
     "triage": "action: retry (same worker; concrete instructions in note) | reassign (assignee = another worker) | ask_user "
               "(only for decisions you may not take: secrets, goal/scope changes, money; put it in question) | fail | "
               "cancel (the task is unnecessary). assignee and question are null unless needed.",

@@ -17,7 +17,9 @@ YES = {"y", "yes", "ok", "okay", "approve", "approved", "accept", "lgtm", "go", 
 HARD_CAP = 6  # attempts per task before the user is asked
 TEAM_DEFAULTS = {"max_parallel": 4, "timeout": 1800, "verify_timeout": 600, "budget_tokens": 0, "max_amend": 1,
                  "skills": True, "auto_approve": False, "wait_reset": 600, "cooldown": 3600, "account_max": {},
-                 "verify_allow": None, "verify_env": [], "mcp": False, "embeddings": None}
+                 "verify_allow": None, "verify_env": [], "mcp": False, "embeddings": None,
+                 "mode": "team", "solo": None, "verify": []}
+MODES = ("team", "auto", "solo")  # team: always plan + review; auto: the lead sizes the plan, one task = light; solo: one task, no planner
 
 RULES = {
     "common": """You are one agent in Orctram, a local multi-agent coding team. The engine (a program, not an LLM) owns git, scheduling and integration.
@@ -39,7 +41,8 @@ Planning:
 - Put tests in scope when a task should add them.
 Authority: you may retry, reassign, cancel and re-plan. Only the user may provide secrets or credentials, change the goal or accept scope cuts, approve spending beyond the budget, install non-curated skills, merge into their branch, or approve destructive operations: for those use ask_user with one precise question.""",
     "reviewer": """Role: reviewer (read-only). Find what would make the result wrong, unsafe or unverifiable: missing requirements, wrong dependencies, overlapping scopes between parallel tasks, verify commands that would pass on broken work, security problems.
-- blocker = must be fixed before proceeding; advisory = optional. Be specific and brief; no style nitpicks.""",
+- blocker = must be fixed before proceeding; advisory = optional. Be specific and brief; no style nitpicks.
+- A blocker needs evidence: a failing command and its output, or the requirement it breaks, quoted. Without it the engine counts it as advisory.""",
     "skill_architect": """Role: skill architect. Pick at most 3 skills from the curated index that clearly help specific tasks (e.g. a document-format skill for a task that edits .docx). None is better than marginal ones. You may propose one non-curated GitHub repository URL when it is clearly valuable; the user must approve it before it is installed.""",
 }
 
@@ -207,9 +210,24 @@ def checked_call(run, prompt, d, session, aid, contract_name, check=None, cancel
     return r, calls, obj, err
 
 
+def weigh(issues):
+    """A reviewer blocker stops the run or asks the user, so it must carry evidence (a failing command and its output, or the
+    unmet requirement quoted); without it the engine counts it as advisory."""
+    return [{**i, "severity": "advisory", "message": i["message"] + " (blocker without evidence: counted as advisory)"}
+            if i["severity"] == "blocker" and not (i.get("evidence") or "").strip() else i for i in issues]
+
+
 def entity(fact, tid):
     head, sep, _ = fact.partition(":")
     return head.strip() if sep and 0 < len(head.strip()) <= 60 else tid
+
+
+def money(cost, model, tokens_in, tokens_out):
+    """The cost the CLI reported, else an estimate at list price marked ~, else blank."""
+    if cost is not None:
+        return f"{cost:.4f}"
+    est = models.estimate(model, tokens_in, tokens_out)
+    return "" if est is None else f"~{est:.4f}"
 
 
 def write_atomic(path, text):
@@ -259,6 +277,13 @@ def validate_team(team):
     bad = [n for n in workers if not re.fullmatch(r"[A-Za-z0-9][\w-]{0,31}", n) or n in RULES]  # names become file names
     if bad:
         raise ValueError(f"bad worker names {bad}: use letters, digits, - and _, and not a role name")
+    if team.get("mode", "team") not in MODES:
+        raise ValueError(f"mode must be one of {', '.join(MODES)}")
+    verify = team.get("verify") or []
+    if not isinstance(verify, list) or any(not isinstance(v, list) or not v or not all(isinstance(x, str) for x in v) for v in verify):
+        raise ValueError('verify: the project\'s checks as argv arrays, e.g. [["python", "-m", "pytest", "-q"]]')
+    if team.get("solo") is not None and team["solo"] not in workers:
+        raise ValueError(f"solo: one of the workers ({', '.join(workers)})")
     return {**TEAM_DEFAULTS, **team}
 
 
@@ -375,7 +400,8 @@ class Engine:
         allow = self.team["verify_allow"]
         if allow is None and self.rmeta("auto_approve") == "1":
             return []
-        return [v for v in cmds if not (allow is not None and allowed(v, allow)) and not self.rmeta(f"allow:{json.dumps(v)}")]
+        return [v for v in cmds if v not in self.team["verify"]  # the user's own project checks (team.json "verify")
+                and not (allow is not None and allowed(v, allow)) and not self.rmeta(f"allow:{json.dumps(v)}")]
 
     def approve(self, cmds):
         for v in self.unapproved(cmds):
@@ -819,16 +845,41 @@ class Engine:
                 d.rmdir()
 
     # --- jobs -----------------------------------------------------------------------------------------------
+    def light(self, n_tasks):
+        """auto / solo mode with a one-task plan: no plan review, no skill architect, the final review only reruns verify."""
+        return self.team["mode"] in ("auto", "solo") and n_tasks == 1
+
+    def plan_solo(self, prev):
+        """mode solo: no planner. One task, the whole goal, the whole repository, the user's own checks (team.json verify)."""
+        w = self.team.get("solo") or next(iter(self.primaries()), None)
+        if w not in self.primaries():
+            return self.to_user("PLAN", f'team.json "solo" names {w!r}, not a worker ({", ".join(self.primaries())}). Fix it and reply retry.', "running")
+        if not self.team["verify"]:
+            return self.to_user("PLAN", 'mode "solo" runs no planner, so the checks come from you: set team.json "verify" to the project\'s '
+                                        'check commands, e.g. [["python", "-m", "pytest", "-q"]], then reply retry.', "running")
+        plan = {"tasks": [{"id": "T1", "title": (self.goal.strip().splitlines() or ["goal"])[0][:100], "assignee": w, "deps": [],
+                           "acceptance": [self.goal[:4000]], "scope_paths": ["."], "verify": self.team["verify"]}]}
+        version = (prev["version"] if prev else 0) + 1
+        self.ws.q("INSERT INTO plans VALUES(?,?,?,?)", self.run, version, json.dumps(plan, ensure_ascii=False), "[]")
+        md = self.write_plan_md(plan, version, [])
+        self.ws.event("plan", f"v{version}: solo mode, {w} does the whole goal -> {md}", "PLAN", "engine")
+        return self.materialize(plan, "running")  # the user's goal and the user's checks: nothing to approve
+
     def job_plan(self, t):
         lead, rev, cwd = self.team["lead"], self.team["reviewer"], self.main_wt
         prev = self.latest_plan()
+        if self.team["mode"] == "solo":
+            return self.plan_solo(prev)
         check = lambda p: check_plan(p, self.primaries())
         try:
             prompt = self.packet_plan(prev, t["note"])
             plan, _, sess = self.ask("lead", lead, prompt, "plan", "PLAN", "plan", cwd, check=check)
             verdicts, unresolved = [], []
-            for rnd in (1, 2):
+            if self.light(len(plan["tasks"])):
+                self.ws.event("review", "plan review skipped: one task in auto mode", "PLAN")
+            for rnd in () if self.light(len(plan["tasks"])) else (1, 2):
                 v, _, _ = self.ask("reviewer", rev, self.packet_plan_review(plan), "verdict", "PLAN", "review", cwd)
+                v["issues"] = weigh(v["issues"])
                 verdicts.append(v)
                 blockers = [i for i in v["issues"] if i["severity"] == "blocker"]
                 self.ws.event("review", f"plan round {rnd}: {v['verdict']}, {len(blockers)} blocker(s), "
@@ -868,7 +919,7 @@ class Engine:
                     raise _Abort
                 for p in plan["tasks"]:
                     self.ws.add_task(p["id"], "work", p["title"], {k: p[k] for k in ("acceptance", "scope_paths", "verify")}, p["assignee"], p["deps"])
-                if self.team["skills"]:
+                if self.team["skills"] and not self.light(len(plan["tasks"])):  # a one-task light run skips the extra agent call
                     self.ws.add_task("SKILLS", "skills", "Pick and install skills for this plan", assignee="skill_architect")
                 self.ws.add_task("REVIEW", "review", "Final review of the integrated result", assignee="reviewer", deps=[p["id"] for p in plan["tasks"]])
                 self.ws.event("done", f"plan approved: {len(plan['tasks'])} task(s)", "PLAN")
@@ -1048,18 +1099,23 @@ class Engine:
             seen |= {json.dumps(c) for c in cmds}
             ok, rep = self.verify(cmds, self.main_wt, self.rdir / "attempts" / f"{tid}-verify-{x['id']}")
             if not ok:
-                problems.append({"task_id": x["id"], "severity": "blocker", "message": f"verify fails on the combined tree: {rep[-1500:]}"})
+                problems.append({"task_id": x["id"], "severity": "blocker", "message": "verify fails on the combined tree",
+                                 "evidence": rep[-1500:]})
+        if not problems and self.light(sum(x["kind"] == "work" for x in self.ws.tasks())):
+            self.ws.update(tid, handoff={"verdict": "approve", "issues": []})
+            self.ws.event("review", "final: verify passes on the integrated tree (light run: no reviewer call)", tid)
+            return self.set(tid, "done", "verified", "running")
         try:
             v, _, _ = self.ask("reviewer", self.team["reviewer"], self.packet_final(tid, work, problems), "verdict", tid, "review", self.main_wt)
         except Fail as f:
             return self.to_user(tid, f"The final review could not run ({f.cls}): {f.detail[:300]}\nReply 'accept' to finish without it, or 'retry'.", "running")
-        issues = v["issues"] + problems
+        issues = weigh(v["issues"]) + problems
         blockers = [i for i in issues if i["severity"] == "blocker"]
         self.ws.update(tid, handoff={**v, "issues": issues})
         self.ws.event("review", f"final: {v['verdict']}, {len(blockers)} blocker(s)", tid, "reviewer")
         if not blockers:
             return self.set(tid, "done", "approved", "running")
-        lines = [f"[{i['task_id'] or '-'}] {i['message']}" for i in blockers]
+        lines = [f"[{i['task_id'] or '-'}] {i['message']}" + (f": {i['evidence'][-600:]}" if i.get("evidence") else "") for i in blockers]
         if sum(x["kind"] == "review" for x in self.ws.tasks()) - 1 < self.team["max_amend"]:
             return self.job_amend(t, lines)
         self.to_user(tid, "Final review blockers remain:\n" + "\n".join(f"- {x}" for x in lines) +
@@ -1109,6 +1165,11 @@ class Engine:
                          f"## Goal\n{self.goal}", f"## Workers (assignee must be one of these names)\n{self.roster()}",
                          f"## Repository files\n{self.repo_map()}", self.kg_text(self.goal, 10),
                          prev and f"## Previous plan (v{prev['version']})\n{json.dumps(prev['plan'], ensure_ascii=False)}",
+                         self.team["verify"] and "## Project checks (from the user: use them as verify where they apply)\n" +
+                         "\n".join(f"- {json.dumps(v)}" for v in self.team["verify"]),
+                         self.team["mode"] == "auto" and "## Size the plan to the goal\nIf one worker can finish the goal in one session, "
+                         "return exactly ONE task (scope may be \".\") for the strongest worker: a one-task plan skips the plan review and "
+                         "the final reviewer call. Split only into large parts that can run in parallel.",
                          feedback and f"## Feedback to address\n{feedback}")
 
     def packet_plan_review(self, plan):
@@ -1236,12 +1297,24 @@ class Engine:
                  "| task | status | worker | attempts | commit | title |", "|---|---|---|---|---|---|",
                  *[f"| {t['id']} | {t['status']} | {t['assignee'] or ''} | {t['attempts']} | {(t['commit_sha'] or '')[:10]} | {t['title'][:70]} |" for t in ts],
                  "", "## Usage", "", "| agent | model | calls | tokens in | tokens out | cost $ |", "|---|---|---|---|---|---|",
-                 *[f"| {u['agent']} | {u['model']} | {u['n']} | {u['i'] or 0:,} | {u['o'] or 0:,} | {'' if u['c'] is None else round(u['c'], 4)} |" for u in use]]
+                 *[f"| {u['agent']} | {u['model']} | {u['n']} | {u['i'] or 0:,} | {u['o'] or 0:,} | {money(u['c'], u['model'], u['i'], u['o'])} |" for u in use],
+                 "", "## Calls (where the tokens go)", "", "| # | task | kind | agent / model | outcome | tokens in | tokens out | seconds | prompt KB |",
+                 "|---|---|---|---|---|---|---|---|---|", *self.call_rows(),
+                 "", "`~` = estimated at the OpenRouter list price (`models refresh`); subscription CLIs do not bill per token."]
         if pend:
             lines += ["", "## Waiting for you", "", *[f"- **{t['id']}**: {t['question']}\n  `python -m orch answer {t['id']} \"...\"`" for t in pend]]
         self.rdir.mkdir(parents=True, exist_ok=True)
         write_atomic(self.rdir / "report.md", "\n".join(lines) + "\n")
         return self.rdir / "report.md"
+
+    def call_rows(self):
+        rows = []
+        for a in self.ws.q("SELECT * FROM attempts WHERE run=? ORDER BY id", self.run):
+            kb = sum(p.stat().st_size for p in Path(a["dir"]).rglob("prompt.md")) / 1024 if a["dir"] and Path(a["dir"]).exists() else 0
+            secs = f"{a['ended'] - a['started']:.0f}" if a["ended"] and a["started"] else ""
+            rows.append(f"| {a['id']} | {a['task']} | {a['kind']} | {a['agent']} / {a['model']} | {a['outcome'] or 'running'} | "
+                        f"{a['tokens_in'] or 0:,} | {a['tokens_out'] or 0:,} | {secs} | {kb:.1f} |")
+        return rows
 
     def pause(self):
         path = self.report("waiting for you")
