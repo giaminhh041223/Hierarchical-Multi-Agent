@@ -201,8 +201,8 @@ def write_rules(ws):
             (d / f"{name}.md").write_text(text + "\n", encoding="utf-8", newline="\n")
 
 
-def save_team(ws, team):
-    """Validate, then write team.json and any missing rule file (one per role, one per worker)."""
+def validate_team(team):
+    """The team with defaults filled in; ValueError when it cannot run (save_team, doctor)."""
     roles = ("lead", "reviewer", "skill_architect")
     workers = team.get("workers") if isinstance(team, dict) else None
     if not isinstance(workers, dict) or not workers:
@@ -214,7 +214,13 @@ def save_team(ws, team):
     bad = [n for n in workers if not re.fullmatch(r"[A-Za-z0-9][\w-]{0,31}", n) or n in RULES]  # names become file names
     if bad:
         raise ValueError(f"bad worker names {bad}: use letters, digits, - and _, and not a role name")
-    team = {**TEAM_DEFAULTS, **team}
+    return {**TEAM_DEFAULTS, **team}
+
+
+def save_team(ws, team):
+    """Validate, then write team.json and any missing rule file (one per role, one per worker)."""
+    team = validate_team(team)
+    workers = team["workers"]
     ws.write_json("team.json", team)
     write_rules(ws)
     for n, w in workers.items():

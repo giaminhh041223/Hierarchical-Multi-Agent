@@ -829,6 +829,28 @@ def test_cli_parsers_failure_classes_and_env():
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_doctor():
+    """Local readiness report: machine, project, team, workspace DB; a team agent missing here fails; secrets never printed."""
+    r = Repo(two_tasks())
+    home = r.tmp / "home"
+    home.mkdir(exist_ok=True)
+    (home / "vault.json").write_text("{}", encoding="utf-8")
+    assert r.orch("doctor") == 0, r.out
+    for frag in ("[ok  ] git", "with FTS5", "[ok  ] team             lead mock", "Ready."):
+        assert frag in r.out, (frag, r.out)
+    assert r.run() == 0 and r.orch("doctor") == 0 and "workspace db     schema 1" in r.out and "engine           not running" in r.out, r.out
+    (home / "agents.json").write_text(json.dumps({"ghost": {"name": "ghost", "bin": "no-such-agent-cli-xyz", "mode": {}, "run": [],
+                                                           "prompt": "stdin", "parse": "agy"}}), encoding="utf-8")
+    team = json.loads((r.repo / ".orch" / "team.json").read_text(encoding="utf-8"))
+    team["workers"]["w2"] = {"agent": "ghost", "model": "m"}
+    team["workers"]["far"] = {"agent": "remote", "model": "codex:x"}
+    (r.repo / ".orch" / "team.json").write_text(json.dumps(team), encoding="utf-8")
+    secret = "doctor-test-secret-0123456789"
+    assert r.orch("doctor", ORCH_REMOTE_TOKEN="short", DEMO_API_KEY=secret) == 1, r.out
+    assert "w2 uses ghost, which is not installed here" in r.out and "ORCH_REMOTE_TOKEN is missing or shorter" in r.out, r.out
+    assert secret not in r.out and "short" not in r.out.replace("shorter", ""), "doctor must never print a secret"
+
+
 def test_db_schema_versions():
     """A workspace from before versioning becomes version 1 with any missing table; a later migration runs once; a database
     from a newer Hoatau is refused instead of being misread."""

@@ -31,6 +31,8 @@ Hoặc `uv tool install` với cùng địa chỉ. Sau khi cài, `hoatau <lệnh
 
 Không cài thì mọi lệnh chạy từ thư mục này (`prototype/`). Dự án đích chọn bằng `--ws <thư mục>`, đặt **trước** tên lệnh. Cũng có thể đặt biến `ORCH_WS`, hoặc đứng trong thư mục dự án và thêm `prototype/` vào `PYTHONPATH`.
 
+0. Kiểm tra máy đã sẵn sàng chưa: `python -m orch doctor` (hoặc `hoatau doctor`).
+
 1. Tìm agent, model và trạng thái đăng nhập. `--probe` gửi một lời gọi rất nhỏ tới từng agent để chắc chắn nó dùng được.
 
    ```bash
@@ -96,6 +98,7 @@ Không cài thì mọi lệnh chạy từ thư mục này (`prototype/`). Dự �
 
 | Lệnh | Việc |
 |---|---|
+| `doctor` | Kiểm tra máy (Python, git, SQLite FTS5, thư mục dữ liệu, agent CLI đã cài, port UI) và, với `--ws`, dự án (git, team, DB, engine). Chỉ kiểm tra tại chỗ: không gọi mạng, không gọi agent, không in secret. Mã thoát 1 khi có lỗi chặn. |
 | `discover [--probe] [--only codex,agy]` | Tìm agent CLI, model và trạng thái đăng nhập. Kết quả ghi vào `~/.orchestra/resources.json`. |
 | `login <agent>` | Mở luồng đăng nhập của chính CLI đó. Với claude: gõ `/login` trong cửa sổ mở ra. |
 | `vault list` · `vault set NAME` · `vault rm NAME` | Quản lý API key: nhập ẩn, mã hoá DPAPI, chỉ hiển thị dạng đã che. |
