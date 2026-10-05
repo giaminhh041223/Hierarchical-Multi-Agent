@@ -374,7 +374,7 @@ jobs:
   team:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: npm install -g @openai/codex   # các agent CLI mà team dùng
       - uses: giaminhh041223/Hierarchical-Multi-Agent/prototype/action@main
         with:

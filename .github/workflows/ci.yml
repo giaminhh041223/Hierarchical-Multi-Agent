@@ -28,8 +28,8 @@ jobs:
       PYTHONIOENCODING: utf-8
       PYTHONPATH: "."
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - name: End-to-end tests (mock agents, no tokens)
@@ -39,8 +39,8 @@ jobs:
     name: wheel installs and runs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Build the wheel
@@ -52,7 +52,7 @@ jobs:
           venv/bin/pip install --quiet "$GITHUB_WORKSPACE"/dist/hoatau-*.whl
           venv/bin/hoatau --version
           venv/bin/hoatau doctor
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: wheel
           path: dist/*.whl
@@ -61,7 +61,7 @@ jobs:
     name: GitHub Action (mock team)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: A demo repository and a mock team
         working-directory: ${{ runner.temp }}
         run: |
