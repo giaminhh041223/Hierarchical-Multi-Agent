@@ -10,6 +10,12 @@ Cách làm việc:
 
 Thiết kế đầy đủ, trạng thái hiện tại và biên bản trao đổi với Codex nằm ở [PLAN.md](PLAN.md).
 
+| Duyệt và sửa plan (tối) | Run đã xong (sáng) | Tab Team trên điện thoại |
+|---|---|---|
+| ![Trình sửa plan: kéo để nối task, chọn worker cho từng task](docs/screenshots/plan-editor-dark.png) | ![Tab Run: sơ đồ task, tổng phổ các lần gọi agent, bảng task](docs/screenshots/run-done-light.png) | ![Tab Team ở màn 390px, giao diện tối](docs/screenshots/team-mobile-dark.png) |
+
+Ảnh chụp từ một run với agent giả (`mock`), không phải agent thật.
+
 ## Yêu cầu
 
 - Windows 10/11 (đã chạy với agent thật). Linux và macOS: bộ test chạy qua trên CI ở mỗi lần push, nhưng chưa chạy với agent thật.
@@ -25,7 +31,7 @@ Cài thành lệnh `orctram` trong một môi trường riêng (chưa có trên 
 pipx install "git+https://github.com/giaminhh041223/Hierarchical-Multi-Agent.git#subdirectory=prototype"
 ```
 
-Hoặc `uv tool install` với cùng địa chỉ. Sau khi cài, `orctram <lệnh>` tương đương `python -m orch <lệnh>` trong tài liệu này, và chạy được từ bất kỳ thư mục nào. Không cài cũng được: chạy `python -m orch` từ thư mục `prototype/` như dưới đây.
+Khi đã phát hành lên PyPI: `pipx install orctram`. Hoặc `uv tool install` với cùng địa chỉ. Sau khi cài, `orctram <lệnh>` tương đương `python -m orch <lệnh>` trong tài liệu này, và chạy được từ bất kỳ thư mục nào. Không cài cũng được: chạy `python -m orch` từ thư mục `prototype/` như dưới đây.
 
 ## Bắt đầu nhanh
 
@@ -501,7 +507,7 @@ Chi tiết ở [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
 python tests/test_e2e.py
 ```
 
-- 32 test end-to-end: Linux khoảng 60 giây, Windows khoảng 2–3 phút. GitHub Actions chạy chúng trên Windows và Linux (Python 3.11, 3.13) ở mỗi lần push, cùng với bản wheel và GitHub Action.
+- 33 test end-to-end: Linux khoảng 60 giây, Windows khoảng 2–3 phút. GitHub Actions chạy chúng trên Windows và Linux (Python 3.11, 3.13) ở mỗi lần push, cùng với bản wheel và GitHub Action.
 - Parser của các CLI được kiểm bằng đầu ra thật lưu ở [docs/probes/](docs/probes/).
 - Dùng mock agent theo kịch bản, không tốn token.
 - Riêng test 9router dựng một router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router giả đó.
@@ -517,6 +523,16 @@ python tests/test_e2e.py
 - Sandbox của codex trên Windows không thấy `python`: worker codex không tự chạy test được. Engine vẫn verify bên ngoài. Muốn worker tự test thì chỉnh sandbox của codex. Đây là cấu hình của bạn nên prototype không đổi.
 - Skill và rule toàn cục của codex (`~/.codex`) cũng được nạp vào worker codex. Hãy để ý nếu chúng mâu thuẫn với `rules/`.
 - Hai điểm va chạm với `AGENTS.md` ở thư mục cha cần bạn quyết định: lệnh verify lấy từ plan JSON, và việc tải skill curated tự động. Xem [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
+
+## Phát hành
+
+Workflow [release.yml](../.github/workflows/release.yml): push tag `vX.Y.Z` (bằng `orch.__version__`) thì CI chạy test, build sdist và wheel, đăng lên PyPI qua Trusted Publishing (không lưu token nào), rồi tạo GitHub Release kèm các file đó.
+
+Một lần, trên PyPI: thêm "trusted publisher" cho repo này, workflow `release.yml`, environment `pypi`. Sau đó:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
 
 ## License
 
