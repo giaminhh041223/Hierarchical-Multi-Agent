@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import agents, models
 from .core import HOME, contract, record
-from .engine import MODES, RULES, check_handoff, checked_call, ensure_excluded, git, git_ok, load_team, new_run, validate_team
+from .engine import MODES, RULES, check_handoff, checked_call, ensure_excluded, file_map, git, git_ok, load_team, new_run, validate_team
 
 
 def run_checks(project, ref, checks, timeout, out_dir, wt):
@@ -59,11 +59,13 @@ def solo(ws, goal, who, base, bid, n, timeout, out_dir):
     branch, wt = f"orch/bench-{bid}/solo-{n}", HOME / "wt" / f"bench-{bid}" / f"solo-{n}"
     git(ws.project, "worktree", "add", "-q", "-b", branch, str(wt), base)
     try:
+        note = agents.catalog()[aid].get("note")  # the CLI's quirks, as the engine adds them (agy cannot run commands)
         prompt = "\n\n".join(filter(None, [f"ORCH-CALL role=worker task=SOLO run=bench-{bid}", RULES["common"], RULES["worker"],
                                            contract("handoff"), "---", f"## Goal\n{goal}",
+                                           f"## Repository files\n{file_map(git(wt, 'ls-files').splitlines())}",
                                            "You work alone: no plan, no other workers. Scope: the whole repository. Make the goal true, "
-                                           "run the project's tests if it has any, then reply with the handoff JSON.",
-                                           agents.catalog()[aid].get("note")]))  # the CLI's quirks, as the engine adds them (agy cannot run commands)
+                                           + ("" if note else "run the project's tests if it has any, ") + "then reply with the handoff JSON.",
+                                           note]))  # no "run the tests" next to a note that forbids them: claude via agy tried to, twice
         t0 = time.time()
         run = lambda p, sub, sess: agents.run_agent(aid, model, p, wt, sub, schema="handoff", session=sess, timeout=timeout, readonly=False)
         r, calls, h, err = checked_call(run, prompt, out_dir / "agent", None, aid, "handoff", check_handoff)  # repaired once, as in a run
