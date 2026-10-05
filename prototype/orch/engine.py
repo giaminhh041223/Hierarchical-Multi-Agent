@@ -300,8 +300,9 @@ def save_team(ws, team):
     return team
 
 
-def new_run(ws, goal, auto_approve=False):
-    team = load_team(ws)
+def new_run(ws, goal, auto_approve=False, team=None):
+    """team: this run's own team (bench arms, another mode) instead of .orch/team.json; the run keeps it across resumes."""
+    team = validate_team(team) if team is not None else load_team(ws)
     if EngineLock(ws).held_elsewhere():
         raise SystemExit("an engine is already running on this workspace (see: python -m orch status)")
     if not git_ok(ws.project, "rev-parse", "--verify", "HEAD"):
@@ -310,8 +311,14 @@ def new_run(ws, goal, auto_approve=False):
     dirty = [ln for ln in git(ws.project, "status", "--porcelain").splitlines() if ".orch" not in ln]
     ensure_excluded(ws.project)
     write_rules(ws)
-    run = time.strftime("%Y%m%d-%H%M%S")
+    run = stamp = time.strftime("%Y%m%d-%H%M%S")
+    for n in range(2, 100):  # two runs in one second (bench repeats): the run id names branches and task rows, keep it unique
+        if not ws.q("SELECT 1 FROM tasks WHERE run=? LIMIT 1", run) and not git_ok(ws.project, "rev-parse", "-q", "--verify", f"orch/{run}/main"):
+            break
+        run = f"{stamp}-{n}"
     ws.meta("run", run)
+    if team is not None:
+        ws.meta(f"{run}:team", json.dumps(team, ensure_ascii=False))
     e = Engine(ws)
     for k, v in (("goal", goal), ("base", base), ("auto_approve", int(bool(auto_approve or team["auto_approve"]))),
                  ("budget", team["budget_tokens"])):
@@ -351,7 +358,9 @@ class _Abort(Exception):
 class Engine:
     def __init__(self, ws, exit_on_wait=False):
         self.ws, self.exit_on_wait = ws, exit_on_wait
-        self.team, self.run = load_team(ws), ws.run
+        self.run = ws.run
+        own = self.run and ws.meta(f"{self.run}:team")  # a run started with its own team (new_run(team=...)) keeps it
+        self.team = {**TEAM_DEFAULTS, **json.loads(own)} if own else load_team(ws)
         if not self.run:
             raise SystemExit('no run yet: python -m orch run "<goal>"')
         slug = re.sub(r"[^A-Za-z0-9._-]+", "_", ws.project.name)[:24]

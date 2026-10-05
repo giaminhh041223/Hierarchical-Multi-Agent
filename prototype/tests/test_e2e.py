@@ -973,21 +973,53 @@ def test_bench_solo_versus_team():
     (r.tmp / "home").mkdir(exist_ok=True)
     (r.tmp / "home" / "agents.json").write_text(json.dumps({"mock": {"note": "## This CLI cannot run commands"}}), encoding="utf-8")
     assert r.orch("bench", "demo goal", "--check", 'python -c "import app; assert app.add(2, 3) == 5"', "--solo", "mock/mock-fast") == 0, r.out
-    prompt = next((r.repo / ".orch" / "bench").glob("*/solo/agent/prompt.md")).read_text(encoding="utf-8")
+    prompt = next((r.repo / ".orch" / "bench").glob("*/solo-1/agent/prompt.md")).read_text(encoding="utf-8")
     assert "This CLI cannot run commands" in prompt, "the CLI's quirks reach the solo agent too (a real agy returned nothing without it)"
     report = next((r.repo / ".orch" / "bench").glob("*/report.md")).read_text(encoding="utf-8")
-    solo_row = next(l for l in report.splitlines() if l.startswith("| solo mock/mock-fast"))
-    team_row = next(l for l in report.splitlines() if l.startswith("| team (lead mock, 2 worker(s))"))
+    solo_row = next(l for l in report.splitlines() if l.startswith("| 1 | solo mock/mock-fast"))
+    team_row = next(l for l in report.splitlines() if l.startswith("| 1 | team (lead mock, 2 worker(s), mode team)"))
     assert "| no valid handoff | 0/1 | 2,000 | 200 |" in solo_row and "| 1 | 0 |" in solo_row, solo_row  # one call (+ its repair), no question
     log = (Path(f"{r.scenario}.state") / "calls.log").read_text(encoding="utf-8")
     assert "worker SOLO 2 resume" in log and "repair=1" in log, "the solo agent gets the repair turn every engine call gets"
     assert "| done | 1/1 |" in team_row and "| 0 |" in team_row, team_row
     assert "failed `python -c" in report and "AssertionError" in report, report
     bid = next((r.repo / ".orch" / "bench").glob("*")).name
-    assert "return a - b" in r.git("show", f"orch/bench-{bid}/solo:app.py") and r.git("rev-parse", "HEAD") == r.base
+    assert "return a - b" in r.git("show", f"orch/bench-{bid}/solo-1:app.py") and r.git("rev-parse", "HEAD") == r.base
     assert not [w for w in r.git("worktree", "list").splitlines()[1:] if "bench-" in w], "no worktree is left behind"
     assert not list((r.tmp / "home" / "wt").rglob("*")), "nor their empty directories (the team run's and the bench's)"
     assert r.orch("bench", "demo goal") == 1 and "--check" in r.out, "without a check there is nothing to judge by"
+
+
+def test_bench_repeats_modes_and_team_files():
+    """--repeat N with medians, the workspace team in another mode, a team file as one more arm; dollars at list price."""
+    from orch import models
+    check = [["python", "-c", "import app; assert app.add(2, 3) == 5"]]
+    sc = two_tasks()
+    sc["steps"]["worker:SOLO"] = [{"write": {"app.py": ADD}}]
+    sc["steps"]["worker:T1"] = [{"write": {"app.py": ADD}}]
+    r = Repo(sc, verify=check)
+    home = r.tmp / "home"
+    home.mkdir(exist_ok=True)
+    (home / "models.json").write_text(json.dumps({"models": {models.norm("mock-fast"): {"price_in": 1.0, "price_out": 2.0},
+                                                            models.norm("mock-strong"): {"price_in": 3.0, "price_out": 15.0}}}), encoding="utf-8")
+    other = json.loads((r.repo / ".orch" / "team.json").read_text(encoding="utf-8"))
+    other["workers"] = {"w1": other["workers"]["w1"]}  # a one-worker team: the plan's T2 goes to w1 too
+    (r.tmp / "one.json").write_text(json.dumps(other), encoding="utf-8")
+    sc["plan"] = [dict(t, assignee="w1") for t in sc["plan"]]
+    r.scenario.write_text(json.dumps(sc), encoding="utf-8")
+    assert r.orch("bench", "demo goal", "--check", 'python -c "import app; assert app.add(2, 3) == 5"', "--solo", "mock/mock-fast", "--repeat", "2", "--mode", "solo", "--team-file", str(r.tmp / "one.json")) == 0, r.out
+    report = r.show_file(".orch/bench/*/report.md")
+    summary = report.split("## Summary: medians of 2 runs per arm")[1].split("## Every run")[0]
+    rows = [l for l in summary.splitlines() if l.startswith("| ") and not l.startswith("| arm") and not l.startswith("|---")]
+    assert [l.split(" | ")[0][2:] for l in rows] == ["solo mock/mock-fast", "team (lead mock, 2 worker(s), mode team)", "team mode solo", "team one.json"], rows
+    assert all("| 2/2 | 1/1 |" in l for l in rows), rows
+    solo, full, light = rows[0], rows[1], rows[2]
+    assert "| ~0.0012 | 1 | 0 |" in solo, solo  # 1,000 in x $1 + 100 out x $2 per Mtok (one call, no repair needed)
+    assert "| 1 | 0 |" in light and "| 5 | 0 |" in full, (light, full)  # solo mode: the worker only; team: plan, review, T1, T2, review
+    every = report.split("## Every run")[1]
+    assert sum(l.startswith("| 1 |") for l in every.splitlines()) == 4 and sum(l.startswith("| 2 |") for l in every.splitlines()) == 4, every
+    assert len({l.split("`")[-2] for l in every.splitlines() if l.startswith("| ") and "`orch/" in l}) == 8, "every run has its own branch"
+    assert not [w for w in r.git("worktree", "list").splitlines()[1:] if "bench-" in w]
 
 
 def test_doctor():

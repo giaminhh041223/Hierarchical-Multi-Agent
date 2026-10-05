@@ -207,7 +207,7 @@ def cmd_pool(a):
 
 def cmd_bench(a):
     from . import bench
-    report = bench.bench(ws_of(a), a.goal, a.check, a.solo, a.timeout)
+    report = bench.bench(ws_of(a), a.goal, a.check, a.solo, a.timeout, repeat=a.repeat, modes=a.mode, team_files=a.team_file)
     print("\n" + report.read_text(encoding="utf-8") + f"\n-> {report}")
 
 
@@ -276,6 +276,9 @@ def main(argv=None):
     s.add_argument("--check", action="append", default=[], help='a command that must pass on the result, e.g. "python -m pytest -q" (repeatable)')
     s.add_argument("--solo", help="agent/model working alone (default: the team's lead)")
     s.add_argument("--timeout", type=int, default=1800, help="seconds for the solo agent call")
+    s.add_argument("--repeat", type=int, default=1, help="run every arm N times (interleaved); the summary gives medians")
+    s.add_argument("--mode", action="append", default=[], help="also the workspace team in this mode: auto | solo | team (repeatable)")
+    s.add_argument("--team-file", action="append", default=[], help="also this team JSON as an arm (repeatable)")
     sub.add_parser("doctor", help="check this machine (and the project, with --ws) before a run: local checks only, nothing is sent")
     s = sub.add_parser("remote", help="remote worker: run = serve the agent CLIs of this machine to an engine (over ssh -R)")
     s.add_argument("action", choices=["run", "proxy"])

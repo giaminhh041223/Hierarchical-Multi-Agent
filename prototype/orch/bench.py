@@ -1,15 +1,17 @@
-"""`orctram bench`: does the team beat one agent working alone? The same goal, from the same commit, two ways:
-- solo: one agent call with the whole goal in a fresh worktree, no plan, no review, no engine verify;
-- team: a normal run of the workspace team, plan auto-approved (like `run --yes`), engine verify and merge.
-Both results are judged by the same checks the user gives (e.g. the project's test command), never by the agents' own
-verify commands, then compared on checks passed, tokens, cost, wall time, agent calls and questions for the user.
-ponytail: one sample per arm; agents are noisy, so repeat it (or add --repeat) before trusting a difference."""
-import contextlib, json, shlex, subprocess, time
+"""`orctram bench`: does the team beat one agent working alone? The same goal, from the same commit, several ways:
+- solo: one agent call with the whole goal in a fresh worktree (plus the repair turn every engine call gets), no plan, no
+  review, no engine verify;
+- team: a normal run of the workspace team, plan auto-approved (like `run --yes`), engine verify and merge;
+- optional more team arms: the workspace team in another mode (--mode auto / solo) or other team files (--team-file).
+Every result is judged by the same checks the user gives (e.g. the project's test command), never by the agents' own verify
+commands, and compared on checks passed, tokens, dollars, wall time, agent calls and questions for the user. --repeat runs
+each arm N times, interleaved, and the summary gives medians: agents vary from run to run."""
+import contextlib, json, shlex, statistics, subprocess, time
 from pathlib import Path
 
-from . import agents
+from . import agents, models
 from .core import HOME, contract, record
-from .engine import RULES, check_handoff, checked_call, ensure_excluded, git, git_ok, load_team, new_run
+from .engine import MODES, RULES, check_handoff, checked_call, ensure_excluded, git, git_ok, load_team, new_run, validate_team
 
 
 def run_checks(project, ref, checks, timeout, out_dir, wt):
@@ -32,10 +34,22 @@ def run_checks(project, ref, checks, timeout, out_dir, wt):
     return res
 
 
-def solo(ws, goal, who, base, bid, timeout, out_dir):
-    """The baseline: one agent, the whole goal, the whole repository as scope, one call."""
+def dollars(rows):
+    """[(cost reported or None, model, tokens in, tokens out)] -> (USD, estimated?) or (None, False): the CLI's own cost where it
+    reports one, else the OpenRouter list price (models refresh)."""
+    total, est, known = 0.0, False, False
+    for cost, model, tin, tout in rows:
+        if cost is None:
+            cost, est = models.estimate(model, tin, tout), True
+        if cost is not None:
+            total, known = total + cost, True
+    return (total, est) if known else (None, False)
+
+
+def solo(ws, goal, who, base, bid, n, timeout, out_dir):
+    """The baseline: one agent, the whole goal, the whole repository as scope, one call (and its repair turn)."""
     aid, model = who
-    branch, wt = f"orch/bench-{bid}/solo", HOME / "wt" / f"bench-{bid}" / "solo"
+    branch, wt = f"orch/bench-{bid}/solo-{n}", HOME / "wt" / f"bench-{bid}" / f"solo-{n}"
     git(ws.project, "worktree", "add", "-q", "-b", branch, str(wt), base)
     try:
         prompt = "\n\n".join(filter(None, [f"ORCH-CALL role=worker task=SOLO run=bench-{bid}", RULES["common"], RULES["worker"],
@@ -49,39 +63,52 @@ def solo(ws, goal, who, base, bid, timeout, out_dir):
         seconds = time.time() - t0
         git(wt, "add", "-A")
         if not git_ok(wt, "diff", "--cached", "--quiet"):
-            git(wt, "commit", "-q", "--no-verify", "-m", f"bench {bid}: solo {aid}/{model}")
+            git(wt, "commit", "-q", "--no-verify", "-m", f"bench {bid}: solo {aid}/{model} #{n}")
         tin, tout = sum(c["tokens_in"] or 0 for c in calls), sum(c["tokens_out"] or 0 for c in calls)
         costs = [c["cost"] for c in calls if c["cost"] is not None]
-        cost = sum(costs) if costs else None
+        usd, est = dollars([(sum(costs) if costs else None, model, tin, tout)])
         record(str(ws.project), "SOLO", aid, model, "bench", (r["failure"] or "error") if not r["ok"] else "invalid" if err else "ok",
-               round(seconds, 1), tin, tout, cost)
+               round(seconds, 1), tin, tout, sum(costs) if costs else None)
         return {"arm": f"solo {aid}/{model}", "ref": branch, "status": f"failed ({r['failure']})" if not r["ok"] else "no valid handoff" if err
-                else h["status"], "seconds": seconds, "calls": 1, "tokens_in": tin, "tokens_out": tout, "cost": cost, "questions": 0}
+                else h["status"], "seconds": seconds, "calls": 1, "tokens_in": tin, "tokens_out": tout, "usd": usd, "est": est, "questions": 0}
     finally:
         git(ws.project, "worktree", "remove", "--force", str(wt), codes=None)
 
 
-def team(ws, goal):
-    """A normal run, auto-approved; it may stop waiting for the user (the report says so, and the run stays open)."""
+def team(ws, goal, label, tm):
+    """A normal run with team `tm`, auto-approved; it may stop waiting for the user (the report says so; the run stays open)."""
     t0 = time.time()
-    e = new_run(ws, goal, auto_approve=True)
+    e = new_run(ws, goal, auto_approve=True, team=tm)
     e.exit_on_wait = True
     status = e.loop()
     seconds = time.time() - t0
-    use = ws.q("SELECT count(*) n, coalesce(sum(tokens_in), 0) i, coalesce(sum(tokens_out), 0) o, sum(cost) c FROM attempts WHERE run=?", e.run)[0]
+    atts = ws.q("SELECT model, tokens_in, tokens_out, cost FROM attempts WHERE run=?", e.run)
+    usd, est = dollars([(a["cost"], a["model"], a["tokens_in"], a["tokens_out"]) for a in atts])
     asked = ws.q("SELECT count(*) n FROM events WHERE run=? AND kind='pending_user'", e.run)[0]["n"]
-    return {"arm": f"team (lead {e.team['lead']['agent']}, {len(e.primaries())} worker(s))", "ref": f"orch/{e.run}/main", "status": status,
-            "seconds": seconds, "calls": use["n"], "tokens_in": use["i"], "tokens_out": use["o"], "cost": use["c"], "questions": asked,
-            "run": e.run}
+    return {"arm": label, "ref": f"orch/{e.run}/main", "status": status, "seconds": seconds, "calls": len(atts),
+            "tokens_in": sum(a["tokens_in"] or 0 for a in atts), "tokens_out": sum(a["tokens_out"] or 0 for a in atts),
+            "usd": usd, "est": est, "questions": asked, "run": e.run}
 
 
-def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600):
-    tm = load_team(ws)
+def money(usd, est):
+    return "" if usd is None else f"{'~' if est else ''}{usd:.4f}"
+
+
+def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600, repeat=1, modes=(), team_files=()):
     if not checks:
-        raise ValueError("give at least one --check command: both results are judged by it, not by the agents' own verify")
+        raise ValueError("give at least one --check command: every result is judged by it, not by the agents' own verify")
+    if not 1 <= int(repeat) <= 20:
+        raise ValueError("--repeat: 1 to 20")
+    if bad := [m for m in modes if m not in MODES]:
+        raise ValueError(f"--mode: one of {', '.join(MODES)}, not {bad}")
+    tm = load_team(ws)
     who = tuple(solo_who.split("/", 1)) if solo_who else (tm["lead"]["agent"], tm["lead"]["model"])
     if len(who) != 2 or who[0] not in agents.catalog():
         raise ValueError(f"--solo must be agent/model with an agent id from the catalog, not {solo_who!r}")
+    arms = [(f"team (lead {tm['lead']['agent']}, {sum(not w.get('backup') for w in tm['workers'].values())} worker(s), mode {tm['mode']})", tm)]
+    arms += [(f"team mode {m}", {**tm, "mode": m}) for m in modes if m != tm["mode"]]
+    for f in team_files:
+        arms.append((f"team {Path(f).name}", validate_team(json.loads(Path(f).read_text(encoding="utf-8")))))
     if not git_ok(ws.project, "rev-parse", "--verify", "HEAD"):
         raise ValueError("bench needs a git repository with at least one commit")
     ensure_excluded(ws.project)
@@ -89,25 +116,50 @@ def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600):
     out = ws.dir / "bench" / bid
     out.mkdir(parents=True, exist_ok=True)
     checks = [shlex.split(c, posix=True) if isinstance(c, str) else list(c) for c in checks]
-    arms = [solo(ws, goal, who, base, bid, timeout, out / "solo"), team(ws, goal)]
-    for a, name in zip(arms, ("solo", "team")):
-        a["checks"] = run_checks(ws.project, a["ref"], checks, check_timeout, out / f"checks-{name}", HOME / "wt" / f"bench-{bid}" / f"check-{name}")
+    samples = []
+    for n in range(1, int(repeat) + 1):  # interleaved: a slow hour or a cooling account hits every arm alike
+        got = [solo(ws, goal, who, base, bid, n, timeout, out / f"solo-{n}")]
+        got += [team(ws, goal, label, t) for label, t in arms]
+        for i, a in enumerate(got):
+            a["n"] = n
+            a["checks"] = run_checks(ws.project, a["ref"], checks, check_timeout, out / f"checks-{n}-{i}", HOME / "wt" / f"bench-{bid}" / f"check-{n}-{i}")
+        samples += got
     with contextlib.suppress(OSError):
         (HOME / "wt" / f"bench-{bid}").rmdir()  # its worktrees are gone; the empty directory goes too
-    lines = [f"# Bench {bid}", "", f"Goal: {goal}", f"Base: {base[:10]}", "",
-             "Both results judged by: " + "; ".join(f"`{subprocess.list2cmdline(c)}`" for c in checks), "",
-             "| arm | result | checks passed | tokens in | tokens out | cost $ | agent calls | questions for you | wall time | branch |",
-             "|---|---|---|---|---|---|---|---|---|---|"]
-    for a in arms:
-        passed = sum(ok for _, ok, _ in a["checks"])
-        lines.append(f"| {a['arm']} | {a['status']} | {passed}/{len(a['checks'])} | {a['tokens_in']:,} | {a['tokens_out']:,} | "
-                     f"{'' if a['cost'] is None else round(a['cost'], 4)} | {a['calls']} | {a['questions']} | {a['seconds']:.0f}s | `{a['ref']}` |")
-    for a in arms:
-        for cmd, ok, tail in a["checks"]:
-            if not ok:
-                lines += ["", f"**{a['arm']}** failed `{subprocess.list2cmdline(cmd)}`:", "```", tail.strip()[-300:], "```"]
-    lines += ["", "One sample per arm: agents vary from run to run, so repeat the bench before trusting a difference."]
     report = out / "report.md"
-    report.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    (out / "result.json").write_text(json.dumps(arms, default=str, indent=1), encoding="utf-8", newline="\n")
+    report.write_text(render(bid, goal, base, checks, samples, int(repeat)), encoding="utf-8", newline="\n")
+    (out / "result.json").write_text(json.dumps(samples, default=str, indent=1), encoding="utf-8", newline="\n")
     return report
+
+
+def render(bid, goal, base, checks, samples, repeat):
+    med = lambda xs: statistics.median(xs) if xs else None
+    lines = [f"# Bench {bid}", "", f"Goal: {goal}", f"Base: {base[:10]}", "",
+             "Every result judged by: " + "; ".join(f"`{subprocess.list2cmdline(c)}`" for c in checks), ""]
+    order = list(dict.fromkeys(s["arm"] for s in samples))
+    if repeat > 1:
+        lines += [f"## Summary: medians of {repeat} runs per arm", "",
+                  "| arm | runs passing every check | checks passed | tokens in | tokens out | $ | agent calls | questions | wall time |",
+                  "|---|---|---|---|---|---|---|---|---|"]
+        for arm in order:
+            xs = [s for s in samples if s["arm"] == arm]
+            passed = [sum(ok for _, ok, _ in s["checks"]) for s in xs]
+            usd = [s["usd"] for s in xs if s["usd"] is not None]
+            lines.append(f"| {arm} | {sum(p == len(checks) for p in passed)}/{len(xs)} | {med(passed):g}/{len(checks)} | "
+                         f"{med([s['tokens_in'] for s in xs]):,.0f} | {med([s['tokens_out'] for s in xs]):,.0f} | "
+                         f"{money(med(usd), any(s['est'] for s in xs))} | {med([s['calls'] for s in xs]):g} | {med([s['questions'] for s in xs]):g} | "
+                         f"{med([s['seconds'] for s in xs]):.0f}s |")
+        lines += ["", "## Every run", ""]
+    lines += ["| # | arm | result | checks passed | tokens in | tokens out | $ | agent calls | questions for you | wall time | branch |",
+              "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for s in samples:
+        lines.append(f"| {s['n']} | {s['arm']} | {s['status']} | {sum(ok for _, ok, _ in s['checks'])}/{len(s['checks'])} | {s['tokens_in']:,} | "
+                     f"{s['tokens_out']:,} | {money(s['usd'], s['est'])} | {s['calls']} | {s['questions']} | {s['seconds']:.0f}s | `{s['ref']}` |")
+    for s in samples:
+        for cmd, ok, tail in s["checks"]:
+            if not ok:
+                lines += ["", f"**{s['arm']}** (run {s['n']}) failed `{subprocess.list2cmdline(cmd)}`:", "```", tail.strip()[-300:], "```"]
+    lines += ["", "`~` = estimated at the OpenRouter list price (`models refresh`): free models cost 0, subscriptions do not bill per token."]
+    if repeat == 1:
+        lines.append("One sample per arm: agents vary from run to run, so repeat (--repeat 3) before trusting a difference.")
+    return "\n".join(lines) + "\n"
