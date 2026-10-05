@@ -936,6 +936,7 @@ def test_bench_solo_versus_team():
     bid = next((r.repo / ".orch" / "bench").glob("*")).name
     assert "return a - b" in r.git("show", f"orch/bench-{bid}/solo:app.py") and r.git("rev-parse", "HEAD") == r.base
     assert not [w for w in r.git("worktree", "list").splitlines()[1:] if "bench-" in w], "no worktree is left behind"
+    assert not list((r.tmp / "home" / "wt").rglob("*")), "nor their empty directories (the team run's and the bench's)"
     assert r.orch("bench", "demo goal") == 1 and "--check" in r.out, "without a check there is nothing to judge by"
 
 

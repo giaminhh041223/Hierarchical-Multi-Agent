@@ -4,7 +4,7 @@
 Both results are judged by the same checks the user gives (e.g. the project's test command), never by the agents' own
 verify commands, then compared on checks passed, tokens, cost, wall time, agent calls and questions for the user.
 ponytail: one sample per arm; agents are noisy, so repeat it (or add --repeat) before trusting a difference."""
-import json, shlex, subprocess, time
+import contextlib, json, shlex, subprocess, time
 from pathlib import Path
 
 from . import agents
@@ -92,6 +92,8 @@ def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600):
     arms = [solo(ws, goal, who, base, bid, timeout, out / "solo"), team(ws, goal)]
     for a, name in zip(arms, ("solo", "team")):
         a["checks"] = run_checks(ws.project, a["ref"], checks, check_timeout, out / f"checks-{name}", HOME / "wt" / f"bench-{bid}" / f"check-{name}")
+    with contextlib.suppress(OSError):
+        (HOME / "wt" / f"bench-{bid}").rmdir()  # its worktrees are gone; the empty directory goes too
     lines = [f"# Bench {bid}", "", f"Goal: {goal}", f"Base: {base[:10]}", "",
              "Both results judged by: " + "; ".join(f"`{subprocess.list2cmdline(c)}`" for c in checks), "",
              "| arm | result | checks passed | tokens in | tokens out | cost $ | agent calls | questions for you | wall time | branch |",

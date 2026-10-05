@@ -814,6 +814,9 @@ class Engine:
                 git(self.ws.project, "worktree", "remove", "--force", str(p), codes=None)
         git(self.ws.project, "worktree", "remove", "--force", str(self.main_wt), codes=None)
         git(self.ws.project, "worktree", "prune", codes=None)
+        for d in (self.wt_dir, self.wt_dir.parent):  # only when empty: a worktree that could not be removed stays visible
+            with contextlib.suppress(OSError):
+                d.rmdir()
 
     # --- jobs -----------------------------------------------------------------------------------------------
     def job_plan(self, t):
