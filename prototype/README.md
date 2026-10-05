@@ -104,7 +104,7 @@ Không cài thì mọi lệnh chạy từ thư mục này (`prototype/`). Dự �
 
 | Lệnh | Việc |
 |---|---|
-| `bench "<mục tiêu>" --check "<lệnh>" [--check …] [--solo agent/model]` | So sánh: một agent làm một mình (một lời gọi, kèm một lượt repair như mọi lời gọi của engine; không plan, không review) và cả đội (run tự duyệt plan), cùng commit gốc, chấm bằng cùng lệnh `--check` của bạn. Báo cáo: số check pass, token, chi phí, số lời gọi, số câu hỏi cho bạn, thời gian. Ghi ở `.orch/bench/<id>/report.md`. Mỗi bên một lần chạy: lặp lại trước khi tin một khác biệt. |
+| `bench "<mục tiêu>" --check "<lệnh>" [--check …] [--solo agent/model] [--repeat N] [--mode auto\|solo] [--team-file f.json]` | So sánh: một agent làm một mình (một lời gọi, kèm một lượt repair như mọi lời gọi của engine; không plan, không review) và cả đội (run tự duyệt plan), cùng commit gốc, chấm bằng cùng lệnh `--check` của bạn. `--mode` thêm nhánh "cả đội ở chế độ đó", `--team-file` thêm một đội khác, `--repeat` chạy mỗi nhánh N lần xen kẽ và báo trung vị. Báo cáo: số lần đạt hết check, token, $ (CLI báo hoặc ước tính theo giá OpenRouter), số lời gọi, số câu hỏi cho bạn, thời gian. Ghi ở `.orch/bench/<id>/report.md`. Bộ việc chuẩn: [benchmarks/](benchmarks/). |
 | `doctor` | Kiểm tra máy (Python, git, SQLite FTS5, thư mục dữ liệu, agent CLI đã cài, port UI) và, với `--ws`, dự án (git, team, DB, engine). Chỉ kiểm tra tại chỗ: không gọi mạng, không gọi agent, không in secret. Mã thoát 1 khi có lỗi chặn. |
 | `discover [--probe] [--only codex,agy]` | Tìm agent CLI, model và trạng thái đăng nhập. Kết quả ghi vào `~/.orchestra/resources.json`. |
 | `login <agent>` | Mở luồng đăng nhập của chính CLI đó. Với claude: gõ `/login` trong cửa sổ mở ra. |
@@ -402,6 +402,10 @@ jobs:
 - Nên đặt `verify_allow` trong file team: lệnh verify do model viết; ngoài danh sách thì run dừng lại thay vì chạy.
 - Lệnh verify vẫn chạy với danh sách biến môi trường cho phép, nên không thấy API key.
 
+## Chi phí từng lời gọi
+
+`report.md` của mỗi run có bảng **Calls**: token, thời gian và cỡ prompt (KB) của từng lời gọi agent, để biết token tốn vào đâu. Khi CLI không báo chi phí, cột `$` ước tính theo giá OpenRouter (`models refresh`), đánh dấu `~`; model free tính 0, gói thuê bao không tính theo token.
+
 ## Workspace
 
 Engine đặt `<dự án>/.orch/` vào `.git/info/exclude`, nên thư mục này không lọt vào commit. Nội dung:
@@ -446,6 +450,9 @@ Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi b
   "account_max": {},
   "verify_allow": null,
   "verify_env": [],
+  "mode": "team",
+  "solo": null,
+  "verify": [["python", "-m", "pytest", "-q"]],
   "mcp": false,
   "embeddings": null,
   "notify_url": null
@@ -470,6 +477,9 @@ Dữ liệu dùng chung giữa các dự án nằm ở `~/.orchestra/` (đổi b
 | `auto_approve` | Bỏ qua bước bạn duyệt plan. |
 | `account_max` | Số task chạy song song tối đa trên một tài khoản, ví dụ `{"codex": 1}` khi hai worker dùng chung một subscription. Mặc định không giới hạn. |
 | `verify_allow` | Danh sách tiền tố lệnh verify được chạy không cần hỏi, ví dụ `[["python", "-m", "unittest"]]`. Lệnh khác dừng task trước khi gọi worker và hỏi bạn, kể cả khi `auto_approve`; duyệt plan bằng tay cũng là duyệt lệnh trong plan. `null` (mặc định) = không dùng danh sách: duyệt plan bằng tay là duyệt lệnh của plan đó, còn lệnh mới trong bản amend (lead viết sau khi bạn duyệt) vẫn bị hỏi; run `auto_approve` tin lead ở cả hai. |
+| `mode` | `team` (mặc định): lead lập plan, reviewer review plan và kết quả. `auto`: lead được dặn việc nhỏ thì trả đúng 1 task; plan 1 task thì bỏ review plan, bỏ skill architect, review cuối chỉ chạy lại verify (không gọi reviewer). `solo`: không gọi lead, engine tự tạo 1 task (cả mục tiêu, phạm vi `.`) cho worker `solo`, verify bằng `verify` của bạn, không cần duyệt. Cả hai chế độ nhẹ vẫn giữ worktree riêng, kiểm tra phạm vi, verify và nhánh tích hợp. Bench thật đầu tiên: việc nhỏ thì đội tốn ~15 lần token và chậm ~4 lần mà chất lượng như nhau. |
+| `solo` | Worker làm việc ở chế độ `solo`. Mặc định: worker đầu tiên. |
+| `verify` | Lệnh kiểm tra của chính dự án (argv), ví dụ `[["python", "-m", "pytest", "-q"]]`. Bắt buộc ở chế độ `solo`. Lead thấy chúng trong prompt; vì do bạn viết nên không bao giờ phải chờ duyệt. |
 | `verify_env` | Tên biến môi trường thêm vào cho lệnh verify, ví dụ `["JAVA_OPTS"]`. Lệnh verify chỉ nhận một danh sách cho phép (hệ thống, locale, thư mục tạm, toolchain như `PYTHON*`, `NODE_*`, `GOPATH`); tên trông giống secret vẫn bị loại. |
 | `mcp` | `true`: mỗi lời gọi codex, claude và opencode được nối với [MCP server](#mcp-server) của workspace. Mặc định `false`. |
 | `embeddings` | Endpoint `/embeddings` kiểu OpenAI để knowledge graph tìm theo nghĩa; fact được gửi tới đó ([Knowledge graph](#knowledge-graph)). `null` (mặc định) = chỉ dùng từ khoá và trigram trên máy. |
@@ -498,6 +508,7 @@ Chi tiết ở [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
 - **Git.** Engine commit với hook tắt và không bao giờ ghi vào nhánh hay working tree của bạn.
 - **Web UI.** Chỉ mở trên 127.0.0.1, có token, kiểm tra Host và Origin, có CSP.
 - **Duyệt plan.** Lệnh verify trong plan do model đề xuất. Hãy đọc chúng trong `plan.md` trước khi trả lời `yes`. Lệnh mới mà lead thêm sau đó (amend) được hỏi riêng. `--yes` / `auto_approve` bỏ qua cả hai, trừ khi bạn đặt `verify_allow`.
+- **Reviewer.** Một blocker phải có bằng chứng (lệnh chạy lỗi kèm output, hoặc trích đúng yêu cầu chưa đạt) trong trường `evidence`; thiếu thì engine coi là góp ý, nên không chặn run và không hỏi bạn.
 - **Phân loại lỗi.** Hết quota, rate limit, chưa đăng nhập được nhận ra từ lỗi của chính CLI và stderr, không từ transcript của agent: một route `/login` hay file `quota.py` trong dự án không khoá tài khoản.
 - **Worker từ xa.** Route riêng, token riêng (`ORCH_REMOTE_TOKEN`); patch vẫn qua scope và verify ở máy chính.
 
@@ -507,7 +518,7 @@ Chi tiết ở [PLAN.md §13](PLAN.md#13-bảo-mật-và-quyền-hạn).
 python tests/test_e2e.py
 ```
 
-- 33 test end-to-end: Linux khoảng 60 giây, Windows khoảng 2–3 phút. GitHub Actions chạy chúng trên Windows và Linux (Python 3.11, 3.13) ở mỗi lần push, cùng với bản wheel và GitHub Action.
+- 37 test end-to-end: Linux khoảng 70 giây, Windows khoảng 2–3 phút. GitHub Actions chạy chúng trên Windows và Linux (Python 3.11, 3.13) ở mỗi lần push, cùng với bản wheel và GitHub Action.
 - Parser của các CLI được kiểm bằng đầu ra thật lưu ở [docs/probes/](docs/probes/).
 - Dùng mock agent theo kịch bản, không tốn token.
 - Riêng test 9router dựng một router giả trên 127.0.0.1. Nếu máy có `opencode` thì test gọi opencode thật qua router giả đó.

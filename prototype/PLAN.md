@@ -12,7 +12,7 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | Hạng mục | Trạng thái |
 |---|---|
 | Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server (cả chế độ `--control`), worker chạy từ xa, `doctor`, GitHub Action | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+. Đóng gói thành lệnh `orctram` (`pyproject.toml`, chưa lên PyPI), license Apache-2.0. |
-| Test end-to-end | 33/33 PASS với mock agent (không tốn token) trên Linux (Python 3.11). GitHub Actions chạy bộ test trên Windows và Linux (3.11, 3.13), macOS (không chặn), cùng job wheel và GitHub Action. Trên máy Windows của bạn đã pass 27 test (trước đợt đóng gói). |
+| Test end-to-end | 37/37 PASS với mock agent (không tốn token) trên Linux (Python 3.11). GitHub Actions chạy bộ test trên Windows và Linux (3.11, 3.13), macOS (không chặn), cùng job wheel và GitHub Action. Trên máy Windows của bạn đã pass 27 test (trước đợt đóng gói). |
 | Adapter đã kiểm chứng cờ dòng lệnh trên máy này | <ul><li>`codex` 0.153.4.</li><li>`agy` 1.2.15.</li><li>`opencode` 1.18.34, profile `opencode@free`:<ul><li>8/10 model free trả lời được;</li><li>`big-pickle` và `fledge-alpha-free` qua pre-test code.</li></ul></li></ul> |
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
 | Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả. 9router đã có trên máy nhưng chưa nối (§16 P0).</li><li>Worker chạy từ xa với CLI thật qua đường hầm SSH: mới qua test với mock agent (§10).</li></ul> |
@@ -77,7 +77,8 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 | [orch/skills.py](orch/skills.py) | Chỉ mục skill, cài đặt, skill architect, đặt skill vào worktree, duyệt repo |
 | [orch/server.py](orch/server.py), [orch/ui.html](orch/ui.html) | Web UI local |
 | [orch/mcp.py](orch/mcp.py) | MCP server qua stdio: board và knowledge graph thành tool chỉ đọc |
-| [orch/bench.py](orch/bench.py) | `bench`: một agent làm một mình và cả đội, cùng commit gốc, chấm bằng cùng lệnh `--check` |
+| [orch/bench.py](orch/bench.py) | `bench`: một agent làm một mình và các nhánh đội (chế độ khác, file team khác), cùng commit gốc, chấm bằng cùng lệnh `--check`, lặp N lần, trung vị và $ |
+| [benchmarks/](benchmarks/) | Bộ việc chuẩn (nhỏ, nhiều module song song, refactor) kèm check ẩn và lời giải mẫu; `run_suite.py` chạy cả bộ |
 | [orch/doctor.py](orch/doctor.py) | `doctor`: kiểm tra máy và dự án tại chỗ (không mạng, không gọi agent, không in secret) |
 | [action/](action/) | GitHub Action dạng composite: `action.yml` và `run.py` (đặt team, chạy run, đẩy nhánh, mở PR) |
 | [orch/remote.py](orch/remote.py) | Worker chạy từ xa: proxy phía engine (bundle, lease, áp patch), route lease của web UI, vòng lặp runner |
@@ -623,6 +624,10 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `cli_parsers_failure_classes_and_env` | <ul><li>Parser agy, claude, opencode chạy trên đầu ra thật trong `docs/probes/`; parser codex trên sự kiện mẫu.</li><li>Lớp lỗi: các thông báo thật được nhận đúng; chữ của dự án (`/login`, "line 429", `quota.py`, `authenticate`) không bị coi là lỗi tài khoản, kể cả qua `run_agent`.</li><li>Môi trường: agent mất `SSH_AUTH_SOCK`, `DATABASE_URL` có mật khẩu, `*_PAT`; lệnh verify chỉ nhận danh sách cho phép, `verify_env` thêm tên nhưng không thêm secret.</li></ul> |
 | `mcp_control_drives_a_run` | <ul><li>Qua MCP `--control`: `doctor`, `run`, chờ plan, `answer` rỗng bị từ chối, `run` thứ hai bị từ chối khi run cũ còn mở, `answer yes` khởi động lại engine, run xong và `status` trả về báo cáo.</li><li>Server không có `--control` chỉ có tool chỉ đọc; agent trong run không nhận `--control`.</li></ul> |
 | `github_action_runs_and_opens_a_pull_request` | <ul><li>`action/run.py` với team từ file, run tự duyệt, output và tóm tắt của job.</li><li>Nhánh `orctram/<run>` được đẩy lên một remote bare, `gh` giả nhận đúng tham số tạo PR (Windows dừng trước bước PR).</li><li>Input đi vào script qua biến môi trường, không chèn vào dòng lệnh shell.</li></ul> |
+| `modes_solo_auto_and_evidence_for_blockers` | <ul><li>`solo`: không gọi lead hay reviewer, 1 task cho worker `solo` với `verify` của bạn, không cần duyệt; thiếu `verify` thì hỏi bạn.</li><li>`auto`: lead trả 1 task nên bỏ review plan, skill architect và lời gọi reviewer cuối; prompt của lead có lời dặn và lệnh kiểm tra của dự án.</li><li>Blocker không có bằng chứng thành góp ý: không chặn, không amend.</li></ul> |
+| `report_estimates_cost_at_list_price` | CLI không báo chi phí thì `report.md` ước tính theo giá trong DB model, đánh dấu `~`. |
+| `bench_repeats_modes_and_team_files` | `--repeat 2` với bốn nhánh (agent một mình, đội, đội ở chế độ solo, một file team một worker): trung vị, số lời gọi (1 ở chế độ solo, 5 ở chế độ team), $ ước tính, mỗi lần chạy một nhánh riêng. |
+| `benchmark_tasks_are_sound` | Check ẩn của mọi việc chuẩn trượt trên `seed/` và qua với lời giải mẫu; `run_suite.py` chạy được việc 01 với agent giả; `--check` giữ dấu `\` trên Windows. |
 | `bench_solo_versus_team` | Agent làm một mình viết sai `add()` và không trả handoff hợp lệ, kể cả ở lượt repair (như agy bị từ chối lệnh): báo cáo ghi `no valid handoff`, cộng token cả hai lượt, vẫn chấm check; cả đội qua check. Báo cáo có số lời gọi, câu hỏi, nhánh kết quả; không còn worktree thừa; thiếu `--check` thì từ chối. |
 | `doctor` | Máy, dự án, team, DB, engine; agent của team chưa cài hoặc token remote quá ngắn thì mã thoát 1; không in secret. |
 | `db_schema_versions` | DB trước khi có phiên bản lên version 1 và có đủ bảng; migration chạy đúng một lần; DB của bản Orctram mới hơn bị từ chối. |
@@ -676,6 +681,17 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
   - tuỳ chọn chạy worker và verify trong container;
   - tách `engine.py`;
   - `bench --repeat` và bảng tổng hợp nhiều lần chạy.
+
+**P4: theo kết quả bench thật đầu tiên (2026-10-05)**
+- Việc nhỏ (spec 3 module): một agent 4/4, 133 s, 41k token; đội 4/4, ~9 phút, 663k token, 1 câu hỏi do reviewer chặn nhầm. Kết luận: chi phí cố định của điều phối lấn át việc nhỏ.
+- Đã làm:
+  - `mode` `auto` / `solo` (§ team.json trong README): việc nhỏ chỉ một worker mà vẫn giữ lớp an toàn của engine;
+  - blocker của reviewer phải có `evidence`, thiếu thì thành góp ý;
+  - bảng Calls và $ ước tính trong `report.md`;
+  - `bench --repeat/--mode/--team-file`, trung vị và $;
+  - bộ việc chuẩn `benchmarks/` với `run_suite.py`.
+- Việc của bạn: `python benchmarks/run_suite.py --team <team.json> --repeat 3 --mode auto --mode solo` với agent thật, solo cùng model với lead để so công bằng; gửi lại `summary.md`.
+- Câu hỏi sẽ trả lời: đội có hơn ở việc 02 (song song) và 03 (refactor) không; `auto` có rẻ gần bằng agent một mình mà vẫn đúng như đội không.
 
 **Sửa sau đợt review 2026-10-04**
 - Lớp lỗi chỉ lấy từ lỗi của CLI và stderr (§6).
