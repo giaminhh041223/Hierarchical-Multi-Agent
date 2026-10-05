@@ -1,0 +1,96 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+        include:
+          - os: macos-latest  # never run with real agents yet: reported, not blocking
+            python: "3.13"
+            experimental: true
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental == true }}
+    defaults:
+      run:
+        working-directory: prototype
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONPATH: "."
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: End-to-end tests (mock agents, no tokens)
+        run: python tests/test_e2e.py
+
+  package:
+    name: wheel installs and runs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the wheel
+        run: python -m pip wheel ./prototype --no-deps -w dist
+      - name: Install it in a clean venv and run it from outside the repository
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m venv venv
+          venv/bin/pip install --quiet "$GITHUB_WORKSPACE"/dist/hoatau-*.whl
+          venv/bin/hoatau --version
+          venv/bin/hoatau doctor
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*.whl
+
+  action:
+    name: GitHub Action (mock team)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: A demo repository and a mock team
+        working-directory: ${{ runner.temp }}
+        run: |
+          echo "ORCH_MOCK=$RUNNER_TEMP/scenario.json" >> "$GITHUB_ENV"
+          git init -q demo && cd demo
+          git config user.name ci && git config user.email ci@example.invalid
+          echo demo > README.md && git add -A && git commit -qm base
+          cat > team.json <<'JSON'
+          {"lead": {"agent": "mock", "model": "mock-strong"}, "reviewer": {"agent": "mock", "model": "mock-strong"},
+           "skill_architect": {"agent": "mock", "model": "mock-fast"}, "workers": {"w1": {"agent": "mock", "model": "mock-fast"}},
+           "skills": false}
+          JSON
+          cat > ../scenario.json <<'JSON'
+          {"plan": [{"id": "T1", "title": "hello", "assignee": "w1", "deps": [], "acceptance": ["hello.txt exists"],
+                     "scope_paths": ["hello.txt"], "verify": [["python", "-c", "assert open('hello.txt').read()"]]}],
+           "steps": {"worker:T1": [{"write": {"hello.txt": "hello\n"}}]}}
+          JSON
+      - id: hoatau
+        uses: ./prototype/action
+        with:
+          goal: Write hello.txt
+          team: team.json
+          open-pr: "false"
+          working-directory: ${{ runner.temp }}/demo
+      - name: The run integrated its task
+        working-directory: ${{ runner.temp }}/demo
+        env:
+          RUN: ${{ steps.hoatau.outputs.run }}
+          STATUS: ${{ steps.hoatau.outputs.status }}
+        run: |
+          test "$STATUS" = done
+          git show "orch/$RUN/main:hello.txt" | grep -q hello
