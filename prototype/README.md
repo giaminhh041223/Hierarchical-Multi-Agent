@@ -113,7 +113,7 @@ Không cài thì mọi lệnh chạy từ thư mục này (`prototype/`). Dự �
 | `cancel <task \| all>` | Huỷ một task (kéo theo các task phụ thuộc nó) hoặc huỷ cả run. |
 | `log [-n 40]` | Xem các sự kiện gần nhất. Đây là kênh chung của cả đội. |
 | `kg search <từ khoá> [-k 8]` · `kg links <node>` · `kg add <entity> <fact>` | Knowledge graph dùng chung. |
-| `mcp` | MCP server qua stdio: board và knowledge graph thành tool chỉ đọc. Xem [MCP server](#mcp-server). |
+| `mcp [--control]` | MCP server qua stdio: board và knowledge graph thành tool chỉ đọc; `--control` thêm tool để phiên Claude Code / Codex của bạn chạy và theo dõi run. Xem [MCP server](#mcp-server). |
 | `ui [--port 8765] [--no-browser]` | Web UI. Cổng bận thì tự chọn cổng khác (khi dùng worker từ xa, đường hầm phải theo đúng cổng in ra). |
 | `remote run [--url …] [--agents codex,agy] [--name …] [--once]` | Chạy trên máy khác: phục vụ agent CLI của máy đó cho engine. Xem [Worker chạy từ xa](#worker-chạy-từ-xa). |
 
@@ -286,7 +286,26 @@ Tìm kiếm gộp hai bảng xếp hạng:
 
 agy, gemini và cursor-agent chưa có cách truyền theo từng lời gọi, nên vẫn tra bằng lệnh CLI.
 
-**Cho phiên Claude Code hoặc Codex của bạn.** Bạn tự đăng ký, Orchestra không ghi cấu hình của bạn. `PYTHONPATH` là thư mục `prototype/`:
+**Giao việc cho cả đội từ Claude Code hoặc Codex (`--control`).** Thêm `--control` thì server có thêm các tool điều khiển run. Phiên agent của bạn giao một mục tiêu cho đội nhiều hãng, theo dõi tiến độ, rồi chuyển câu trả lời của bạn:
+
+| Tool | Việc |
+|---|---|
+| `run` | Bắt đầu run cho một mục tiêu; trả về ngay. `auto_approve` chỉ khi bạn yêu cầu. |
+| `status` | Bảng task, engine đang chạy hay dừng, câu hỏi đang chờ bạn, và báo cáo cuối khi xong. |
+| `answer` | Chuyển câu trả lời của **bạn** cho task đang chờ (`yes`, `retry`, `cancel`, `reassign <worker>`, hoặc chỉ dẫn). Engine dừng thì tool tự khởi động lại. |
+| `resume`, `cancel` | Chạy tiếp run đang mở; huỷ một task hoặc `all`. |
+| `doctor` | Kiểm tra máy và dự án, như lệnh `doctor`. |
+
+- Engine chạy thành tiến trình nền và tự thoát khi chỉ còn chờ bạn, nên phiên MCP không bị treo.
+- Mô tả tool dặn agent không tự duyệt plan: duyệt plan cũng là cho phép các lệnh verify trong đó. Claude Code và Codex vẫn hỏi bạn trước mỗi lần gọi tool.
+- Engine thừa hưởng môi trường của server MCP. Nếu engine không tìm thấy agent CLI, truyền `PATH` vào cấu hình server.
+- Agent bên trong run không bao giờ nhận `--control`: server mà engine truyền cho chúng vẫn chỉ đọc.
+
+```bash
+claude mcp add hoatau -- hoatau --ws D:/du-an mcp --control
+```
+
+**Chỉ đọc, cho phiên Claude Code hoặc Codex của bạn.** Bạn tự đăng ký, Hoatau không ghi cấu hình của bạn. Chưa cài `hoatau` thì đặt `PYTHONPATH` là thư mục `prototype/`:
 
 ```bash
 claude mcp add orch -e PYTHONPATH=D:/Hierarchical-Multi-Agent/prototype -- python -m orch --ws D:/du-an mcp

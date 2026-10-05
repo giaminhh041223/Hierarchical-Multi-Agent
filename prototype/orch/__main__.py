@@ -153,7 +153,7 @@ def cmd_kg(a):
 
 
 def cmd_mcp(a):
-    mcp.serve(Path(a.ws or os.environ.get("ORCH_WS") or os.getcwd()).resolve())
+    mcp.serve(Path(a.ws or os.environ.get("ORCH_WS") or os.getcwd()).resolve(), control=a.control)
 
 
 def cmd_log(a):
@@ -257,7 +257,9 @@ def main(argv=None):
     s.add_argument("action", choices=["search", "links", "add"])
     s.add_argument("text", nargs="+")
     s.add_argument("-k", type=int, default=8)
-    sub.add_parser("mcp", help="MCP server on stdio: the board and the knowledge graph as read-only tools for agents")
+    s = sub.add_parser("mcp", help="MCP server on stdio: the board and the knowledge graph as read-only tools for agents")
+    s.add_argument("--control", action="store_true", help="also run / status / answer / resume / cancel / doctor: for your own "
+                                                          "Claude Code or Codex session (never given to agents in a run)")
     s = sub.add_parser("log", help="recent events")
     s.add_argument("-n", type=int, default=40)
     s = sub.add_parser("ui", help="local web UI")

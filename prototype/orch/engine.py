@@ -3,11 +3,11 @@
 The lead is stateless: every lead prompt is rebuilt from the DB. Workers edit isolated git worktrees; the engine commits,
 merges the integration tip in, checks scope, runs the plan's verify commands, records the commit as intent, fast-forwards
 the run's integration branch, and only then publishes facts and releases dependents."""
-import collections, contextlib, fnmatch, hashlib, json, os, re, shutil, sqlite3, subprocess, threading, time, traceback, urllib.request
+import collections, contextlib, fnmatch, hashlib, json, os, re, shutil, sqlite3, subprocess, sys, threading, time, traceback, urllib.request
 from pathlib import Path
 
 from . import agents, models, pool
-from .core import ACTIVE, HOME, TERMINAL, EngineLock, contract, extract_json, hm, record, schema, validate
+from .core import ACTIVE, HOME, ROOT, TERMINAL, EngineLock, contract, extract_json, hm, record, schema, validate
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 HOOKS = HOME / "no-hooks"  # never created: engine commits run no git hooks
@@ -253,6 +253,19 @@ def new_run(ws, goal, auto_approve=False):
     if dirty:
         ws.event("warn", f"{len(dirty)} uncommitted change(s) are NOT visible to agents (they start from {base[:10]}); commit first if they matter")
     return e
+
+
+def spawn_engine(ws, *args):
+    """The engine as its own background process (it outlives the web UI or MCP call that started it); its console output goes
+    to .orch/engine.log. args = a CLI command, e.g. ("resume", "--exit-on-wait")."""
+    load_team(ws)
+    if EngineLock(ws).held_elsewhere():
+        raise ValueError("an engine is already running on this workspace")
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    with open(ws.dir / "engine.log", "a", encoding="utf-8") as log:
+        subprocess.Popen([sys.executable, "-m", "orch", "--ws", str(ws.project), *args], cwd=ROOT, stdin=subprocess.DEVNULL,
+                         stdout=log, stderr=subprocess.STDOUT, creationflags=flags, start_new_session=os.name != "nt")
+    return {"ok": f"engine started: {args[0]}"}
 
 
 class Fail(Exception):

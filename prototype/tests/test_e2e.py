@@ -678,6 +678,52 @@ def test_mcp_server_read_only_tools():
     assert json.loads(oc_on["OPENCODE_CONFIG_CONTENT"])["mcp"]["orch"]["command"] == [srv["command"], *srv["args"]]
 
 
+def test_mcp_control_drives_a_run():
+    """`mcp --control` for the user's own Claude Code / Codex session: start a run, follow it, relay the user's plan approval,
+    read the final report. The server that agents in a run get stays read-only."""
+    import io
+    from orch import mcp
+    r = Repo(two_tasks())
+
+    def call(name, args=None, control=True):
+        msg = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args or {}}}
+        out = io.BytesIO()
+        mcp.serve(r.repo, io.BytesIO(json.dumps(msg).encode() + b"\n"), out, control=control)
+        rep = json.loads(out.getvalue())
+        return (rep["result"]["content"][0]["text"], rep["result"]["isError"]) if "result" in rep else (rep["error"]["message"], True)
+
+    def until(cond, seconds=90):
+        end = time.time() + seconds
+        while time.time() < end:
+            text = call("status")[0]
+            if cond(text):
+                return text
+            time.sleep(0.5)
+        raise AssertionError(f"timed out; status:\n{text}\nengine.log:\n{(r.repo / '.orch' / 'engine.log').read_text(encoding='utf-8')[-2000:]}")
+    with unittest.mock.patch.dict(os.environ, r.env):  # the engine processes it starts use the test's ORCH_HOME and mock agent
+        assert "[ok  ] git" in call("doctor")[0]
+        assert call("status")[0].startswith("no run yet")
+        text, bad = call("run", {"goal": "demo goal"})
+        assert not bad and "started" in text, text
+        text = until(lambda t: "WAITING FOR THE USER: PLAN" in t and "engine: stopped" in t)
+        assert "Only answer 'yes' to a plan when the user approved it" in text, text
+        assert call("answer", {"task": "PLAN", "text": " "})[1], "an empty answer is refused"
+        text, bad = call("run", {"goal": "another"})
+        assert bad and "still open" in text, text
+        text, bad = call("answer", {"task": "PLAN", "text": "yes"})
+        assert not bad and "answer recorded" in text, text
+        text = until(lambda t: ": done |" in t.splitlines()[0])
+        assert "# Hoatau run" in text and "| T2 | done |" in text, text
+    assert r.git("rev-parse", "HEAD") == r.base and "return a + b" in r.show("app.py")
+    ro = mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, r.repo)["result"]["tools"]
+    full = mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, r.repo, control=True)["result"]["tools"]
+    assert sorted(t["name"] for t in ro) == ["board", "kg_links", "kg_search"]
+    assert {"run", "status", "answer", "resume", "cancel", "doctor"} <= {t["name"] for t in full}
+    assert [t["annotations"] for t in full if t["name"] == "cancel"] == [{"readOnlyHint": False, "destructiveHint": True}]
+    assert call("run", {"goal": "x"}, control=False)[1], "without --control there is no run tool"
+    assert "--control" not in agents.mcp_server(r.repo)["args"], "agents in a run never get the control tools"
+
+
 def test_kg_search_vectors():
     """kg_search fuses FTS5 keywords with vectors. Local trigrams find near spellings and words typed without accents; with
     team.json "embeddings" an OpenAI-compatible endpoint ranks by meaning: vault key as Bearer, each fact sent once, read-only
