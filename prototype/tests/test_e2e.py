@@ -829,6 +829,31 @@ def test_cli_parsers_failure_classes_and_env():
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_db_schema_versions():
+    """A workspace from before versioning becomes version 1 with any missing table; a later migration runs once; a database
+    from a newer Hoatau is refused instead of being misread."""
+    from orch import core
+    d = Path(tempfile.mkdtemp(prefix="orch-db-"))
+    ws = core.Workspace(d)
+    ws.db.executescript("DROP TABLE leases; PRAGMA user_version=0;")  # what a 0.0 workspace looks like
+    ws.db.close()
+    ws = core.Workspace(d)
+    assert ws.q("PRAGMA user_version") == [{"user_version": 1}] and ws.q("SELECT count(*) n FROM leases") == [{"n": 0}]
+    ws.db.close()
+    with unittest.mock.patch.object(core, "WS_MIGRATIONS", [(2, ["ALTER TABLE tasks ADD COLUMN extra TEXT"])]):
+        for _ in range(2):  # the second open must not run the ALTER again (it would fail: duplicate column)
+            ws = core.Workspace(d)
+            assert ws.q("PRAGMA user_version") == [{"user_version": 2}]
+            assert any(r["name"] == "extra" for r in ws.q("PRAGMA table_info(tasks)"))
+            ws.db.close()
+    try:  # back on code that only knows version 1: refuse, never misread
+        core.Workspace(d)
+        raise AssertionError("a newer database was opened")
+    except RuntimeError as e:
+        assert "newer Hoatau" in str(e), e
+    shutil.rmtree(d, ignore_errors=True)
+
+
 def test_package_ships_its_data():
     """pip install hoatau: every catalog file and the UI are package data, the version and the command resolve."""
     import fnmatch, tomllib, orch, orch.__main__
