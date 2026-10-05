@@ -724,6 +724,44 @@ def test_mcp_control_drives_a_run():
     assert "--control" not in agents.mcp_server(r.repo)["args"], "agents in a run never get the control tools"
 
 
+def test_github_action_runs_and_opens_a_pull_request():
+    """action/run.py as the composite action runs it: team from a file, an auto-approved run, outputs and the step summary,
+    then the integration branch pushed as hoatau/<run> and a pull request (a fake gh on POSIX; Windows stops before the PR)."""
+    r = Repo(two_tasks())
+    team = json.loads((r.repo / ".orch" / "team.json").read_text(encoding="utf-8"))
+    shutil.rmtree(r.repo / ".orch")  # CI starts from a clean checkout: the team comes from a file in the repository
+    (r.repo / "ci-team.json").write_text(json.dumps(team), encoding="utf-8")
+    remote = r.tmp / "origin.git"
+    subprocess.run(GIT + ["init", "-q", "--bare", str(remote)], check=True, capture_output=True)
+    subprocess.run(GIT + ["remote", "add", "origin", str(remote)], cwd=r.repo, check=True)
+    bin_dir, out, summary = r.tmp / "bin", r.tmp / "gh_output", r.tmp / "gh_summary"
+    bin_dir.mkdir()
+    fake_gh = bin_dir / "gh"  # records its arguments, prints a PR URL like the real one
+    fake_gh.write_text(f"#!{sys.executable}\nimport json, sys\nopen({str(r.tmp / 'gh_args')!r}, 'w').write(json.dumps(sys.argv[1:]))\n"
+                       "print('https://github.com/o/r/pull/7')\n", encoding="utf-8")
+    fake_gh.chmod(0o755)
+    posix = os.name != "nt"
+    env = {**r.env, "PYTHONPATH": str(ROOT), "PATH": str(bin_dir) + os.pathsep + r.env["PATH"], "GITHUB_OUTPUT": str(out),
+           "GITHUB_STEP_SUMMARY": str(summary), "HOATAU_GOAL": "demo goal\nsecond line", "HOATAU_TEAM": "ci-team.json",
+           "HOATAU_OPEN_PR": "true" if posix else "false", "HOATAU_BASE": "main", "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    p = subprocess.run([sys.executable, str(ROOT / "action" / "run.py")], cwd=r.repo, env=env, capture_output=True, encoding="utf-8",
+                       errors="replace", timeout=300)
+    assert p.returncode == 0, p.stdout + p.stderr
+    outputs = dict(line.split("=", 1) for line in out.read_text(encoding="utf-8").splitlines())
+    run = outputs["run"]
+    assert outputs["status"] == "done" and f"# Hoatau run {run}: done" in summary.read_text(encoding="utf-8"), outputs
+    if posix:
+        assert outputs["branch"] == f"hoatau/{run}" and outputs["pr-url"] == "https://github.com/o/r/pull/7", outputs
+        pushed = subprocess.run(GIT + ["show", f"hoatau/{run}:app.py"], cwd=remote, capture_output=True, encoding="utf-8").stdout
+        assert "return a + b" in pushed, pushed
+        args = json.loads((r.tmp / "gh_args").read_text(encoding="utf-8"))
+        assert args[:6] == ["pr", "create", "--base", "main", "--head", f"hoatau/{run}"] and args[7] == "Hoatau: demo goal", args
+        assert args[9].endswith("report.md"), args
+    action = (ROOT / "action" / "action.yml").read_text(encoding="utf-8")
+    assert "${{ inputs.goal }}" not in action.split("run:")[-1], "inputs must reach the script as env, never inside the shell line"
+
+
 def test_kg_search_vectors():
     """kg_search fuses FTS5 keywords with vectors. Local trigrams find near spellings and words typed without accents; with
     team.json "embeddings" an OpenAI-compatible endpoint ranks by meaning: vault key as Bearer, each fact sent once, read-only

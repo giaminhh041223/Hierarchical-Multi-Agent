@@ -351,6 +351,44 @@ Một máy khác, có agent CLI và login riêng, nhận task như một worker.
 - Token của UI không mở được route của runner, và ngược lại. Token remote ngắn hơn 16 ký tự thì runner bị từ chối.
 - **Ai có `ORCH_REMOTE_TOKEN` và vào được port của UI thì đọc được mã nguồn (bundle) và prompt.** Chỉ dùng qua 127.0.0.1 hoặc đường hầm SSH.
 
+## GitHub Action (beta)
+
+Chạy một đội Hoatau trong GitHub Actions và mở pull request chứa kết quả đã verify. Action nằm ở [action/](action/); CI của repo này chạy nó với agent giả, **chưa chạy với agent thật**.
+
+```yaml
+# .github/workflows/hoatau.yml
+on:
+  workflow_dispatch:
+    inputs:
+      goal: {description: "Mục tiêu cho đội", required: true}
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  team:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install -g @openai/codex   # các agent CLI mà team dùng
+      - uses: giaminhh041223/Hierarchical-Multi-Agent/prototype/action@main
+        with:
+          goal: ${{ inputs.goal }}
+          team: .github/hoatau-team.json
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+```
+
+- **Input:** `goal`, `team` (file JSON cùng dạng `team.json`), `auto-approve` (mặc định `true`, vì trong CI không có ai để hỏi), `open-pr`, `base`, `working-directory`, `python-version`, `github-token`.
+- **Output:** `run`, `status` (`done`, `waiting`, `failed`), `branch`, `pr-url`. Báo cáo của run hiện trong phần tóm tắt của job.
+- Run cần người trả lời (lỗi đăng nhập, hết ngân sách, lệnh verify ngoài `verify_allow`) thì job thất bại, kèm danh sách câu hỏi.
+- PR do `GITHUB_TOKEN` mở sẽ không tự kích hoạt workflow khác (giới hạn của GitHub).
+
+**Bảo mật, đọc trước khi dùng:**
+- Trong CI, agent chạy với API key của bạn. `goal` là prompt cho chúng: **đừng nối thẳng nội dung issue hay comment của người lạ vào `goal`**. Chỉ kích hoạt bằng `workflow_dispatch`, hoặc label do maintainer gắn.
+- Dùng API key, không dùng subscription cá nhân: điều khoản của hầu hết nhà cung cấp không cho phép đem gói cá nhân lên máy CI dùng chung.
+- Nên đặt `verify_allow` trong file team: lệnh verify do model viết; ngoài danh sách thì run dừng lại thay vì chạy.
+- Lệnh verify vẫn chạy với danh sách biến môi trường cho phép, nên không thấy API key.
+
 ## Workspace
 
 Engine đặt `<dự án>/.orch/` vào `.git/info/exclude`, nên thư mục này không lọt vào commit. Nội dung:

@@ -82,7 +82,7 @@ def cmd_init(a):
     p = ws.project
     if not git_ok(p, "rev-parse", "--verify", "HEAD"):
         if not (a.yes or confirm(f"{p} has no git commit. Run git init and commit the current files? [y/N] ")):
-            raise SystemExit("orchestra needs a git repository with at least one commit")
+            raise SystemExit("hoatau needs a git repository with at least one commit")
         if not git_ok(p, "rev-parse", "--git-dir"):
             git(p, "init", "-q")
         ensure_excluded(p)

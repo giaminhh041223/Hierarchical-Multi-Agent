@@ -1,0 +1,68 @@
+name: Hoatau
+description: Run a Hoatau team of AI coding agents on this repository and open a pull request with the verified result.
+author: giaminhh041223
+branding:
+  icon: users
+  color: purple
+
+inputs:
+  goal:
+    description: What the team should build or fix. Untrusted text is a prompt for agents that hold your API keys; see the README.
+    required: true
+  team:
+    description: Path to the team JSON (same format as .orch/team.json), relative to working-directory.
+    required: true
+  auto-approve:
+    description: Approve the reviewed plan without a human ("true" by default; there is nobody to ask in CI).
+    default: "true"
+  open-pr:
+    description: Push the integration branch as hoatau/<run> and open a pull request with the run report.
+    default: "true"
+  base:
+    description: Base branch of the pull request (default the branch that triggered the workflow).
+    default: ""
+  working-directory:
+    description: The repository to work on.
+    default: "."
+  python-version:
+    description: Python for Hoatau (3.11+).
+    default: "3.12"
+  github-token:
+    description: Token for the pull request (needs contents and pull-requests write).
+    default: ${{ github.token }}
+
+outputs:
+  run:
+    description: The run id.
+    value: ${{ steps.run.outputs.run }}
+  status:
+    description: done, waiting (it needed a human) or failed.
+    value: ${{ steps.run.outputs.status }}
+  branch:
+    description: The pushed branch, when open-pr is true and the run is done.
+    value: ${{ steps.run.outputs.branch }}
+  pr-url:
+    description: The pull request, when one was opened.
+    value: ${{ steps.run.outputs.pr-url }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install hoatau
+      shell: bash
+      run: python -m pip install --quiet "$GITHUB_ACTION_PATH/.."
+    - id: run
+      name: Run the team
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:  # inputs reach the script as environment variables, never pasted into the shell command
+        HOATAU_GOAL: ${{ inputs.goal }}
+        HOATAU_TEAM: ${{ inputs.team }}
+        HOATAU_AUTO_APPROVE: ${{ inputs.auto-approve }}
+        HOATAU_OPEN_PR: ${{ inputs.open-pr }}
+        HOATAU_BASE: ${{ inputs.base }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: python "$GITHUB_ACTION_PATH/run.py"
