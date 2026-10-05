@@ -90,6 +90,7 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 - Windows: đặt `PYTHONIOENCODING=utf-8` khi in tiếng Việt.
 - `Path.write_text` trên Windows ghi CRLF nếu không truyền `newline="\n"`.
 - Heredoc trong bash biến `\\n` thành `\n`. Sửa chuỗi có escape bằng công cụ Edit.
+- agy headless từ chối mọi lệnh shell. Model Claude qua agy vẫn thử `RunCommand` ngay lượt đầu dù prompt có note, rồi trả `response: ""` kèm `denied_actions`; lượt repair cùng session mới làm việc thật. Mọi lời gọi agent cần trả JSON phải đi qua `engine.checked_call` (bench cũng vậy).
 - Chỉ codex để lại số liệu quota (`rate_limits` trong rollout). agy, opencode và router: engine học từ lỗi trả về.
 - Hàm `git()` của engine decode và strip output, làm hỏng patch nhị phân: dùng `_git(..., text=False)`.
 - `git bundle create f <sha>` báo "Refusing to create empty bundle": tạo ref tạm, bundle xong thì xoá (`remote.snapshot`).
@@ -107,7 +108,7 @@ Lộ trình ở `prototype/PLAN.md` §0 và §16. P1 xong. P2 xong phần code: 
 4. Thử worker chạy từ xa với CLI thật qua `ssh -R` (bộ test 27/27 đã pass trên Windows).
 5. UI pha 4: thử Narrator (audit bằng script và ảnh chụp README đã xong).
 6. PyPI: thêm trusted publisher cho `release.yml` (environment `pypi`), rồi push tag `v0.1.0`; thử GitHub Action với agent thật và API key.
-7. Chạy `orctram bench` trên việc thật với agent thật.
+7. Bench lớn hơn, lặp vài lần. Bench thật đầu tiên (2026-10-05, dự án spec nhỏ: 3 module, 4 check ẩn): solo agy/claude-opus-4-6 đạt 4/4, 133 s, 34k/7k token; đội (agy lead/reviewer, agy flash + 2 model opencode free) đạt 4/4, ~9 phút, 530k/133k token, 9 lời gọi, 1 câu hỏi (reviewer chặn sai). Việc nhỏ thì đội chưa đáng; cần thử việc lớn, nhiều module độc lập.
 
 Ưu tiên tiếp theo: vài run thật trên repo thật; lưu đầu ra thật của CLI mới vào `prototype/docs/probes/` làm fixture cho parser.
 

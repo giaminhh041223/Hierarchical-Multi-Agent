@@ -623,7 +623,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `cli_parsers_failure_classes_and_env` | <ul><li>Parser agy, claude, opencode chạy trên đầu ra thật trong `docs/probes/`; parser codex trên sự kiện mẫu.</li><li>Lớp lỗi: các thông báo thật được nhận đúng; chữ của dự án (`/login`, "line 429", `quota.py`, `authenticate`) không bị coi là lỗi tài khoản, kể cả qua `run_agent`.</li><li>Môi trường: agent mất `SSH_AUTH_SOCK`, `DATABASE_URL` có mật khẩu, `*_PAT`; lệnh verify chỉ nhận danh sách cho phép, `verify_env` thêm tên nhưng không thêm secret.</li></ul> |
 | `mcp_control_drives_a_run` | <ul><li>Qua MCP `--control`: `doctor`, `run`, chờ plan, `answer` rỗng bị từ chối, `run` thứ hai bị từ chối khi run cũ còn mở, `answer yes` khởi động lại engine, run xong và `status` trả về báo cáo.</li><li>Server không có `--control` chỉ có tool chỉ đọc; agent trong run không nhận `--control`.</li></ul> |
 | `github_action_runs_and_opens_a_pull_request` | <ul><li>`action/run.py` với team từ file, run tự duyệt, output và tóm tắt của job.</li><li>Nhánh `orctram/<run>` được đẩy lên một remote bare, `gh` giả nhận đúng tham số tạo PR (Windows dừng trước bước PR).</li><li>Input đi vào script qua biến môi trường, không chèn vào dòng lệnh shell.</li></ul> |
-| `bench_solo_versus_team` | Agent làm một mình viết sai `add()` nên trượt check; cả đội qua check. Báo cáo có số lời gọi, câu hỏi, nhánh kết quả; không còn worktree thừa; thiếu `--check` thì từ chối. |
+| `bench_solo_versus_team` | Agent làm một mình viết sai `add()` và không trả handoff hợp lệ, kể cả ở lượt repair (như agy bị từ chối lệnh): báo cáo ghi `no valid handoff`, cộng token cả hai lượt, vẫn chấm check; cả đội qua check. Báo cáo có số lời gọi, câu hỏi, nhánh kết quả; không còn worktree thừa; thiếu `--check` thì từ chối. |
 | `doctor` | Máy, dự án, team, DB, engine; agent của team chưa cài hoặc token remote quá ngắn thì mã thoát 1; không in secret. |
 | `db_schema_versions` | DB trước khi có phiên bản lên version 1 và có đủ bảng; migration chạy đúng một lần; DB của bản Orctram mới hơn bị từ chối. |
 | `package_ships_its_data` | Mọi file dữ liệu trong `orch/` (catalog, `ui.html`) nằm trong package data; lệnh `orctram`, version và LICENSE đúng; không có dependency. |
@@ -669,7 +669,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
   - UI pha 4: audit bằng script (tên dễ hiểu, nhãn, landmark, thứ tự heading, vùng bấm 24px), ảnh chụp README.
 - Việc của bạn:
   - trên PyPI: thêm trusted publisher (repo này, `release.yml`, environment `pypi`), rồi push tag `v0.1.0`;
-  - chạy `orctram bench` trên vài việc thật của bạn với agent thật: đây là bằng chứng sản phẩm đáng dùng hay không;
+  - chạy `orctram bench` trên vài việc thật của bạn với agent thật: đây là bằng chứng sản phẩm đáng dùng hay không (lần đầu, 2026-10-05, spec nhỏ 3 module: solo và đội cùng 4/4 check, solo nhanh hơn ~4 lần và tốn ít token hơn ~15 lần; cần thử việc lớn hơn);
   - chạy thử Action với agent thật và API key; thử Narrator.
 - Tiếp theo nên làm:
   - adapter qua giao thức chuẩn (Agent Client Protocol, SDK của từng hãng) thay cho đọc output CLI;

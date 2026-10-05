@@ -104,7 +104,7 @@ Không cài thì mọi lệnh chạy từ thư mục này (`prototype/`). Dự �
 
 | Lệnh | Việc |
 |---|---|
-| `bench "<mục tiêu>" --check "<lệnh>" [--check …] [--solo agent/model]` | So sánh: một agent làm một mình (một lời gọi, không plan, không review) và cả đội (run tự duyệt plan), cùng commit gốc, chấm bằng cùng lệnh `--check` của bạn. Báo cáo: số check pass, token, chi phí, số lời gọi, số câu hỏi cho bạn, thời gian. Ghi ở `.orch/bench/<id>/report.md`. Mỗi bên một lần chạy: lặp lại trước khi tin một khác biệt. |
+| `bench "<mục tiêu>" --check "<lệnh>" [--check …] [--solo agent/model]` | So sánh: một agent làm một mình (một lời gọi, kèm một lượt repair như mọi lời gọi của engine; không plan, không review) và cả đội (run tự duyệt plan), cùng commit gốc, chấm bằng cùng lệnh `--check` của bạn. Báo cáo: số check pass, token, chi phí, số lời gọi, số câu hỏi cho bạn, thời gian. Ghi ở `.orch/bench/<id>/report.md`. Mỗi bên một lần chạy: lặp lại trước khi tin một khác biệt. |
 | `doctor` | Kiểm tra máy (Python, git, SQLite FTS5, thư mục dữ liệu, agent CLI đã cài, port UI) và, với `--ws`, dự án (git, team, DB, engine). Chỉ kiểm tra tại chỗ: không gọi mạng, không gọi agent, không in secret. Mã thoát 1 khi có lỗi chặn. |
 | `discover [--probe] [--only codex,agy]` | Tìm agent CLI, model và trạng thái đăng nhập. Kết quả ghi vào `~/.orchestra/resources.json`. |
 | `login <agent>` | Mở luồng đăng nhập của chính CLI đó. Với claude: gõ `/login` trong cửa sổ mở ra. |
