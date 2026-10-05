@@ -913,6 +913,25 @@ def test_cli_parsers_failure_classes_and_env():
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_bench_solo_versus_team():
+    """`bench`: one agent alone and the team on the same goal from the same commit, both judged by the user's check (not by
+    the agents' own verify): here the solo agent writes a wrong add(), the team a right one."""
+    sc = two_tasks()
+    sc["steps"]["worker:SOLO"] = [{"write": {"app.py": "def add(a, b):\n    return a - b\n"}}]
+    r = Repo(sc)
+    assert r.orch("bench", "demo goal", "--check", 'python -c "import app; assert app.add(2, 3) == 5"', "--solo", "mock/mock-fast") == 0, r.out
+    report = next((r.repo / ".orch" / "bench").glob("*/report.md")).read_text(encoding="utf-8")
+    solo_row = next(l for l in report.splitlines() if l.startswith("| solo mock/mock-fast"))
+    team_row = next(l for l in report.splitlines() if l.startswith("| team (lead mock, 2 worker(s))"))
+    assert "| done | 0/1 |" in solo_row and "| 1 | 0 |" in solo_row, solo_row  # one call, no question for the user
+    assert "| done | 1/1 |" in team_row and "| 0 |" in team_row, team_row
+    assert "failed `python -c" in report and "AssertionError" in report, report
+    bid = next((r.repo / ".orch" / "bench").glob("*")).name
+    assert "return a - b" in r.git("show", f"orch/bench-{bid}/solo:app.py") and r.git("rev-parse", "HEAD") == r.base
+    assert not [w for w in r.git("worktree", "list").splitlines()[1:] if "bench-" in w], "no worktree is left behind"
+    assert r.orch("bench", "demo goal") == 1 and "--check" in r.out, "without a check there is nothing to judge by"
+
+
 def test_doctor():
     """Local readiness report: machine, project, team, workspace DB; a team agent missing here fails; secrets never printed."""
     r = Repo(two_tasks())

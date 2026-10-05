@@ -205,6 +205,12 @@ def cmd_pool(a):
     print("\n".join(pool.describe(team, ws)))
 
 
+def cmd_bench(a):
+    from . import bench
+    report = bench.bench(ws_of(a), a.goal, a.check, a.solo, a.timeout)
+    print("\n" + report.read_text(encoding="utf-8") + f"\n-> {report}")
+
+
 def cmd_doctor(a):
     from . import doctor
     text, code = doctor.report(a.ws or os.environ.get("ORCH_WS") or (os.getcwd() if (Path.cwd() / ".orch").is_dir() else None))
@@ -265,6 +271,11 @@ def main(argv=None):
     s = sub.add_parser("ui", help="local web UI")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--no-browser", action="store_true", help="only print the link")
+    s = sub.add_parser("bench", help="the same goal by one agent alone and by the team, judged by your --check commands: is the team worth it?")
+    s.add_argument("goal")
+    s.add_argument("--check", action="append", default=[], help='a command that must pass on the result, e.g. "python -m pytest -q" (repeatable)')
+    s.add_argument("--solo", help="agent/model working alone (default: the team's lead)")
+    s.add_argument("--timeout", type=int, default=1800, help="seconds for the solo agent call")
     sub.add_parser("doctor", help="check this machine (and the project, with --ws) before a run: local checks only, nothing is sent")
     s = sub.add_parser("remote", help="remote worker: run = serve the agent CLIs of this machine to an engine (over ssh -R)")
     s.add_argument("action", choices=["run", "proxy"])
