@@ -712,7 +712,8 @@ def test_mcp_control_drives_a_run():
         assert bad and "still open" in text, text
         text, bad = call("answer", {"task": "PLAN", "text": "yes"})
         assert not bad and "answer recorded" in text, text
-        text = until(lambda t: ": done |" in t.splitlines()[0])
+        text = until(lambda t: ": done |" in t.splitlines()[0] and "engine: stopped" in t)  # "done" comes before its cleanup; Windows
+        # cannot delete history.db while that engine process still has it open
         assert "# Orctram run" in text and "| T2 | done |" in text, text
     assert r.git("rev-parse", "HEAD") == r.base and "return a + b" in r.show("app.py")
     ro = mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, r.repo)["result"]["tools"]
