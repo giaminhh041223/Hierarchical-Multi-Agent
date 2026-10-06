@@ -2,7 +2,9 @@
 - solo: one agent call with the whole goal in a fresh worktree (plus the repair turn every engine call gets), no plan, no
   review, no engine verify;
 - team: a normal run of the workspace team, plan auto-approved (like `run --yes`), engine verify and merge;
-- optional more team arms: the workspace team in another mode (--mode auto / solo) or other team files (--team-file).
+- optional more team arms: the workspace team in another mode (--mode auto / solo) or other team files (--team-file);
+- engine solo (--engine-solo): mode solo with the solo agent/model as the only worker, i.e. the solo agent inside the engine's
+  verify-and-retry loop: it tells the engine's share of a win from a model change.
 Every result is judged by the same checks the user gives (e.g. the project's test command), never by the agents' own verify
 commands, and compared on checks passed, tokens, dollars, wall time, agent calls and questions for the user. --repeat runs
 each arm N times, interleaved, and the summary gives medians: agents vary from run to run."""
@@ -78,8 +80,11 @@ def solo(ws, goal, who, base, bid, n, timeout, out_dir):
         usd, est = dollars([(sum(costs) if costs else None, model, tin, tout)])
         record(str(ws.project), "SOLO", aid, model, "bench", (r["failure"] or "error") if not r["ok"] else "invalid" if err else "ok",
                round(seconds, 1), tin, tout, sum(costs) if costs else None)
+        why = (r["error"] or "") if not r["ok"] else err if err else h["question"] if h["status"] == "blocked" else \
+            h["summary"] if h["status"] == "failed" else ""
         return {"arm": f"solo {aid}/{model}", "ref": branch, "status": f"failed ({r['failure']})" if not r["ok"] else "no valid handoff" if err
-                else h["status"], "seconds": seconds, "calls": 1, "tokens_in": tin, "tokens_out": tout, "usd": usd, "est": est, "questions": 0}
+                else h["status"], "seconds": seconds, "calls": 1, "tokens_in": tin, "tokens_out": tout, "usd": usd, "est": est, "questions": 0,
+                "why": why}
     finally:
         git(ws.project, "worktree", "remove", "--force", str(wt), codes=None)
 
@@ -96,14 +101,29 @@ def team(ws, goal, label, tm):
     asked = ws.q("SELECT count(*) n FROM events WHERE run=? AND kind='pending_user'", e.run)[0]["n"]
     return {"arm": label, "ref": f"orch/{e.run}/main", "status": status, "seconds": seconds, "calls": len(atts),
             "tokens_in": sum(a["tokens_in"] or 0 for a in atts), "tokens_out": sum(a["tokens_out"] or 0 for a in atts),
-            "usd": usd, "est": est, "questions": asked, "run": e.run}
+            "usd": usd, "est": est, "questions": asked, "run": e.run, "why": "" if status == "done" else stopped(ws, e.run)}
+
+
+def stopped(ws, run):
+    """Why a run did not finish: the questions it waits on, else the last task that failed, else the run's own last word."""
+    waiting = [f"{t['id']}: {t['question'] or ''}" for t in ws.tasks("pending_user", run=run)]
+    if waiting:
+        return " / ".join(waiting)
+    last = ws.q("SELECT task, body FROM events WHERE run=? AND kind IN ('failed', 'run') ORDER BY id DESC LIMIT 1", run)
+    return f"{last[0]['task'] or 'run'}: {last[0]['body']}" if last else ""
+
+
+def cell(text, n=140):
+    """One line of free text for a markdown table cell."""
+    t = " ".join((text or "").split()).replace("|", "/")
+    return t if len(t) <= n else t[:n - 1] + "…"
 
 
 def money(usd, est):
     return "" if usd is None else f"{'~' if est else ''}{usd:.4f}"
 
 
-def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600, repeat=1, modes=(), team_files=()):
+def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600, repeat=1, modes=(), team_files=(), engine_solo=False):
     if not checks:
         raise ValueError("give at least one --check command: every result is judged by it, not by the agents' own verify")
     if not 1 <= int(repeat) <= 20:
@@ -118,6 +138,11 @@ def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600, repe
     arms += [(f"team mode {m}", {**tm, "mode": m}) for m in modes if m != tm["mode"]]
     for f in team_files:
         arms.append((f"team {Path(f).name}", validate_team(json.loads(Path(f).read_text(encoding="utf-8")))))
+    if engine_solo:  # the solo agent's own model as the only worker: the engine's verify loop is then the only difference
+        if not tm["verify"]:
+            raise ValueError('--engine-solo runs mode solo, which takes its checks from team.json "verify": set it first')
+        arms.append((f"engine solo {who[0]}/{who[1]}", validate_team({**tm, "mode": "solo", "solo": "solo",
+                                                                      "workers": {"solo": {"agent": who[0], "model": who[1]}}})))
     if not git_ok(ws.project, "rev-parse", "--verify", "HEAD"):
         raise ValueError("bench needs a git repository with at least one commit")
     ensure_excluded(ws.project)
@@ -159,11 +184,12 @@ def render(bid, goal, base, checks, samples, repeat):
                          f"{money(med(usd), any(s['est'] for s in xs))} | {med([s['calls'] for s in xs]):g} | {med([s['questions'] for s in xs]):g} | "
                          f"{med([s['seconds'] for s in xs]):.0f}s |")
         lines += ["", "## Every run", ""]
-    lines += ["| # | arm | result | checks passed | tokens in | tokens out | $ | agent calls | questions for you | wall time | branch |",
-              "|---|---|---|---|---|---|---|---|---|---|---|"]
+    lines += ["| # | arm | result | checks passed | tokens in | tokens out | $ | agent calls | questions for you | wall time | branch | stopped because |",
+              "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for s in samples:
         lines.append(f"| {s['n']} | {s['arm']} | {s['status']} | {sum(ok for _, ok, _ in s['checks'])}/{len(s['checks'])} | {s['tokens_in']:,} | "
-                     f"{s['tokens_out']:,} | {money(s['usd'], s['est'])} | {s['calls']} | {s['questions']} | {s['seconds']:.0f}s | `{s['ref']}` |")
+                     f"{s['tokens_out']:,} | {money(s['usd'], s['est'])} | {s['calls']} | {s['questions']} | {s['seconds']:.0f}s | `{s['ref']}` | "
+                     f"{cell(s.get('why'))} |")
     for s in samples:
         for cmd, ok, tail in s["checks"]:
             if not ok:

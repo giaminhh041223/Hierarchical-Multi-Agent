@@ -526,6 +526,9 @@ def test_unattended_runs_never_stop_for_hiccups_or_hunches():
     assert "kept as warnings" in r.events("warn", "REVIEW")[0][1] and not r.q("SELECT 1 FROM tasks WHERE status='pending_user'")
     r2 = Repo({"plan": [task("T1", "w1", ["a.txt"], OK)], "steps": {"lead:PLAN": [{"exit": 1, "stderr": "boom"}, {"exit": 1, "stderr": "boom"}]}})
     assert r2.orch("run", "demo goal", "--exit-on-wait") == 3 and r2.calls("lead", "PLAN") == 1, "attended: an unknown error still asks"
+    from orch import bench, core
+    ws = core.Workspace(r2.repo, readonly=True)
+    assert bench.stopped(ws, ws.run).startswith("PLAN: Planning failed (error)"), "bench's 'stopped because' column"
 
     check = [["python", "-c", "import app; assert app.add(2, 3) == 5"]]
     sc = {"plan": [task("T1", "w1", ["app.py"], check), task("T2", "w2", ["b.txt"], OK)],
@@ -1033,12 +1036,16 @@ def test_bench_solo_versus_team():
     log = (Path(f"{r.scenario}.state") / "calls.log").read_text(encoding="utf-8")
     assert "worker SOLO 2 resume" in log and "repair=1" in log, "the solo agent gets the repair turn every engine call gets"
     assert "| done | 1/1 |" in team_row and "| 0 |" in team_row, team_row
+    cells = lambda row: row.rstrip(" |").split(" | ")
+    assert len(cells(solo_row)) == 12 and "`" not in cells(solo_row)[-1] and cells(solo_row)[-1].strip(), solo_row  # stopped because: the reply was no JSON
+    assert team_row.endswith("` |  |"), team_row  # done: nothing to explain
     assert "failed `python -c" in report and "AssertionError" in report, report
     bid = next((r.repo / ".orch" / "bench").glob("*")).name
     assert "return a - b" in r.git("show", f"orch/bench-{bid}/solo-1:app.py") and r.git("rev-parse", "HEAD") == r.base
     assert not [w for w in r.git("worktree", "list").splitlines()[1:] if "bench-" in w], "no worktree is left behind"
     assert not list((r.tmp / "home" / "wt").rglob("*")), "nor their empty directories (the team run's and the bench's)"
     assert r.orch("bench", "demo goal") == 1 and "--check" in r.out, "without a check there is nothing to judge by"
+    assert r.orch("bench", "demo goal", "--check", "x", "--engine-solo") == 1 and 'team.json "verify"' in r.out, r.out
 
 
 def test_bench_repeats_modes_and_team_files():
@@ -1058,18 +1065,20 @@ def test_bench_repeats_modes_and_team_files():
     (r.tmp / "one.json").write_text(json.dumps(other), encoding="utf-8")
     sc["plan"] = [dict(t, assignee="w1") for t in sc["plan"]]
     r.scenario.write_text(json.dumps(sc), encoding="utf-8")
-    assert r.orch("bench", "demo goal", "--check", 'python -c "import app; assert app.add(2, 3) == 5"', "--solo", "mock/mock-fast", "--repeat", "2", "--mode", "solo", "--team-file", str(r.tmp / "one.json")) == 0, r.out
+    assert r.orch("bench", "demo goal", "--check", 'python -c "import app; assert app.add(2, 3) == 5"', "--solo", "mock/mock-fast", "--repeat", "2", "--mode", "solo", "--team-file", str(r.tmp / "one.json"), "--engine-solo") == 0, r.out
     report = r.show_file(".orch/bench/*/report.md")
     summary = report.split("## Summary: medians of 2 runs per arm")[1].split("## Every run")[0]
     rows = [l for l in summary.splitlines() if l.startswith("| ") and not l.startswith("| arm") and not l.startswith("|---")]
-    assert [l.split(" | ")[0][2:] for l in rows] == ["solo mock/mock-fast", "team (lead mock, 2 worker(s), mode team)", "team mode solo", "team one.json"], rows
+    assert [l.split(" | ")[0][2:] for l in rows] == ["solo mock/mock-fast", "team (lead mock, 2 worker(s), mode team)", "team mode solo", "team one.json",
+                                                     "engine solo mock/mock-fast"], rows
     assert all("| 2/2 | 1/1 |" in l for l in rows), rows
     solo, full, light = rows[0], rows[1], rows[2]
     assert "| ~0.0012 | 1 | 0 |" in solo, solo  # 1,000 in x $1 + 100 out x $2 per Mtok (one call, no repair needed)
     assert "| 1 | 0 |" in light and "| 5 | 0 |" in full, (light, full)  # solo mode: the worker only; team: plan, review, T1, T2, review
     every = report.split("## Every run")[1]
-    assert sum(l.startswith("| 1 |") for l in every.splitlines()) == 4 and sum(l.startswith("| 2 |") for l in every.splitlines()) == 4, every
-    assert len({l.split("`")[-2] for l in every.splitlines() if l.startswith("| ") and "`orch/" in l}) == 8, "every run has its own branch"
+    assert sum(l.startswith("| 1 |") for l in every.splitlines()) == 5 and sum(l.startswith("| 2 |") for l in every.splitlines()) == 5, every
+    assert len({l.split("`")[-2] for l in every.splitlines() if l.startswith("| ") and "`orch/" in l}) == 10, "every run has its own branch"
+    assert "| 1 | 0 |" in rows[4], rows[4]  # engine solo: one worker call, the solo agent's own model, no planner, no reviewer
     assert not [w for w in r.git("worktree", "list").splitlines()[1:] if "bench-" in w]
 
 

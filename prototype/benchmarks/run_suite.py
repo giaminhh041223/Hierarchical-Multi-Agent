@@ -1,6 +1,6 @@
 """Run the benchmark tasks with `orctram bench` and gather one summary.
 
-    python benchmarks/run_suite.py --team my-team.json [--solo agent/model] [--repeat 3] [--mode auto] [--tasks 02 03]
+    python benchmarks/run_suite.py --team my-team.json [--solo agent/model] [--repeat 3] [--mode auto] [--engine-solo] [--tasks 02 03]
 
 For each task in benchmarks/tasks/: copy its seed into a fresh git repository under ORCH_HOME/bench-suite/<time>/<task>, give it
 the team file, and run `bench` with the task's goal and its hidden checks (they live outside the repository, so no agent sees
@@ -32,6 +32,7 @@ def main(argv=None):
     ap.add_argument("--solo", help="agent/model working alone (default: the team's lead)")
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--mode", action="append", default=[], help="also the team in this mode (auto | solo | team)")
+    ap.add_argument("--engine-solo", action="store_true", help="also mode solo with the solo agent/model as its only worker")
     ap.add_argument("--tasks", nargs="*", default=[], help="task name prefixes, e.g. 01 03 (default: all)")
     ap.add_argument("--timeout", type=int, default=1800)
     a = ap.parse_args(argv)
@@ -48,7 +49,7 @@ def main(argv=None):
                "--repeat", str(a.repeat), "--timeout", str(a.timeout)]
         for c in sorted((task / "checks").glob("*.py")):
             cmd += ["--check", f'python "{c.as_posix()}"']  # from the result's root; the file stays outside the repository
-        cmd += [x for m in a.mode for x in ("--mode", m)] + (["--solo", a.solo] if a.solo else [])
+        cmd += [x for m in a.mode for x in ("--mode", m)] + (["--solo", a.solo] if a.solo else []) + (["--engine-solo"] if a.engine_solo else [])
         print(f"== {task.name}", flush=True)
         r = subprocess.run(cmd, cwd=ROOT, env=env)
         reports = sorted((repo / ".orch" / "bench").glob("*/report.md"))
