@@ -3,7 +3,7 @@
 The lead is stateless: every lead prompt is rebuilt from the DB. Workers edit isolated git worktrees; the engine commits,
 merges the integration tip in, checks scope, runs the plan's verify commands, records the commit as intent, fast-forwards
 the run's integration branch, and only then publishes facts and releases dependents."""
-import collections, contextlib, fnmatch, hashlib, json, os, re, shutil, sqlite3, subprocess, sys, threading, time, traceback, urllib.request
+import collections, contextlib, difflib, fnmatch, hashlib, json, os, re, shutil, sqlite3, subprocess, sys, threading, time, traceback, urllib.request
 from pathlib import Path
 
 from . import agents, models, pool
@@ -18,7 +18,7 @@ HARD_CAP = 6  # attempts per task before the user is asked
 TEAM_DEFAULTS = {"max_parallel": 4, "timeout": 1800, "verify_timeout": 600, "budget_tokens": 0, "max_amend": 1,
                  "skills": True, "auto_approve": False, "wait_reset": 600, "cooldown": 3600, "account_max": {},
                  "verify_allow": None, "verify_env": [], "mcp": False, "embeddings": None,
-                 "mode": "team", "solo": None, "verify": []}
+                 "mode": "team", "solo": None, "verify": [], "transient_wait": 30, "auto_merge": 4}
 MODES = ("team", "auto", "solo")  # team: always plan + review; auto: the lead sizes the plan, one task = light; solo: one task, no planner
 
 RULES = {
@@ -42,7 +42,7 @@ Planning:
 Authority: you may retry, reassign, cancel and re-plan. Only the user may provide secrets or credentials, change the goal or accept scope cuts, approve spending beyond the budget, install non-curated skills, merge into their branch, or approve destructive operations: for those use ask_user with one precise question.""",
     "reviewer": """Role: reviewer (read-only). Find what would make the result wrong, unsafe or unverifiable: missing requirements, wrong dependencies, overlapping scopes between parallel tasks, verify commands that would pass on broken work, security problems.
 - blocker = must be fixed before proceeding; advisory = optional. Be specific and brief; no style nitpicks.
-- A blocker needs evidence: a failing command and its output, or the requirement it breaks, quoted. Without it the engine counts it as advisory.""",
+- A blocker needs evidence: the sentence of the goal it breaks, quoted word for word (the engine checks the quote against the goal). Without such a quote the engine counts it as advisory. You cannot run commands: the engine runs every verify command and the project checks itself.""",
     "skill_architect": """Role: skill architect. Pick at most 3 skills from the curated index that clearly help specific tasks (e.g. a document-format skill for a task that edits .docx). None is better than marginal ones. You may propose one non-curated GitHub repository URL when it is clearly valuable; the user must approve it before it is installed.""",
 }
 
@@ -108,8 +108,25 @@ def in_scope(path, scopes):
     return False
 
 
-def check_plan(plan, workers, existing=None):
-    """Semantics the schema cannot express. existing = {id: status} of tasks already in the run (amendments)."""
+PYTHON = re.compile(r"^(python[\d.]*|py)(\.exe)?$", re.I)
+
+
+def compile_error(argv):
+    """The syntax error of a `python -c` one-liner, found before any worker runs it: leads write them wrong (`assert r=[...]`)."""
+    if not PYTHON.match(re.split(r"[\\/]", argv[0])[-1]) or "-c" not in argv[1:-1]:
+        return None
+    try:
+        compile(argv[argv.index("-c", 1) + 1], "<verify>", "exec")
+    except SyntaxError as e:
+        return f"{e.msg} (line {e.lineno}, column {e.offset})"
+    except ValueError as e:  # e.g. a null byte
+        return str(e)
+    return None
+
+
+def check_plan(plan, workers, existing=None, checks=()):
+    """Semantics the schema cannot express. existing = {id: status} of tasks already in the run (amendments). checks = the
+    project's own checks (team.json verify): a new plan must use each in some task's verify."""
     existing, errs, tasks = existing or {}, [], plan["tasks"]
     ids = [t["id"] for t in tasks]
     if not tasks:
@@ -131,6 +148,7 @@ def check_plan(plan, workers, existing=None):
             errs.append(f"{i}: no acceptance criteria")
         if not t["verify"] or any(not v or not v[0].strip() for v in t["verify"]):
             errs.append(f"{i}: verify needs at least one non-empty argv array")
+        errs += [f"{i}: verify {json.dumps(v)} is not valid Python: {e}" for v in t["verify"] if v and (e := compile_error(v))]
         if not t["scope_paths"]:
             errs.append(f"{i}: empty scope_paths")
         errs += [f"{i}: scope {s!r} {e}" for s in t["scope_paths"] if (e := scope_error(s))]
@@ -144,7 +162,27 @@ def check_plan(plan, workers, existing=None):
         done |= ready
     if len(done) < len(graph):
         errs.append(f"dependency cycle among {sorted(set(graph) - done)}")
+    errs += [f"project check {json.dumps(c)} (team.json verify) is in no task's verify: add it to the task(s) whose work it checks"
+             for c in checks if tasks and not any(c in t["verify"] for t in tasks)]
     return errs
+
+
+def merge_small(plan, limit):
+    """mode auto: a plan of 2..limit tasks becomes one task for one worker. The real bench (2026-10-06) had leads split small
+    goals that one agent finishes alone in a minute; every extra task costs a worker call, a review and an integration.
+    ponytail: size by task count only; weigh the files the tasks touch if large plans of few tasks get merged wrongly."""
+    ts = plan["tasks"]
+    if not 1 < len(ts) <= limit:
+        return plan
+    ids, order = {t["id"] for t in ts}, []
+    while len(order) < len(ts):  # dependency order (check_plan ruled out cycles): base work's verify runs first
+        order += [t for t in ts if t not in order and all(d in [o["id"] for o in order] for d in t["deps"] if d in ids)]
+    uniq = lambda xs: list({json.dumps(x): x for x in xs}.values())
+    return {**plan, "tasks": [{"id": order[0]["id"], "title": "; ".join(t["title"] for t in order)[:200],
+                               "assignee": collections.Counter(t["assignee"] for t in order).most_common(1)[0][0], "deps": [],
+                               "acceptance": uniq(a for t in order for a in t["acceptance"]),
+                               "scope_paths": uniq(s for t in order for s in t["scope_paths"]),
+                               "verify": uniq(v for t in order for v in t["verify"])}]}
 
 
 ASK_VERIFY = "Verify commands nobody has allowed in this run (outside team verify_allow, or added by an amendment):"
@@ -211,11 +249,26 @@ def checked_call(run, prompt, d, session, aid, contract_name, check=None, cancel
     return r, calls, obj, err
 
 
-def weigh(issues):
-    """A reviewer blocker stops the run or asks the user, so it must carry evidence (a failing command and its output, or the
-    unmet requirement quoted); without it the engine counts it as advisory."""
-    return [{**i, "severity": "advisory", "message": i["message"] + " (blocker without evidence: counted as advisory)"}
-            if i["severity"] == "blocker" and not (i.get("evidence") or "").strip() else i for i in issues]
+QUOTE_WORDS = 6  # words of the goal in a row that a blocker's evidence must quote (the whole goal when it is shorter)
+
+
+def quotes_goal(evidence, goal):
+    """Whether `evidence` quotes the goal word for word: case, punctuation and spacing aside."""
+    e, g = re.findall(r"\w+", (evidence or "").lower()), re.findall(r"\w+", (goal or "").lower())
+    if not e or not g:
+        return False
+    return difflib.SequenceMatcher(None, e, g, autojunk=False).find_longest_match(0, len(e), 0, len(g)).size >= min(QUOTE_WORDS, len(g))
+
+
+def weigh(issues, goal):
+    """A reviewer blocker sends the plan or the work back (or stops for the user), so the engine checks its proof: the
+    evidence quotes the goal sentence it breaks. A hunch, an acceptance line the lead wrote, or a command output the read-only
+    reviewer cannot have produced counts as advisory. Failing verify commands are blockers the engine adds itself.
+    ponytail: a quote proves the requirement exists, not that the work misses it; add a deterministic check per kind if
+    reviewers start quoting the goal for nitpicks."""
+    return [i if i["severity"] != "blocker" or quotes_goal(i.get("evidence"), goal) else
+            {**i, "severity": "advisory", "message": i["message"] + " (blocker whose evidence quotes no sentence of the goal: counted as advisory)"}
+            for i in issues]
 
 
 def entity(fact, tid):
@@ -480,7 +533,7 @@ class Engine:
     def ask(self, role, who, prompt, contract_name, task, kind, cwd, readonly=True, session=None, fresh=None, **kw):
         """Workers rotate in route(). The lead, reviewer and skill architect get a stand-in while their account is out of
         usage; fresh = the same request without the session's context, since a stand-in cannot resume that session."""
-        me = who
+        me, tries = who, collections.Counter()
         while True:
             if role != "worker" and self.cooling(self.acct(who)):
                 who = self.stand_in(readonly) or who
@@ -491,11 +544,24 @@ class Engine:
                                            kind, cwd, readonly, session if who is me else None, **kw)
                 return obj, att, sess if who is me else None
             except Fail as f:
-                if role == "worker" or f.cls not in ("quota", "rate_limit"):
+                if role == "worker":
                     raise
-                self.cool(self.acct(who), f.detail, self.team["cooldown"] if f.cls == "quota" else 300)
-                if not self.stand_in(readonly):
+                if f.cls in ("quota", "rate_limit"):
+                    self.cool(self.acct(who), f.detail, self.team["cooldown"] if f.cls == "quota" else 300)
+                    if not self.stand_in(readonly):
+                        raise
+                    continue
+                tries[f.cls] += 1  # a passing hiccup (agy "Malformed function call", a 503) is not a question for the user
+                if tries[f.cls] > self.retries(f.cls):
                     raise
+                self.ws.event("retry", f"{role} {who['agent']}/{who['model']}: {f.cls}, the same call again ({tries[f.cls]}): "
+                                       f"{f.detail[:200]}", task, role)
+                time.sleep(self.team["transient_wait"] if f.cls == "transient" else 0)
+
+    def retries(self, cls):
+        """Extra tries of a failed lead / reviewer / skill architect call: two for a transient failure, and in an unattended run
+        (--yes, bench) one for any error or invalid reply, since nobody is there to answer 'retry'."""
+        return 2 if cls == "transient" else 1 if cls in ("error", "invalid") and self.rmeta("auto_approve") == "1" else 0
 
     def call(self, role, who, prompt, contract_name, task, kind, cwd, readonly=True, session=None, check=None,
              timeout=900, keep_open=False):
@@ -733,6 +799,9 @@ class Engine:
         if cls == "quota" or (cls == "rate_limit" and prior >= 3):
             return self.rotate(t, f"{ac} is out of usage: {detail[:200].strip()}",
                                self.cool(ac, detail, self.team["cooldown"] if cls == "quota" else 300))
+        if cls == "transient" and prior < 3:
+            wait = self.team["transient_wait"] * 2 ** prior
+            return self.set(tid, "todo", f"transient failure: retry in {wait}s", st, eligible_at=time.time() + wait)
         if cls == "rate_limit":
             wait = min(900, 60 * 2 ** prior)
             return self.set(tid, "todo", f"rate limited: retry in {wait}s", st, eligible_at=time.time() + wait)
@@ -880,16 +949,18 @@ class Engine:
         prev = self.latest_plan()
         if self.team["mode"] == "solo":
             return self.plan_solo(prev)
-        check = lambda p: check_plan(p, self.primaries())
+        check = lambda p: check_plan(p, self.primaries(), checks=self.team["verify"])
         try:
             prompt = self.packet_plan(prev, t["note"])
             plan, _, sess = self.ask("lead", lead, prompt, "plan", "PLAN", "plan", cwd, check=check)
+            if self.team["mode"] == "auto" and (n := len(plan["tasks"])) != len((plan := merge_small(plan, self.team["auto_merge"]))["tasks"]):
+                self.ws.event("plan", f"auto mode: the lead's {n} tasks are small enough for one worker, merged into one (team auto_merge)", "PLAN")
             verdicts, unresolved = [], []
             if self.light(len(plan["tasks"])):
                 self.ws.event("review", "plan review skipped: one task in auto mode", "PLAN")
             for rnd in () if self.light(len(plan["tasks"])) else (1, 2):
                 v, _, _ = self.ask("reviewer", rev, self.packet_plan_review(plan), "verdict", "PLAN", "review", cwd)
-                v["issues"] = weigh(v["issues"])
+                v["issues"] = weigh(v["issues"], self.goal)
                 verdicts.append(v)
                 blockers = [i for i in v["issues"] if i["severity"] == "blocker"]
                 self.ws.event("review", f"plan round {rnd}: {v['verdict']}, {len(blockers)} blocker(s), "
@@ -912,7 +983,10 @@ class Engine:
         self.ws.q("INSERT INTO plans VALUES(?,?,?,?)", self.run, version, json.dumps(plan, ensure_ascii=False), json.dumps(verdicts, ensure_ascii=False))
         md = self.write_plan_md(plan, version, verdicts)
         self.ws.event("plan", f"v{version}: {len(plan['tasks'])} task(s) -> {md}", "PLAN", "lead")
-        if unresolved:
+        if unresolved and self.rmeta("auto_approve") == "1":  # nobody to ask: go on, the engine's verify judges the result
+            self.ws.event("warn", f"plan v{version}: {len(unresolved)} reviewer blocker(s) left after 2 rounds; unattended run, "
+                                  "going on (the verify commands and the final review judge the result)", "PLAN")
+        elif unresolved:
             return self.to_user("PLAN", f"Plan v{version} still has reviewer blockers after 2 rounds:\n" +
                                 "\n".join(f"- [{i['task_id'] or 'plan'}] {i['message']}" for i in unresolved) +
                                 f"\nPlan: {md}\nReply 'yes' to approve anyway, or write what to change.", "running")
@@ -1104,13 +1178,13 @@ class Engine:
         tid = t["id"]
         work = [x for x in self.ws.tasks() if x["kind"] == "work" and x["status"] == "done"]
         problems, seen = [], set()
-        for x in work:
+        for x in [*work, {"id": None, "spec": {"verify": self.team["verify"]}}]:  # then the project's own checks (team.json verify)
             cmds = [c for c in x["spec"].get("verify", []) if json.dumps(c) not in seen]
             seen |= {json.dumps(c) for c in cmds}
-            ok, rep = self.verify(cmds, self.main_wt, self.rdir / "attempts" / f"{tid}-verify-{x['id']}")
+            ok, rep = self.verify(cmds, self.main_wt, self.rdir / "attempts" / f"{tid}-verify-{x['id'] or 'project'}")
             if not ok:
-                problems.append({"task_id": x["id"], "severity": "blocker", "message": "verify fails on the combined tree",
-                                 "evidence": rep[-1500:]})
+                problems.append({"task_id": x["id"], "severity": "blocker", "evidence": rep[-1500:],
+                                 "message": "verify fails on the combined tree" if x["id"] else "a project check (team.json verify) fails on the combined tree"})
         if not problems and self.light(sum(x["kind"] == "work" for x in self.ws.tasks())):
             self.ws.update(tid, handoff={"verdict": "approve", "issues": []})
             self.ws.event("review", "final: verify passes on the integrated tree (light run: no reviewer call)", tid)
@@ -1118,8 +1192,10 @@ class Engine:
         try:
             v, _, _ = self.ask("reviewer", self.team["reviewer"], self.packet_final(tid, work, problems), "verdict", tid, "review", self.main_wt)
         except Fail as f:
+            if self.rmeta("auto_approve") == "1":
+                return self.unattended_end(tid, problems, f"the final reviewer could not run ({f.cls})")
             return self.to_user(tid, f"The final review could not run ({f.cls}): {f.detail[:300]}\nReply 'accept' to finish without it, or 'retry'.", "running")
-        issues = weigh(v["issues"]) + problems
+        issues = weigh(v["issues"], self.goal) + problems
         blockers = [i for i in issues if i["severity"] == "blocker"]
         self.ws.update(tid, handoff={**v, "issues": issues})
         self.ws.event("review", f"final: {v['verdict']}, {len(blockers)} blocker(s)", tid, "reviewer")
@@ -1128,8 +1204,17 @@ class Engine:
         lines = [f"[{i['task_id'] or '-'}] {i['message']}" + (f": {i['evidence'][-600:]}" if i.get("evidence") else "") for i in blockers]
         if sum(x["kind"] == "review" for x in self.ws.tasks()) - 1 < self.team["max_amend"]:
             return self.job_amend(t, lines)
+        if self.rmeta("auto_approve") == "1":
+            return self.unattended_end(tid, problems, f"{len(blockers)} reviewer blocker(s) left after {self.team['max_amend']} amendment(s)")
         self.to_user(tid, "Final review blockers remain:\n" + "\n".join(f"- {x}" for x in lines) +
                      "\nReply 'accept' to finish as is, or describe what to do (the lead will add tasks).", "running")
+
+    def unattended_end(self, tid, problems, why):
+        """The final review of an unattended run (--yes, bench) never waits for a user: the engine's verify decides."""
+        if problems:
+            return self.set(tid, "failed", f"verify fails on the combined tree; {why} (unattended run: nobody to ask)", "running")
+        self.ws.event("warn", f"{why}: kept as warnings, every verify command passes (unattended run)", tid)
+        return self.set(tid, "done", "verified (reviewer blockers kept as warnings)", "running")
 
     def job_amend(self, t, issues):
         """Final-review rejection returns to executing through a recorded amendment (new tasks + a new review)."""
@@ -1175,11 +1260,15 @@ class Engine:
                          f"## Goal\n{self.goal}", f"## Workers (assignee must be one of these names)\n{self.roster()}",
                          f"## Repository files\n{self.repo_map()}", self.kg_text(self.goal, 10),
                          prev and f"## Previous plan (v{prev['version']})\n{json.dumps(prev['plan'], ensure_ascii=False)}",
-                         self.team["verify"] and "## Project checks (from the user: use them as verify where they apply)\n" +
-                         "\n".join(f"- {json.dumps(v)}" for v in self.team["verify"]),
+                         self.team["verify"] and "## Project checks (from the user)\n" +
+                         "\n".join(f"- {json.dumps(v)}" for v in self.team["verify"]) +
+                         "\nPut each one in the verify of the task(s) whose work it checks: the engine rejects a plan that leaves one out, "
+                         "and reruns them all on the combined result. Use them instead of writing your own `python -c` one-liners; add a "
+                         "one-liner only for something they do not check.",
                          self.team["mode"] == "auto" and "## Size the plan to the goal\nIf one worker can finish the goal in one session, "
                          "return exactly ONE task (scope may be \".\") for the strongest worker: a one-task plan skips the plan review and "
-                         "the final reviewer call. Split only into large parts that can run in parallel.",
+                         f"the final reviewer call. The engine merges a plan of up to {self.team['auto_merge']} tasks into one anyway; "
+                         "split only a goal with more large parts that can run in parallel.",
                          feedback and f"## Feedback to address\n{feedback}")
 
     def packet_plan_review(self, plan):

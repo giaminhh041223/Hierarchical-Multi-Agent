@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 os.environ["ORCH_HOME"] = tempfile.mkdtemp(prefix="orch-home-")  # in-process tests never touch the real ~/.orchestra
 from orch import agents, pool  # noqa: E402
 from orch.core import vault_set  # noqa: E402
-from orch.engine import allowed, check_plan, file_map, in_scope  # noqa: E402
+from orch.engine import allowed, check_plan, file_map, in_scope, merge_small, quotes_goal  # noqa: E402
 
 GIT = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
 REPOS = []
@@ -447,7 +447,7 @@ def test_merge_conflict_is_resolved_by_the_worker():
 def test_plan_review_user_approval_and_amendment():
     """Reviewer blocks plan v1 -> lead revises; user approves; final review blocks -> recorded amendment -> REVIEW2."""
     blocker = lambda msg, tid=None: {"reply": {"verdict": "revise", "issues": [{"task_id": tid, "severity": "blocker", "message": msg,
-                                                                               "evidence": f"acceptance not met: {msg}"}]}}
+                                                                               "evidence": f"the goal says 'Demo goal.'; {msg}"}]}}
     readme = [["python", "-c", "assert 'usage' in open('README.md').read()"]]
     sc = {"plan": [task("T1", "w1", ["a.txt"], OK)], "amend": [task("T3", "w2", ["README.md"], OK + readme, ["T1"])],
           "steps": {"reviewer:PLAN": [blocker("T1 lacks a test", "T1"), {}], "reviewer:REVIEW": [blocker("README not updated")],
@@ -469,7 +469,8 @@ def test_plan_review_user_approval_and_amendment():
 
 def test_modes_solo_auto_and_evidence_for_blockers():
     """mode solo: no planner, one task with the user's own checks, no approval, no reviewer call. mode auto: the lead returns
-    one task, so the plan review and the final reviewer call are skipped. A reviewer blocker without evidence is advisory."""
+    one task, so the plan review and the final reviewer call are skipped; a small plan of several tasks is merged into one. A
+    reviewer blocker whose evidence quotes no sentence of the goal (none, or the lead's own acceptance line) is advisory."""
     check = [["python", "-c", "import app; assert app.add(2, 3) == 5"]]
     sc = {"plan": [], "steps": {"worker:T1": [{"write": {"app.py": ADD}}]}}
     r = Repo(sc, mode="solo", solo="w2", verify=check)
@@ -490,12 +491,53 @@ def test_modes_solo_auto_and_evidence_for_blockers():
     text = prompt.read_text(encoding="utf-8")
     assert "Size the plan to the goal" in text and "Project checks (from the user" in text, text[-800:]
 
-    hunch = {"reply": {"verdict": "revise", "issues": [{"task_id": "T1", "severity": "blocker", "message": "feels incomplete", "evidence": None}]}}
+    sc = two_tasks()  # auto mode, a plan of two dependent tasks: one task for one worker, verify in dependency order
+    sc["steps"]["worker:T1"] = [{"write": {"app.py": ADD, "test_app.py": "import app\nassert app.add(1, 1) == 2\n"}}]
+    r5 = Repo(sc, mode="auto")
+    assert r5.run() == 0, r5.out
+    assert r5.status() == {"PLAN": "done", "T1": "done", "REVIEW": "done"} and r5.calls("worker", "T2") == 0, r5.status()
+    spec = json.loads(r5.q("SELECT spec FROM tasks WHERE id='T1'")[0][0])
+    assert spec["verify"] == [sc["plan"][0]["verify"][0], ["python", "test_app.py"]] and spec["scope_paths"] == ["app.py", "test_app.py"], spec
+    assert r5.calls("reviewer", "PLAN") == 0 and r5.calls("reviewer", "REVIEW") == 0 and r5.events("plan", "PLAN")[0][1].startswith("auto mode"), r5.out
+
+    hunch = {"reply": {"verdict": "revise", "issues": [{"task_id": "T1", "severity": "blocker", "message": "feels incomplete", "evidence": None},
+                                                      {"task_id": "T1", "severity": "blocker", "message": "untested", "evidence": "acceptance: T1 works"}]}}
     sc = {"plan": [task("T1", "w1", ["a.txt"], OK)], "steps": {"reviewer:PLAN": [hunch], "reviewer:REVIEW": [hunch], "worker:T1": [{"write": {"a.txt": "a\n"}}]}}
     r4 = Repo(sc)  # team mode: both reviews run, but a blocker without evidence stops nothing and asks nobody
     assert r4.run() == 0 and set(r4.status().values()) == {"done"} and r4.calls("lead", "PLAN") == 1, r4.out
-    assert "blocker without evidence: counted as advisory" in r4.show_file(".orch/runs/*/plan.md")
+    assert r4.show_file(".orch/runs/*/plan.md").count("evidence quotes no sentence of the goal: counted as advisory") == 2
     assert not r4.q("SELECT 1 FROM tasks WHERE id LIKE 'REVIEW2'")
+
+
+def test_unattended_runs_never_stop_for_hiccups_or_hunches():
+    """--yes: a transient failure of the lead (agy "Malformed function call ... Retries remaining") or of a worker (503) is retried,
+    plan blockers left after 2 rounds become warnings, and the final review never waits: the engine's verify decides. The
+    project's checks (team.json verify) run at the final review too, even when the task that carried them did not finish."""
+    quoted = {"reply": {"verdict": "revise", "issues": [{"task_id": "T1", "severity": "blocker", "message": "not enough", "evidence": "goal: demo goal"}]}}
+    sc = {"plan": [task("T1", "w1", ["a.txt"], OK)],
+          "steps": {"lead:PLAN": [{"exit": 1, "stderr": "Malformed function call: invalid tool call. Retries remaining: 3"}, {}],
+                    "reviewer:PLAN": [quoted], "reviewer:REVIEW": [quoted],
+                    "worker:T1": [{"exit": 1, "stderr": "UNAVAILABLE (code 503): The service is currently unavailable."}, {"write": {"a.txt": "a\n"}}]}}
+    r = Repo(sc, transient_wait=0, max_amend=0)
+    assert r.run() == 0, r.out
+    assert set(r.status().values()) == {"done"} and r.calls("lead", "PLAN") == 3 and r.calls("reviewer", "PLAN") == 2, (r.status(), r.out)
+    assert r.outcomes("T1") == ["transient", "integrated"], r.outcomes("T1")
+    assert r.events("retry", "PLAN") and "reviewer blocker(s) left after 2 rounds" in r.events("warn", "PLAN")[0][1], r.out
+    assert "kept as warnings" in r.events("warn", "REVIEW")[0][1] and not r.q("SELECT 1 FROM tasks WHERE status='pending_user'")
+    r2 = Repo({"plan": [task("T1", "w1", ["a.txt"], OK)], "steps": {"lead:PLAN": [{"exit": 1, "stderr": "boom"}, {"exit": 1, "stderr": "boom"}]}})
+    assert r2.orch("run", "demo goal", "--exit-on-wait") == 3 and r2.calls("lead", "PLAN") == 1, "attended: an unknown error still asks"
+
+    check = [["python", "-c", "import app; assert app.add(2, 3) == 5"]]
+    sc = {"plan": [task("T1", "w1", ["app.py"], check), task("T2", "w2", ["b.txt"], OK)],
+          "steps": {"worker:T1": [{"reply": {"status": "failed", "summary": "cannot"}}], "lead:T1": [{"reply": {"action": "fail", "note": "give up"}}],
+                    "worker:T2": [{"write": {"b.txt": "b\n"}}]}}
+    r3 = Repo(sc, verify=check, max_amend=0)
+    assert r3.run() == 1, r3.out
+    st = r3.status()
+    assert st["T1"] == "failed" and st["T2"] == "done" and st["REVIEW"] == "failed", st
+    issues = json.loads(r3.q("SELECT handoff FROM tasks WHERE id='REVIEW'")[0][0])["issues"]
+    assert [i["message"] for i in issues] == ["a project check (team.json verify) fails on the combined tree"], issues
+    assert "nobody to ask" in r3.events("failed", "REVIEW")[0][1]
 
 
 def test_budget_gate_then_stop():
@@ -945,7 +987,8 @@ def test_cli_parsers_failure_classes_and_env():
     assert agents.account("agy", "claude-opus-4-6-thinking") != agents.account("agy", "gemini-3.1-pro-high")  # agy: quota per model
     assert agents.account("opencode", "opencode/big-pickle") == "opencode"
     assert agents.classify("Eligibility check failed: failed to get load code assist response: UNAVAILABLE (code 503): "
-                           "The service is currently unavailable.") == "rate_limit"  # agy: a passing outage, not a question for the user
+                           "The service is currently unavailable.") == "transient"  # agy: a passing outage, not a question for the user
+    assert agents.classify("Malformed function call: the model produced an invalid tool call. Retries remaining: 3") == "transient"
     assert agents.reset_at("resets in 2h 13m", now=0) == 2 * 3600 + 13 * 60 and agents.reset_at("in 5 minutes", now=0) == 300
     for text, kind in [("Error: Not logged in. Please run /login", "auth"), ("HTTP 401 Unauthorized", "auth"),
                        ("status: 429 Too Many Requests", "rate_limit"), ("Quota exceeded for quota metric", "quota"),
@@ -1151,6 +1194,22 @@ def test_scope_and_plan_checks():
     big = ["README.md", "src/main.py"] + [f"src/m{i}/f{j}.py" for i in range(5) for j in range(100)]
     assert file_map(big[:3]).splitlines() == ["README.md", "src/m0/f0.py", "src/main.py"], "a small repo lists every file"
     assert file_map(big, 10).splitlines() == ["README.md", *[f"src/m{i}/ (100 files)" for i in range(5)], "src/main.py"]
+    # verify one-liners are compiled before any worker runs them; the project's own checks must be used
+    pyc = {"tasks": [task("T1", "w1", ["a"], [["python", "-c", "r = f(); assert r=[1]"], ["python3.exe", "-c", "print(1)"]])]}
+    errs = check_plan(pyc, {"w1": {}})
+    assert len(errs) == 1 and "not valid Python" in errs[0] and "assert r=[1]" in errs[0], errs
+    proj = [["python", "-m", "pytest", "-q"]]
+    assert "project check" in " ".join(check_plan({"tasks": [task("T1", "w1", ["a"], [["x"]])]}, {"w1": {}}, checks=proj))
+    assert check_plan({"tasks": [task("T1", "w1", ["a"], [["x"], *proj])]}, {"w1": {}}, checks=proj) == []
+    three = {"tasks": [task("T3", "w2", ["c"], [["c"]], ["T2"]), task("T1", "w1", ["a"], [["a"], ["x"]]), task("T2", "w2", ["b"], [["x"], ["b"]], ["T1"])]}
+    one = merge_small(three, 4)["tasks"]
+    assert len(one) == 1 and one[0]["id"] == "T1" and one[0]["assignee"] == "w2" and one[0]["deps"] == [], one
+    assert one[0]["verify"] == [["a"], ["x"], ["b"], ["c"]] and one[0]["scope_paths"] == ["a", "b", "c"] and one[0]["acceptance"] == ["T1 works", "T2 works", "T3 works"]
+    assert merge_small(three, 2) == three and merge_small({"tasks": three["tasks"][:1]}, 4)["tasks"] == three["tasks"][:1]
+    goal = "Write slugify(text) in slug.py: lowercase, words joined by single hyphens, punctuation dropped."
+    assert quotes_goal('The goal: "words joined by single hyphens, punctuation dropped" - not done', goal)
+    assert not quotes_goal("acceptance: slugify handles unicode", goal) and not quotes_goal(None, goal)
+    assert quotes_goal("goal 'Demo  goal'", "demo goal") and not quotes_goal("demo", "demo goal")
 
 
 if __name__ == "__main__":

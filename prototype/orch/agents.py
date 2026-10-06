@@ -369,8 +369,11 @@ FAILURES = [  # first match wins: a usage-limit message that links a billing or 
     ("quota", r"usage limit|hit your (usage )?limit|(5-hour|weekly|daily|monthly) limit|quota.{0,20}(exceeded|exhausted|reached)|"
               r"exceeded.{0,40}quota|insufficient.?quota|resource.?exhausted|out of credits|more credits|credit balance|"
               r"insufficient.?(credit|balance|funds)"),
-    ("rate_limit", r"rate.?limit|(status|code|error|http)\W{0,3}429\b|\b429\W{0,3}(too|rate)|too many requests|overloaded|"
-                   r"(status|code|error|http)\W{0,3}503\b|service.{0,20}unavailable"),  # agy: "UNAVAILABLE (code 503)": retry later
+    ("rate_limit", r"rate.?limit|(status|code|error|http)\W{0,3}429\b|\b429\W{0,3}(too|rate)|too many requests|overloaded"),
+    # a passing hiccup of the service, not of the account: the same call again in a moment (agy: "UNAVAILABLE (code 503)",
+    # "Malformed function call ... Retries remaining: 3")
+    ("transient", r"(status|code|error|http)\W{0,3}(500|502|503|504)\b|service.{0,20}unavailable|temporarily unavailable|"
+                  r"malformed function call|retries remaining|bad gateway|gateway time-?out|internal server error"),
     ("auth", r"not logged in|unauthori[sz]ed|(status|code|error|http)\W{0,3}401\b|(run|use|type) /login|login required|"
              r"please log ?in|invalid[ _-]?api[ _-]?key|authentication[ _-](failed|required|error)|failed to authenticate"),
     ("model", r"model.{0,40}not supported|not supported.{0,40}model|unknown model|model .{0,30}not found|invalid model"),
