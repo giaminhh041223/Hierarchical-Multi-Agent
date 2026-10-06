@@ -7,12 +7,12 @@
 
 Hướng dẫn sử dụng nằm ở [README.md](README.md).
 
-## 0. Trạng thái (2026-10-05)
+## 0. Trạng thái (2026-10-06)
 
 | Hạng mục | Trạng thái |
 |---|---|
 | Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server (cả chế độ `--control`), worker chạy từ xa, `doctor`, GitHub Action | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+. Đóng gói thành lệnh `orctram` (`pyproject.toml`, chưa lên PyPI), license Apache-2.0. |
-| Test end-to-end | 37/37 PASS với mock agent (không tốn token) trên Linux (Python 3.11). GitHub Actions chạy bộ test trên Windows và Linux (3.11, 3.13), macOS (không chặn), cùng job wheel và GitHub Action. Trên máy Windows của bạn đã pass 27 test (trước đợt đóng gói). |
+| Test end-to-end | 38/38 PASS với mock agent (không tốn token) trên Linux (Python 3.11). GitHub Actions chạy bộ test trên Windows và Linux (3.11, 3.13), macOS (không chặn), cùng job wheel và GitHub Action. Trên máy Windows của bạn đã pass 27 test (trước đợt đóng gói). |
 | Adapter đã kiểm chứng cờ dòng lệnh trên máy này | <ul><li>`codex` 0.153.4.</li><li>`agy` 1.2.15.</li><li>`opencode` 1.18.34, profile `opencode@free`:<ul><li>8/10 model free trả lời được;</li><li>`big-pickle` và `fledge-alpha-free` qua pre-test code.</li></ul></li></ul> |
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
 | Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả. 9router đã có trên máy nhưng chưa nối (§16 P0).</li><li>Worker chạy từ xa với CLI thật qua đường hầm SSH: mới qua test với mock agent (§10).</li></ul> |
@@ -185,10 +185,12 @@ Trạng thái của run:
 | `auth` (chưa đăng nhập, 401, sai key) | Hỏi bạn ngay. Bạn có thể:<ul><li>chạy `orch login <agent>` hoặc `orch vault set`, rồi trả lời `retry`;</li><li>hoặc trả lời `reassign <worker>` / `cancel`.</li></ul> |
 | `quota` (hết usage của tài khoản) | Khoá cả tài khoản tới giờ reset, rồi xoay vòng sang backup (§6.1). |
 | `rate_limit` (429) | Chờ 60 s · 2ⁿ (tối đa 900 s), 3 lần. Lần thứ 4 coi như hết usage: khoá tài khoản 5 phút rồi xoay vòng. |
+| `transient` (500/502/503/504, "service unavailable", "Malformed function call … Retries remaining" của agy) | Worker: chờ `transient_wait` · 2ⁿ (mặc định 30 s), 3 lần, rồi `needs_lead`. Lead, reviewer, skill architect: thử lại cùng lời gọi 2 lần sau `transient_wait`. |
 | `conflict` (xung đột merge), `crashed` | Thử lại tự động. Worker nhận các file có dấu xung đột và tự gộp. |
 | `scope`, `verify`, `invalid`, `error` ở lần đầu | Thử lại một lần, kèm bằng chứng (lỗi verify, file ngoài phạm vi …). |
 | Lỗi lặp lại, `timeout`, `blocked` (worker đặt câu hỏi), `failed` | Chuyển `needs_lead`. Lead triage và chọn một trong: `retry` (kèm chỉ dẫn), `reassign`, `ask_user`, `fail`, `cancel`. |
-| Không gọi được lead | Hỏi bạn. |
+| Không gọi được lead | Hỏi bạn. Run không người trực (`--yes`, bench) thử lại lời gọi lỗi `error`/`invalid` một lần trước. |
+| Run không người trực còn blocker | Blocker plan sau 2 vòng: cảnh báo, run tiếp. Review cuối hết lượt amend: verify qua thì xong (kèm cảnh báo), trượt thì thất bại. Không hỏi bạn. |
 | Đã thử ≥ 6 lần (`HARD_CAP`) | Hỏi bạn. |
 | Vượt ngân sách token | Tạo task cổng `BUDGET<n>` và ngừng khởi động lời gọi mới. Bạn trả lời ngân sách mới (`500k`, `2m`) hoặc `stop`. |
 
@@ -592,7 +594,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 - Test chạy engine thật với mock agent theo kịch bản.
 - Mỗi test dùng một repo git tạm: tự xoá khi pass, giữ lại khi fail để điều tra.
 - `ORCH_HOME` trỏ vào một thư mục tạm, nên test không đụng `~/.orchestra` thật.
-- Thời gian: Linux khoảng 50 giây, Windows khoảng 2–3 phút.
+- Thời gian: Linux khoảng 70 giây, Windows khoảng 2–3 phút.
 
 | Test | Chứng minh |
 |---|---|
@@ -611,6 +613,7 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `suggest_shrinks_benchmarks_toward_history` | <ul><li>Prior benchmark co về lịch sử: model mạnh mà hay báo "done" sai mất vị trí lead.</li><li>Lỗi quota không tính; mỗi tài khoản một worker.</li></ul> |
 | `pool_plan_ranks_pretests_and_backs_up` | <ul><li>`pool plan` xếp hạng và pre-test. Preset `precise` dùng bài khó, `pool test` mặc định dùng bài dễ.</li><li>Model báo "done" mà kiểm tra trượt bị ghi `verify` và xếp sau.</li><li>Lưu backup riêng cho từng worker.</li><li>Trong run, backup đó thật sự nhận task khi worker chính hết usage.</li></ul> |
 | `merge_conflict_is_resolved_by_the_worker` | <ul><li>Hai task sửa cùng một file.</li><li>Worker đến sau nhận dấu xung đột, tự gộp, rồi được tích hợp.</li></ul> |
+| `unattended_runs_never_stop_for_hiccups_or_hunches` | <ul><li>Run `--yes`: lỗi "Malformed function call … Retries remaining" của lead và 503 của worker được thử lại (lớp `transient`).</li><li>Blocker còn lại sau 2 vòng review plan thành cảnh báo; review cuối còn blocker (hết lượt amend) mà verify qua thì xong, kèm cảnh báo.</li><li>Run có người trực: lỗi lạ của lead vẫn hỏi bạn; cột "stopped because" của bench đọc đúng câu hỏi.</li><li>`verify` của team chạy lại ở review cuối dù task mang nó đã thất bại; trượt thì review cuối thất bại, không hỏi ai.</li></ul> |
 | `plan_review_user_approval_and_amendment` | <ul><li>Reviewer chặn → lead sửa plan bằng session cũ.</li><li>Bạn duyệt.</li><li>Review cuối chặn → amend → REVIEW2.</li><li>Lệnh verify mới trong bản amend dừng task trước lời gọi worker và hỏi bạn (lệnh đã duyệt trong plan thì không).</li></ul> |
 | `budget_gate_then_stop` | <ul><li>Chạm ngân sách → cổng BUDGET.</li><li>`stop` huỷ run; task còn lại không chạy.</li></ul> |
 | `skill_architect_installs_and_places` | <ul><li>Cài skill, quét ra script đáng xem.</li><li>Đặt đúng worktree của task, không commit skill.</li><li>Repo ngoài danh sách thành đề xuất và được `approve`.</li></ul> |
@@ -624,15 +627,15 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `cli_parsers_failure_classes_and_env` | <ul><li>Parser agy, claude, opencode chạy trên đầu ra thật trong `docs/probes/`; parser codex trên sự kiện mẫu.</li><li>Lớp lỗi: các thông báo thật được nhận đúng; chữ của dự án (`/login`, "line 429", `quota.py`, `authenticate`) không bị coi là lỗi tài khoản, kể cả qua `run_agent`.</li><li>Môi trường: agent mất `SSH_AUTH_SOCK`, `DATABASE_URL` có mật khẩu, `*_PAT`; lệnh verify chỉ nhận danh sách cho phép, `verify_env` thêm tên nhưng không thêm secret.</li></ul> |
 | `mcp_control_drives_a_run` | <ul><li>Qua MCP `--control`: `doctor`, `run`, chờ plan, `answer` rỗng bị từ chối, `run` thứ hai bị từ chối khi run cũ còn mở, `answer yes` khởi động lại engine, run xong và `status` trả về báo cáo.</li><li>Server không có `--control` chỉ có tool chỉ đọc; agent trong run không nhận `--control`.</li></ul> |
 | `github_action_runs_and_opens_a_pull_request` | <ul><li>`action/run.py` với team từ file, run tự duyệt, output và tóm tắt của job.</li><li>Nhánh `orctram/<run>` được đẩy lên một remote bare, `gh` giả nhận đúng tham số tạo PR (Windows dừng trước bước PR).</li><li>Input đi vào script qua biến môi trường, không chèn vào dòng lệnh shell.</li></ul> |
-| `modes_solo_auto_and_evidence_for_blockers` | <ul><li>`solo`: không gọi lead hay reviewer, 1 task cho worker `solo` với `verify` của bạn, không cần duyệt; thiếu `verify` thì hỏi bạn.</li><li>`auto`: lead trả 1 task nên bỏ review plan, skill architect và lời gọi reviewer cuối; prompt của lead có lời dặn và lệnh kiểm tra của dự án.</li><li>Blocker không có bằng chứng thành góp ý: không chặn, không amend.</li></ul> |
+| `modes_solo_auto_and_evidence_for_blockers` | <ul><li>`solo`: không gọi lead hay reviewer, 1 task cho worker `solo` với `verify` của bạn, không cần duyệt; thiếu `verify` thì hỏi bạn.</li><li>`auto`: lead trả 1 task nên bỏ review plan, skill architect và lời gọi reviewer cuối; prompt của lead có lời dặn và lệnh kiểm tra của dự án.</li><li>`auto` với plan 2 task phụ thuộc nhau: gộp thành 1 task, verify theo thứ tự phụ thuộc, không gọi reviewer.</li><li>Blocker không trích được mục tiêu (không có evidence, hay chỉ trích acceptance của lead) thành góp ý: không chặn, không amend.</li></ul> |
 | `report_estimates_cost_at_list_price` | CLI không báo chi phí thì `report.md` ước tính theo giá trong DB model, đánh dấu `~`. |
-| `bench_repeats_modes_and_team_files` | `--repeat 2` với bốn nhánh (agent một mình, đội, đội ở chế độ solo, một file team một worker): trung vị, số lời gọi (1 ở chế độ solo, 5 ở chế độ team), $ ước tính, mỗi lần chạy một nhánh riêng. |
+| `bench_repeats_modes_and_team_files` | `--repeat 2` với năm nhánh (agent một mình, đội, đội ở chế độ solo, một file team một worker, `--engine-solo`): trung vị, số lời gọi (1 ở chế độ solo, 5 ở chế độ team), $ ước tính, mỗi lần chạy một nhánh riêng. |
 | `benchmark_tasks_are_sound` | Check ẩn của mọi việc chuẩn trượt trên `seed/` và qua với lời giải mẫu; `run_suite.py` chạy được việc 01 với agent giả; `--check` giữ dấu `\` trên Windows. |
-| `bench_solo_versus_team` | Agent làm một mình viết sai `add()` và không trả handoff hợp lệ, kể cả ở lượt repair (như agy bị từ chối lệnh): báo cáo ghi `no valid handoff`, cộng token cả hai lượt, vẫn chấm check; cả đội qua check. Báo cáo có số lời gọi, câu hỏi, nhánh kết quả; không còn worktree thừa; thiếu `--check` thì từ chối. |
+| `bench_solo_versus_team` | Agent làm một mình viết sai `add()` và không trả handoff hợp lệ, kể cả ở lượt repair (như agy bị từ chối lệnh): báo cáo ghi `no valid handoff`, cộng token cả hai lượt, vẫn chấm check; cả đội qua check. Báo cáo có số lời gọi, câu hỏi, nhánh kết quả, cột "stopped because"; không còn worktree thừa; thiếu `--check` thì từ chối; `--engine-solo` khi team không có `verify` thì từ chối. |
 | `doctor` | Máy, dự án, team, DB, engine; agent của team chưa cài hoặc token remote quá ngắn thì mã thoát 1; không in secret. |
 | `db_schema_versions` | DB trước khi có phiên bản lên version 1 và có đủ bảng; migration chạy đúng một lần; DB của bản Orctram mới hơn bị từ chối. |
 | `package_ships_its_data` | Mọi file dữ liệu trong `orch/` (catalog, `ui.html`) nằm trong package data; lệnh `orctram`, version và LICENSE đúng; không có dependency. |
-| `scope_and_plan_checks` | Các kiểm tra plan, scope, allowlist lệnh verify và repo map ở dạng hàm thuần. |
+| `scope_and_plan_checks` | Các kiểm tra plan, scope, allowlist lệnh verify và repo map ở dạng hàm thuần; one-liner `python -c` lỗi cú pháp và plan thiếu `verify` của team bị từ chối; gộp plan nhỏ (`merge_small`); kiểm tra trích dẫn mục tiêu (`quotes_goal`). |
 
 ## 16. Lộ trình
 
@@ -692,6 +695,18 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
   - bộ việc chuẩn `benchmarks/` với `run_suite.py`.
 - Việc của bạn: `python benchmarks/run_suite.py --team <team.json> --repeat 3 --mode auto --mode solo` với agent thật, solo cùng model với lead để so công bằng; gửi lại `summary.md`.
 - Câu hỏi sẽ trả lời: đội có hơn ở việc 02 (song song) và 03 (refactor) không; `auto` có rẻ gần bằng agent một mình mà vẫn đúng như đội không.
+
+**P5: theo bench thật lần hai (2026-10-06, [benchmarks/summary-2026-10-06.md](benchmarks/summary-2026-10-06.md))**
+- Kết quả: đội trượt chủ yếu vì run dừng lại hỏi người dùng, không vì code sai. Lý do: blocker của reviewer sau 2 vòng (lệnh `python -c` của lead sai cú pháp, hoặc bắt bẻ độ phủ), và lỗi tạm thời của agy. Chế độ solo (vòng verify/thử lại của engine) là nhánh duy nhất đạt hết check ở cả ba việc.
+- Đã làm:
+  - run không người trực (`--yes`, bench) chỉ hỏi bạn khi cần đăng nhập, secret, ngân sách hay duyệt lệnh: blocker plan còn lại sau 2 vòng thành cảnh báo; review cuối để verify quyết định; lead/reviewer lỗi `error`/`invalid` được thử lại một lần;
+  - lớp lỗi `transient` (503, "Malformed function call … Retries remaining"): lead/reviewer thử lại 2 lần, worker 3 lần, chờ `transient_wait`;
+  - cổng evidence tất định: blocker chỉ được tính khi `evidence` trích nguyên văn mục tiêu (≥ 6 từ liền nhau, hoặc cả mục tiêu); verify trượt là blocker do engine tạo;
+  - kỷ luật verify: plan phải dùng mọi lệnh `verify` của team; one-liner `python -c` được biên dịch thử, lỗi cú pháp trả về cho lead; review cuối chạy lại `verify` của team;
+  - chế độ auto: plan có tối đa `auto_merge` (4) task được gộp thành 1;
+  - bench: cột "stopped because", nhánh `--engine-solo`; đính chính bản tổng hợp (chế độ solo không gọi lead).
+- Việc của bạn: `python benchmarks/run_suite.py --team <team.json> --repeat 3 --mode auto --mode solo --engine-solo` với agent thật.
+- Câu hỏi sẽ trả lời: `engine solo` (cùng model với agent một mình) có hơn agent một mình không, tức vòng verify của engine đáng bao nhiêu; đội và `auto` có còn trượt vì dừng lại không.
 
 **Sửa sau đợt review 2026-10-04**
 - Lớp lỗi chỉ lấy từ lỗi của CLI và stderr (§6).

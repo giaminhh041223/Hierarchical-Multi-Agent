@@ -19,7 +19,7 @@ Bối cảnh cho Claude Code (local hoặc cloud) khi làm việc trong repo nà
 cd prototype && PYTHONIOENCODING=utf-8 PYTHONPATH=. python tests/test_e2e.py
 ```
 
-- 37 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 70 giây, Windows khoảng 2–3 phút.
+- 38 test end-to-end với mock agent (`orch/mock.py`), không tốn token. Linux khoảng 70 giây, Windows khoảng 2–3 phút.
 - CI (`.github/workflows/ci.yml`) chạy bộ test trên Windows và Linux (3.11, 3.13), macOS không chặn; build wheel rồi chạy `orctram doctor` từ venv sạch; chạy GitHub Action với team mock.
 - Lọc theo tên: thêm một phần tên test vào cuối lệnh, ví dụ `pool`.
 - Cần Python 3.11+ và git. Test tự truyền danh tính git, không cần `git config`.
@@ -99,7 +99,7 @@ Run thật chạy trên máy Windows của người dùng: `git pull`, rồi `py
 
 ## Việc tiếp theo
 
-Lộ trình ở `prototype/PLAN.md` §0 và §16. P1 xong. P2 xong phần code: sơ đồ DAG, sửa plan bằng kéo-thả, MCP server, embeddings, worker chạy từ xa, UI pha 1–3. Đợt review 2026-10-04 đã sửa phân loại lỗi, lệnh verify của bản amend, môi trường của verify, LF. P4 (theo bench thật): `mode` auto/solo, blocker cần `evidence`, bảng Calls và $, bench lặp/so nhiều đội, bộ việc chuẩn. P3 (sản phẩm, hướng A + E): tên Orctram, Apache-2.0, gói `orctram`, migration DB, `doctor`, CI, workflow phát hành, MCP `--control`, GitHub Action beta, `bench`, UI pha 4 (audit, ảnh chụp) (`PLAN.md` §16).
+Lộ trình ở `prototype/PLAN.md` §0 và §16. P1 xong. P2 xong phần code: sơ đồ DAG, sửa plan bằng kéo-thả, MCP server, embeddings, worker chạy từ xa, UI pha 1–3. Đợt review 2026-10-04 đã sửa phân loại lỗi, lệnh verify của bản amend, môi trường của verify, LF. P4 (theo bench thật): `mode` auto/solo, blocker cần `evidence`, bảng Calls và $, bench lặp/so nhiều đội, bộ việc chuẩn. P5 (theo bench thật lần hai, 2026-10-06): run không người trực không dừng vì việc không cần con người (blocker plan sau 2 vòng thành cảnh báo, review cuối để verify quyết định), lớp lỗi `transient` được thử lại, blocker phải trích nguyên văn mục tiêu, plan phải dùng `verify` của team và one-liner `python -c` được biên dịch thử, auto gộp plan nhỏ (`auto_merge`), bench có cột "stopped because" và nhánh `--engine-solo`. P3 (sản phẩm, hướng A + E): tên Orctram, Apache-2.0, gói `orctram`, migration DB, `doctor`, CI, workflow phát hành, MCP `--control`, GitHub Action beta, `bench`, UI pha 4 (audit, ảnh chụp) (`PLAN.md` §16).
 
 Đang chờ người dùng:
 1. Quyết định có bật hai opt-in ở §13 trong `team.json` hay không.
@@ -108,7 +108,7 @@ Lộ trình ở `prototype/PLAN.md` §0 và §16. P1 xong. P2 xong phần code: 
 4. Thử worker chạy từ xa với CLI thật qua `ssh -R` (bộ test 27/27 đã pass trên Windows).
 5. UI pha 4: thử Narrator (audit bằng script và ảnh chụp README đã xong).
 6. PyPI: thêm trusted publisher cho `release.yml` (environment `pypi`), rồi push tag `v0.1.0`; thử GitHub Action với agent thật và API key.
-7. Chạy `python benchmarks/run_suite.py --team <team.json> --repeat 3 --mode auto --mode solo` với agent thật (P4 ở `PLAN.md` §16). Bench thật đầu tiên (2026-10-05, dự án spec nhỏ: 3 module, 4 check ẩn): solo agy/claude-opus-4-6 đạt 4/4, 133 s, 34k/7k token; đội (agy lead/reviewer, agy flash + 2 model opencode free) đạt 4/4, ~9 phút, 530k/133k token, 9 lời gọi, 1 câu hỏi (reviewer chặn sai). Việc nhỏ thì đội chưa đáng; cần thử việc lớn, nhiều module độc lập.
+7. Chạy `python benchmarks/run_suite.py --team <team.json> --repeat 3 --mode auto --mode solo --engine-solo` với agent thật (P5 ở `PLAN.md` §16; kết quả lần hai ở `prototype/benchmarks/summary-2026-10-06.md`). Bench thật đầu tiên (2026-10-05, dự án spec nhỏ: 3 module, 4 check ẩn): solo agy/claude-opus-4-6 đạt 4/4, 133 s, 34k/7k token; đội (agy lead/reviewer, agy flash + 2 model opencode free) đạt 4/4, ~9 phút, 530k/133k token, 9 lời gọi, 1 câu hỏi (reviewer chặn sai). Việc nhỏ thì đội chưa đáng; cần thử việc lớn, nhiều module độc lập.
 
 Ưu tiên tiếp theo: vài run thật trên repo thật; lưu đầu ra thật của CLI mới vào `prototype/docs/probes/` làm fixture cho parser.
 

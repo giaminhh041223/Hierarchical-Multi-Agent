@@ -19,12 +19,13 @@ Mỗi việc có:
 Chạy trên máy của bạn: agent thật tốn quota, đừng chạy trong CI.
 
 ```bash
-python benchmarks/run_suite.py --team my-team.json --repeat 3 --mode auto --mode solo
+python benchmarks/run_suite.py --team my-team.json --repeat 3 --mode auto --mode solo --engine-solo
 ```
 
 - `--team`: team cho nhánh "cả đội", cùng dạng `.orch/team.json`.
 - `--solo agent/model`: agent làm một mình. Mặc định là lead của team. Để so công bằng, dùng cùng model với lead.
 - `--mode auto` / `--mode solo`: thêm nhánh "cả đội ở chế độ đó".
+- `--engine-solo`: thêm nhánh chế độ `solo` với chính agent/model của nhánh solo làm worker duy nhất. So nó với nhánh solo để biết vòng verify và thử lại của engine đáng bao nhiêu khi không đổi model. Cần `"verify"` trong file team.
 - `--tasks 02 03`: chỉ chạy vài việc.
 
 Mỗi việc được chép vào một repo git mới ở `~/.orchestra/bench-suite/<thời điểm>/<việc>/`. Bản tổng hợp nằm ở `summary.md` cùng thư mục.
@@ -34,4 +35,5 @@ Mỗi việc được chép vào một repo git mới ở `~/.orchestra/bench-su
 - **Runs passing every check:** số lần đạt hết check ẩn. Đây là chất lượng.
 - **$:** chi phí CLI báo, hoặc ước tính theo giá OpenRouter (dấu `~`). Model free tính 0.
 - **Agent calls, questions:** chi phí điều phối và số lần phải hỏi bạn.
+- **Stopped because:** vì sao một lần chạy không xong (câu hỏi đang chờ, task thất bại, lỗi của agent). Chấm trượt vì run dừng khác với chấm trượt vì code sai.
 - Một lần chạy không đủ để kết luận; dùng `--repeat 3` trở lên.
