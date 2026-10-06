@@ -22,8 +22,11 @@ def catalog():
 
 def account(aid, model=None):
     """The quota a call spends. An agent id is one login; a router holds one account per provider prefix of its model ids
-    (cx/, ag/ ...), and "shares" maps the prefixes that are also a CLI's subscription: those run out together with the CLI."""
+    (cx/, ag/ ...), and "shares" maps the prefixes that are also a CLI's subscription: those run out together with the CLI.
+    A profile with "quota": "model" runs out per model."""
     a = catalog().get(aid) or {}
+    if a.get("quota") == "model" and model:  # agy: claude-opus out for the week while gemini still runs (seen 2026-10-06)
+        return f"{aid}/{model}"
     if a.get("remote"):  # model = "<agent>:<model>". ponytail: every runner of one CLI counts as one account; name runners if not
         return f"{aid}/{(model or '').split(':', 1)[0]}"
     if not a.get("router") or "/" not in (model or ""):

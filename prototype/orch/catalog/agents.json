@@ -33,7 +33,7 @@
     "mode": {"rw": "accept-edits", "ro": "plan"},
     "run": ["--output-format", "json", "--model", "{model}", "--mode", "{mode}", "--json-schema", "{schema}", "-p", "{prompt}"],
     "resume": ["--output-format", "json", "--model", "{model}", "--mode", "{mode}", "--json-schema", "{schema}", "--conversation", "{session}", "-p", "{prompt}"],
-    "prompt": "arg", "parse": "agy",
+    "prompt": "arg", "parse": "agy", "quota": "model",
     "note": "## This CLI cannot run commands\nShell commands are denied in this mode: do not try to run tests, scripts or orch commands. Read files (and edit them if your role allows), then reply with the JSON output contract; the engine runs the verify commands itself."
   },
   "opencode": {
