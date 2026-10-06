@@ -73,7 +73,8 @@ def ensure_excluded(project):
     f = (common if common.is_absolute() else Path(project) / common) / "info" / "exclude"
     f.parent.mkdir(parents=True, exist_ok=True)
     have = f.read_text(encoding="utf-8").splitlines() if f.exists() else []
-    add = [p for p in (".orch/", ".agents/skills/orch-*/") if p not in have]
+    # nul: an agent's `2>nul` in bash on Windows leaves a file git cannot index, and `git add -A` fails (seen 2026-10-06)
+    add = [p for p in (".orch/", ".agents/skills/orch-*/", "nul") if p not in have]
     if add:
         f.write_text("\n".join(have + add) + "\n", encoding="utf-8", newline="\n")
 
