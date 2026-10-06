@@ -994,6 +994,8 @@ def test_cli_parsers_failure_classes_and_env():
     assert agents.classify("Eligibility check failed: failed to get load code assist response: UNAVAILABLE (code 503): "
                            "The service is currently unavailable.") == "transient"  # agy: a passing outage, not a question for the user
     assert agents.classify("Malformed function call: the model produced an invalid tool call. Retries remaining: 3") == "transient"
+    assert agents.classify('status ERROR: Eligibility check failed: failed to get profile picture: Get "https://example.invalid/a": '
+                           "dial tcp: lookup example.invalid: no such host") == "transient"  # agy: DNS blip, seen 2026-10-06
     assert agents.reset_at("resets in 2h 13m", now=0) == 2 * 3600 + 13 * 60 and agents.reset_at("in 5 minutes", now=0) == 300
     for text, kind in [("Error: Not logged in. Please run /login", "auth"), ("HTTP 401 Unauthorized", "auth"),
                        ("status: 429 Too Many Requests", "rate_limit"), ("Quota exceeded for quota metric", "quota"),

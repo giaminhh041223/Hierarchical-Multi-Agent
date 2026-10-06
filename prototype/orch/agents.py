@@ -373,7 +373,8 @@ FAILURES = [  # first match wins: a usage-limit message that links a billing or 
     # a passing hiccup of the service, not of the account: the same call again in a moment (agy: "UNAVAILABLE (code 503)",
     # "Malformed function call ... Retries remaining: 3")
     ("transient", r"(status|code|error|http)\W{0,3}(500|502|503|504)\b|service.{0,20}unavailable|temporarily unavailable|"
-                  r"malformed function call|retries remaining|bad gateway|gateway time-?out|internal server error"),
+                  r"malformed function call|retries remaining|bad gateway|gateway time-?out|internal server error|"
+                  r"eligibility check failed|dial tcp|no such host|i/o timeout"),  # agy's network precheck: "dial tcp: lookup ..."
     ("auth", r"not logged in|unauthori[sz]ed|(status|code|error|http)\W{0,3}401\b|(run|use|type) /login|login required|"
              r"please log ?in|invalid[ _-]?api[ _-]?key|authentication[ _-](failed|required|error)|failed to authenticate"),
     ("model", r"model.{0,40}not supported|not supported.{0,40}model|unknown model|model .{0,30}not found|invalid model"),
