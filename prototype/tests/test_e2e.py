@@ -106,6 +106,7 @@ def test_happy_path():
     assert r.status() == {"PLAN": "done", "T1": "done", "T2": "done", "REVIEW": "done"}, r.status()
     assert "return a + b" in r.show("app.py") and "assert" in r.show("test_app.py")
     assert r.git("rev-parse", "HEAD") == r.base, "the user's branch must stay untouched"
+    assert r.git("check-ignore", "sub/nul") == "sub/nul", "an agent's `2>nul` in bash on Windows leaves a file git cannot index"
     assert r.q("SELECT entity, fact FROM facts") == [("app", "app: add(a, b) returns a + b")]
     assert r.orch("kg", "search", "add") == 0 and "returns a + b" in r.out, "a query of only common words must still search"
     assert '-c "import app; assert' in r.events("verify", "T1")[0][1], "commands are shown quoted"
@@ -943,6 +944,8 @@ def test_cli_parsers_failure_classes_and_env():
     assert agents.classify(agy_quota) == "quota" and agents.reset_at(agy_quota, now=0) == 154 * 3600 + 23 * 60 + 44
     assert agents.account("agy", "claude-opus-4-6-thinking") != agents.account("agy", "gemini-3.1-pro-high")  # agy: quota per model
     assert agents.account("opencode", "opencode/big-pickle") == "opencode"
+    assert agents.classify("Eligibility check failed: failed to get load code assist response: UNAVAILABLE (code 503): "
+                           "The service is currently unavailable.") == "rate_limit"  # agy: a passing outage, not a question for the user
     assert agents.reset_at("resets in 2h 13m", now=0) == 2 * 3600 + 13 * 60 and agents.reset_at("in 5 minutes", now=0) == 300
     for text, kind in [("Error: Not logged in. Please run /login", "auth"), ("HTTP 401 Unauthorized", "auth"),
                        ("status: 429 Too Many Requests", "rate_limit"), ("Quota exceeded for quota metric", "quota"),
