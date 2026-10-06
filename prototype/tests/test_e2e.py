@@ -528,7 +528,9 @@ def test_unattended_runs_never_stop_for_hiccups_or_hunches():
     assert r2.orch("run", "demo goal", "--exit-on-wait") == 3 and r2.calls("lead", "PLAN") == 1, "attended: an unknown error still asks"
     from orch import bench, core
     ws = core.Workspace(r2.repo, readonly=True)
-    assert bench.stopped(ws, ws.run).startswith("PLAN: Planning failed (error)"), "bench's 'stopped because' column"
+    why = bench.stopped(ws, ws.run)
+    ws.db.close()  # Windows: an open orch.db cannot be deleted when the test cleans up
+    assert why.startswith("PLAN: Planning failed (error)"), "bench's 'stopped because' column"
 
     check = [["python", "-c", "import app; assert app.add(2, 3) == 5"]]
     sc = {"plan": [task("T1", "w1", ["app.py"], check), task("T2", "w2", ["b.txt"], OK)],
