@@ -939,6 +939,9 @@ def test_cli_parsers_failure_classes_and_env():
     assert (cx["text"], cx["session"], cx["tokens_in"], cx["tokens_out"], cx["error"]) == ('{"status": "done"}', "th-1", 120, 30, None)
     err = agents._codex(json.dumps({"type": "error", "message": "You've hit your usage limit. Try again at Oct 4th, 2026 8:58 AM."}), tmp / "x")
     assert agents.classify(err["error"]) == "quota" and agents.reset_at(err["error"]), err
+    agy_quota = "Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 154h23m44s."
+    assert agents.classify(agy_quota) == "quota" and agents.reset_at(agy_quota, now=0) == 154 * 3600 + 23 * 60 + 44
+    assert agents.reset_at("resets in 2h 13m", now=0) == 2 * 3600 + 13 * 60 and agents.reset_at("in 5 minutes", now=0) == 300
     for text, kind in [("Error: Not logged in. Please run /login", "auth"), ("HTTP 401 Unauthorized", "auth"),
                        ("status: 429 Too Many Requests", "rate_limit"), ("Quota exceeded for quota metric", "quota"),
                        ("RESOURCE_EXHAUSTED", "quota"), ('{"type": "authentication_error"}', "auth"), ("code: invalid_api_key", "auth"),

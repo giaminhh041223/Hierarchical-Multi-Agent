@@ -385,7 +385,7 @@ def classify(*texts):
 
 def reset_at(text, now=None):
     """When a usage limit lifts, from the CLI's own message; None when it names no time. Formats seen:
-    codex "try again at Oct 4th, 2026 8:58 AM", relative "retry in 51.2s" / "resets in 2h 13m", claude "...|1759550400"."""
+    codex "try again at Oct 4th, 2026 8:58 AM", relative "retry in 51.2s" / "resets in 2h 13m" / agy "Resets in 47m5s", claude "...|1759550400"."""
     t, now = text or "", time.time() if now is None else now
     m = re.search(r"\b([A-Z][a-z]{2})[a-z]*\.? (\d{1,2})(?:st|nd|rd|th)?,? (\d{4}),? (\d{1,2}:\d{2}) ?([AP]M)", t)
     if m:
@@ -393,7 +393,7 @@ def reset_at(text, now=None):
             return time.mktime(time.strptime(" ".join(m.groups()), "%b %d %Y %I:%M %p"))  # local time, as the CLI prints it
         except ValueError:
             pass
-    m = re.search(r"\b(?:in|after) ((?:\d+(?:\.\d+)? ?(?:hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\b ?)+)", t, re.I)
+    m = re.search(r"\b(?:in|after) ((?:\d+(?:\.\d+)? ?(?:hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?:\b|(?=\d)) ?)+)", t, re.I)  # agy: "154h23m44s"
     if m:
         return now + sum(float(n) * {"h": 3600, "m": 60, "s": 1}[u[0].lower()] for n, u in re.findall(r"(\d+(?:\.\d+)?) ?([a-z]+)", m.group(1), re.I))
     m = re.search(r"\|(\d{10})\b", t)
