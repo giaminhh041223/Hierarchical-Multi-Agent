@@ -133,14 +133,16 @@ def profile(model, db, cols):
 def suggest(candidates, db=None, k=5):
     """candidates: [(agent, model)] usable on this machine -> default team, best first by expected quality: the benchmark
     prior (capability percentile among known models, 0.5 without public results) worth k calls, updated by this pair's own
-    record: (k * prior + right) / (k + right + wrong). right = calls that ended ok or integrated; wrong = a false "done"
-    (verify), a malformed reply (invalid), a timeout. Quota, auth and the like say nothing about the model.
+    record: (k * prior + right) / (k + right + wrong). right = calls that ended ok or integrated, and bench results that
+    passed the user's hidden checks; wrong = a false "done" (verify), a malformed reply (invalid), a timeout, a bench result
+    that failed the hidden checks (checks_fail: the engine's verify passed it, the user's checks did not). Quota, auth and
+    the like say nothing about the model.
     ponytail: k fixed and time / tokens unweighted; fit k and add a speed term once the history holds a few hundred runs."""
     db = db or load()
     cols = percentiles(db)
 
     def score(c):
-        right, wrong = history().execute("SELECT coalesce(sum(ok), 0), coalesce(sum(outcome IN ('verify', 'invalid', 'timeout')), 0)"
+        right, wrong = history().execute("SELECT coalesce(sum(ok), 0), coalesce(sum(outcome IN ('verify', 'invalid', 'timeout', 'checks_fail')), 0)"
                                          " FROM runs WHERE agent=? AND model=?", c).fetchone()
         cap = profile(c[1], db, cols)["cap"]
         return (k * (0.5 if cap is None else cap) + right) / (k + right + wrong)

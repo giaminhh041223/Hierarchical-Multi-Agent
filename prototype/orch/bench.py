@@ -86,7 +86,7 @@ def solo(ws, goal, who, base, bid, n, timeout, out_dir):
             h["summary"] if h["status"] == "failed" else ""
         return {"arm": f"solo {aid}/{model}", "ref": branch, "status": f"failed ({r['failure']})" if not r["ok"] else "no valid handoff" if err
                 else h["status"], "seconds": seconds, "calls": 1, "tokens_in": tin, "tokens_out": tout, "usd": usd, "est": est, "questions": 0,
-                "why": why}
+                "why": why, "writers": [[aid, model]]}
     finally:
         git(ws.project, "worktree", "remove", "--force", str(wt), codes=None)
 
@@ -103,7 +103,9 @@ def team(ws, goal, label, tm):
     asked = ws.q("SELECT count(*) n FROM events WHERE run=? AND kind='pending_user'", e.run)[0]["n"]
     return {"arm": label, "ref": f"orch/{e.run}/main", "status": status, "seconds": seconds, "calls": len(atts),
             "tokens_in": sum(a["tokens_in"] or 0 for a in atts), "tokens_out": sum(a["tokens_out"] or 0 for a in atts),
-            "usd": usd, "est": est, "questions": asked, "run": e.run, "why": "" if status == "done" else stopped(ws, e.run)}
+            "usd": usd, "est": est, "questions": asked, "run": e.run, "why": "" if status == "done" else stopped(ws, e.run),
+            "writers": [[w["agent"], w["model"]] for w in ws.q("SELECT DISTINCT agent, model FROM attempts WHERE run=? AND kind='work' "
+                                                                "AND outcome='integrated'", e.run)]}
 
 
 def stopped(ws, run):
@@ -163,6 +165,9 @@ def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600, repe
         for i, a in enumerate(got):
             a["n"] = n
             a["checks"] = run_checks(ws.project, a["ref"], checks, check_timeout, out / f"checks-{n}-{i}", HOME / "wt" / f"bench-{bid}" / f"check-{n}-{i}")
+            for aid, model in a["writers"]:  # the user's own checks judged this model's code: models suggest learns from it
+                record(str(ws.project), f"bench-{bid}", aid, model, "bench-check",
+                       "checks_pass" if all(ok for _, ok, _ in a["checks"]) else "checks_fail", round(a["seconds"], 1))
         samples += got
     with contextlib.suppress(OSError):
         (HOME / "wt" / f"bench-{bid}").rmdir()  # its worktrees are gone; the empty directory goes too

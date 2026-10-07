@@ -322,7 +322,7 @@ def record(project, task, agent, model, role, outcome, seconds, tokens_in=0, tok
     with contextlib.suppress(sqlite3.Error):
         history().execute("INSERT INTO runs(ts, project, task, agent, model, role, ok, seconds, tokens_in, tokens_out, cost, outcome)"
                           " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (time.time(), project, task, agent, model, role,
-                                                              int(outcome in ("ok", "integrated")), seconds, tokens_in, tokens_out, cost, outcome))
+                                                              int(outcome in ("ok", "integrated", "checks_pass")), seconds, tokens_in, tokens_out, cost, outcome))
 
 
 def hm(ts):

@@ -391,6 +391,10 @@ def test_suggest_shrinks_benchmarks_toward_history():
                 record("t", "T1", *pair, "work", outcome, 1)
         s = models.suggest(cands, db)  # strong (5*1 + 0) / 10 = 0.5; fast (5/3 + 10) / 15 = 0.78; mid keeps 2/3
         assert (s["lead"], s["reviewer"]) == (cands[2], cands[1]), s
+        for _ in range(5):  # bench: mid's code failed the user's hidden checks five times
+            record("t", "bench-1", *cands[1], "bench-check", "checks_fail", 1)
+        s = models.suggest(cands, db)
+        assert s["reviewer"] == cands[0], s
     finally:
         agents.OVERRIDES.unlink()
 
@@ -1143,6 +1147,10 @@ def test_bench_repeats_modes_and_team_files():
     assert sum(l.startswith("| 1 |") for l in every.splitlines()) == 6 and sum(l.startswith("| 2 |") for l in every.splitlines()) == 6, every
     assert len({l.split("`")[-2] for l in every.splitlines() if l.startswith("| ") and "`orch/" in l}) == 12, "every run has its own branch"
     assert "| 2 | 0 |" in rows[5], rows[5]  # the examiner, then the worker
+    hist = sqlite3.connect(home / "history.db")  # the hidden checks' verdicts teach `models suggest` which models write code that holds
+    judged = hist.execute("SELECT model, outcome, ok FROM runs WHERE role='bench-check'").fetchall()
+    hist.close()
+    assert len(judged) == 12 and {j[1:] for j in judged} == {("checks_pass", 1)} and {j[0] for j in judged} == {"mock-fast"}, judged
     assert "| 1 | 0 |" in rows[4], rows[4]  # engine solo: one worker call, the solo agent's own model, no planner, no reviewer
     assert not [w for w in r.git("worktree", "list").splitlines()[1:] if "bench-" in w]
 
