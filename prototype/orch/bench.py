@@ -69,8 +69,8 @@ def solo(ws, goal, who, base, bid, n, timeout, out_dir):
                                            + ("" if note else "run the project's tests if it has any, ") + "then reply with the handoff JSON.",
                                            note]))  # no "run the tests" next to a note that forbids them: claude via agy tried to, twice
         t0 = time.time()
-        run = lambda p, sub, sess: agents.run_agent(aid, model, p, wt, sub, schema="handoff", session=sess, timeout=timeout, readonly=False)
-        r, calls, h, err = checked_call(run, prompt, out_dir / "agent", None, aid, "handoff", check_handoff)  # repaired once, as in a run
+        run = lambda p, sub, sess, left: agents.run_agent(aid, model, p, wt, sub, schema="handoff", session=sess, timeout=left, readonly=False)
+        r, calls, h, err = checked_call(run, prompt, out_dir / "agent", None, aid, "handoff", check_handoff, budget=timeout)  # repaired once, as in a run
         seconds = time.time() - t0
         git(wt, "add", "-A")
         if not git_ok(wt, "diff", "--cached", "--quiet"):

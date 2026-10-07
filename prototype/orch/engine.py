@@ -227,19 +227,27 @@ def parse(text, contract_name, check=None):
     return obj, "; ".join(errs) or None
 
 
-def checked_call(run, prompt, d, session, aid, contract_name, check=None, cancelled=lambda: False):
+REPAIR_MIN = 60  # seconds a repair turn needs at least; less left of the call's budget = no repair
+
+
+def checked_call(run, prompt, d, session, aid, contract_name, check=None, cancelled=lambda: False, budget=None):
     """One agent call, validated strictly, repaired once (in the same session when the CLI can resume it: a headless agy
-    denied a command on its first turn replies nothing, its repair turn answers). run(prompt, out_dir, session) runs the
-    agent. Returns (result, the results of every run, obj, error)."""
-    r = run(prompt, d, session)
+    denied a command on its first turn replies nothing, its repair turn answers). run(prompt, out_dir, session, timeout)
+    runs the agent. budget = seconds for the call and its repair together: the repair gets what the first turn left (a
+    bench solo call once took 73 minutes). Returns (result, the results of every run, obj, error)."""
+    t0 = time.time()
+    r = run(prompt, d, session, budget)
     calls, obj, err = [r], None, None
+    left = None if budget is None else int(budget - (time.time() - t0))
     if r["ok"]:
         obj, err = parse(r["text"], contract_name, check)
-        if err and not cancelled():
+        if err and left is not None and left < REPAIR_MIN:
+            err += f" (no repair turn: {max(0, left):.0f}s left of the call's {budget}s)"
+        elif err and not cancelled():
             can = bool(r["session"] and agents.catalog()[aid].get("resume"))
             fix = (f"{prompt.splitlines()[0]} repair=1\nYour previous reply was rejected by the engine: {err}\n"
                    "Reply again with ONLY the corrected JSON object for the same output contract.")
-            r2 = run(fix if can else f"{prompt}\n\n{fix}\nRejected reply:\n{r['text'][:4000]}", d / "repair", r["session"] if can else None)
+            r2 = run(fix if can else f"{prompt}\n\n{fix}\nRejected reply:\n{r['text'][:4000]}", d / "repair", r["session"] if can else None, left)
             calls.append(r2)
             if r2["ok"]:
                 obj, err = parse(r2["text"], contract_name, check)
@@ -579,10 +587,10 @@ class Engine:
                 self.ws.x("UPDATE attempts SET pid=?, pid_ctime=? WHERE id=?", pid, ctime, att)
                 self.kills[task] = kill
 
-            run = lambda p, sub, sess: agents.run_agent(aid, model, p, cwd, sub, schema=contract_name, session=sess, timeout=timeout,
-                                                        readonly=readonly, on_start=started, env={"ORCH_WS": str(self.ws.project)},
-                                                        mcp=self.ws.project if self.team["mcp"] else None)
-            r, calls, obj, err = checked_call(run, prompt, d, session, aid, contract_name, check, lambda: self.cancelled(task))
+            run = lambda p, sub, sess, left: agents.run_agent(aid, model, p, cwd, sub, schema=contract_name, session=sess, timeout=left,
+                                                              readonly=readonly, on_start=started, env={"ORCH_WS": str(self.ws.project)},
+                                                              mcp=self.ws.project if self.team["mcp"] else None)
+            r, calls, obj, err = checked_call(run, prompt, d, session, aid, contract_name, check, lambda: self.cancelled(task), budget=timeout)
             self.kills.pop(task, None)
             costs = [c["cost"] for c in calls if c["cost"] is not None]
             self.ws.x("UPDATE attempts SET tokens_in=?, tokens_out=?, cost=?, session=? WHERE id=?",

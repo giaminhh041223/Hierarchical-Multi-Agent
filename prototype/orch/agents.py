@@ -370,13 +370,16 @@ FAILURES = [  # first match wins: a usage-limit message that links a billing or 
               r"exceeded.{0,40}quota|insufficient.?quota|resource.?exhausted|out of credits|more credits|credit balance|"
               r"insufficient.?(credit|balance|funds)"),
     ("rate_limit", r"rate.?limit|(status|code|error|http)\W{0,3}429\b|\b429\W{0,3}(too|rate)|too many requests|overloaded"),
-    # a passing hiccup of the service, not of the account: the same call again in a moment (agy: "UNAVAILABLE (code 503)",
-    # "Malformed function call ... Retries remaining: 3")
-    ("transient", r"(status|code|error|http)\W{0,3}(500|502|503|504)\b|service.{0,20}unavailable|temporarily unavailable|"
-                  r"malformed function call|retries remaining|bad gateway|gateway time-?out|internal server error|"
-                  r"eligibility check failed|dial tcp|no such host|i/o timeout"),  # agy's network precheck: "dial tcp: lookup ..."
     ("auth", r"not logged in|unauthori[sz]ed|(status|code|error|http)\W{0,3}401\b|(run|use|type) /login|login required|"
              r"please log ?in|invalid[ _-]?api[ _-]?key|authentication[ _-](failed|required|error)|failed to authenticate"),
+    # a passing hiccup of the service, not of the account: the same call again in a moment. After "auth": agy wraps both
+    # in "Eligibility check failed: ...", and a login problem must reach the user, not be retried. Seen: agy "UNAVAILABLE
+    # (code 503)", "Malformed function call ... Retries remaining: 3", "dial tcp: lookup ...: no such host", "API error
+    # (attempt 4): request failed"; opencode replying no text at all
+    ("transient", r"(status|code|error|http)\W{0,3}(500|502|503|504)\b|service.{0,20}unavailable|temporarily unavailable|"
+                  r"malformed function call|retries remaining|bad gateway|gateway time-?out|internal server error|"
+                  r"dial tcp|no such host|i/o timeout|connection (reset|refused)|api error \(attempt \d+\)|request failed|"
+                  r"no text events"),
     ("model", r"model.{0,40}not supported|not supported.{0,40}model|unknown model|model .{0,30}not found|invalid model"),
 ]
 

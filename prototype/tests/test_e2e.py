@@ -996,6 +996,17 @@ def test_cli_parsers_failure_classes_and_env():
     assert agents.classify("Malformed function call: the model produced an invalid tool call. Retries remaining: 3") == "transient"
     assert agents.classify('status ERROR: Eligibility check failed: failed to get profile picture: Get "https://example.invalid/a": '
                            "dial tcp: lookup example.invalid: no such host") == "transient"  # agy: DNS blip, seen 2026-10-06
+    assert agents.classify("Eligibility check failed: You are not logged in. Please log in.") == "auth", "a login problem reaches the user"
+    assert agents.classify("API error (attempt 4): request failed") == agents.classify("no text events") == "transient"
+    # one budget for a call and its repair turn: the repair gets what is left, none when too little is
+    from orch.engine import checked_call
+    seen = []
+    fake = lambda prompt, d, session, left: seen.append(left) or {"ok": True, "text": "not json", "session": None, "failure": None, "error": None}
+    _, calls, _, err = checked_call(fake, "ORCH-CALL x", tmp / "cc", None, "mock", "handoff", budget=30)
+    assert len(calls) == 1 and seen == [30] and "no repair turn" in err, (seen, err)
+    seen.clear()
+    _, calls, _, _ = checked_call(fake, "ORCH-CALL x", tmp / "cc", None, "mock", "handoff", budget=1000)
+    assert len(calls) == 2 and seen[0] == 1000 and 990 <= seen[1] <= 1000, seen
     assert agents.reset_at("resets in 2h 13m", now=0) == 2 * 3600 + 13 * 60 and agents.reset_at("in 5 minutes", now=0) == 300
     for text, kind in [("Error: Not logged in. Please run /login", "auth"), ("HTTP 401 Unauthorized", "auth"),
                        ("status: 429 Too Many Requests", "rate_limit"), ("Quota exceeded for quota metric", "quota"),
