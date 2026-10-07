@@ -91,7 +91,10 @@ def cmd_init(a):
     ensure_excluded(p)
     save_team(ws, json.loads(Path(a.team).read_text(encoding="utf-8")) if a.team else pick_team(a))
     print(f"team -> {ws.dir / 'team.json'}\nrules -> {ws.dir / 'rules'} (one file per role and per worker: edit freely)\n"
-          "backup pool (who stands in when an account runs out): python -m orch pool plan")
+          "backup pool (who stands in when an account runs out): python -m orch pool plan\n"
+          'small or medium goal? in team.json set "mode": "solo", "verify": [<your test command>] and "examiner": true: on the real '
+          "benches one strong agent inside the engine matched the full team at 1/3 to 1/10 of the tokens; keep \"team\" for goals "
+          "with several large independent parts")
 
 
 def done(status, ws):

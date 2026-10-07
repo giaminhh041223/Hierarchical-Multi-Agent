@@ -7,12 +7,12 @@
 
 Hướng dẫn sử dụng nằm ở [README.md](README.md).
 
-## 0. Trạng thái (2026-10-06)
+## 0. Trạng thái (2026-10-07)
 
 | Hạng mục | Trạng thái |
 |---|---|
 | Engine, CLI, web UI, vault, discovery, model DB, skill architect, knowledge graph, resource planner, MCP server (cả chế độ `--control`), worker chạy từ xa, `doctor`, GitHub Action | Chạy được. Chỉ dùng thư viện chuẩn Python 3.11+. Đóng gói thành lệnh `orctram` (`pyproject.toml`, chưa lên PyPI), license Apache-2.0. |
-| Test end-to-end | 38/38 PASS với mock agent (không tốn token) trên Linux (Python 3.11). GitHub Actions chạy bộ test trên Windows và Linux (3.11, 3.13), macOS (không chặn), cùng job wheel và GitHub Action. Trên máy Windows của bạn đã pass 27 test (trước đợt đóng gói). |
+| Test end-to-end | 39/39 PASS với mock agent (không tốn token) trên Linux (Python 3.11). GitHub Actions chạy bộ test trên Windows và Linux (3.11, 3.13), macOS (không chặn), cùng job wheel và GitHub Action. Trên máy Windows của bạn đã pass 27 test (trước đợt đóng gói). |
 | Adapter đã kiểm chứng cờ dòng lệnh trên máy này | <ul><li>`codex` 0.153.4.</li><li>`agy` 1.2.15.</li><li>`opencode` 1.18.34, profile `opencode@free`:<ul><li>8/10 model free trả lời được;</li><li>`big-pickle` và `fledge-alpha-free` qua pre-test code.</li></ul></li></ul> |
 | Run thật | Smoke run `20261003-021406` trên một repo đồ chơi đã xong và được duyệt. Đội: lead codex, worker codex + agy, reviewer agy. |
 | Chưa kiểm chứng | <ul><li>`claude`: chưa đăng nhập.</li><li>`gemini`, `cursor-agent`.</li><li>`claude@zai`: chưa có key.</li><li>`opencode@9router`: mới thử với router giả. 9router đã có trên máy nhưng chưa nối (§16 P0).</li><li>Worker chạy từ xa với CLI thật qua đường hầm SSH: mới qua test với mock agent (§10).</li></ul> |
@@ -22,7 +22,7 @@ Hướng dẫn sử dụng nằm ở [README.md](README.md).
 
 **Engine tất định, LLM chỉ ở điểm quyết định.** Giống n8n, một workflow engine điều phối các node.
 - Phần lớn việc là code: lập lịch DAG, git, kiểm tra phạm vi, chạy verify, định tuyến lỗi, ngân sách token.
-- Model chỉ được gọi ở 6 điểm cần phán đoán: lập plan, review plan, triage lỗi, chọn skill, review cuối, bổ sung plan (amend).
+- Model chỉ được gọi ở 7 điểm cần phán đoán: lập plan, review plan, viết test chấp nhận (examiner, tuỳ chọn), triage lỗi, chọn skill, review cuối, bổ sung plan (amend).
 - Kết quả: rẻ, tái lập được, và test được bằng mock.
 
 **Lead không giữ trạng thái (stateless).** Mỗi lần gọi lead, prompt được dựng lại từ DB: goal, đội hình, repo map, plan, các lần thử, facts.
@@ -185,7 +185,7 @@ Trạng thái của run:
 | `auth` (chưa đăng nhập, 401, sai key) | Hỏi bạn ngay. Bạn có thể:<ul><li>chạy `orch login <agent>` hoặc `orch vault set`, rồi trả lời `retry`;</li><li>hoặc trả lời `reassign <worker>` / `cancel`.</li></ul> |
 | `quota` (hết usage của tài khoản) | Khoá cả tài khoản tới giờ reset, rồi xoay vòng sang backup (§6.1). |
 | `rate_limit` (429) | Chờ 60 s · 2ⁿ (tối đa 900 s), 3 lần. Lần thứ 4 coi như hết usage: khoá tài khoản 5 phút rồi xoay vòng. |
-| `transient` (500/502/503/504, "service unavailable", "Malformed function call … Retries remaining" của agy) | Worker: chờ `transient_wait` · 2ⁿ (mặc định 30 s), 3 lần, rồi `needs_lead`. Lead, reviewer, skill architect: thử lại cùng lời gọi 2 lần sau `transient_wait`. |
+| `transient` (500/502/503/504, "service unavailable", lỗi mạng "dial tcp … no such host", "Malformed function call … Retries remaining" và "API error (attempt N): request failed" của agy, opencode không trả chữ nào). Lớp `auth` được xét trước: agy bọc cả lỗi đăng nhập trong "Eligibility check failed", và lỗi đăng nhập phải tới bạn, không bị thử lại | Worker: chờ `transient_wait` · 2ⁿ (mặc định 30 s), 3 lần, rồi `needs_lead`. Lead, reviewer, skill architect: thử lại cùng lời gọi 2 lần sau `transient_wait`. |
 | `conflict` (xung đột merge), `crashed` | Thử lại tự động. Worker nhận các file có dấu xung đột và tự gộp. |
 | `scope`, `verify`, `invalid`, `error` ở lần đầu | Thử lại một lần, kèm bằng chứng (lỗi verify, file ngoài phạm vi …). |
 | Lỗi lặp lại, `timeout`, `blocked` (worker đặt câu hỏi), `failed` | Chuyển `needs_lead`. Lead triage và chọn một trong: `retry` (kèm chỉ dẫn), `reassign`, `ask_user`, `fail`, `cancel`. |
@@ -610,10 +610,11 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `router_profile_lists_models_and_routes_opencode` | <ul><li>Router giả: danh sách model, key gửi qua header Bearer, key không lọt vào cấu hình.</li><li>Có opencode thì thêm một lời gọi thật qua router giả.</li><li>Tiến trình con nhận `PWD` bằng cwd.</li></ul> |
 | `router_accounts_per_provider_and_shared` | <ul><li>`~/.orchestra/agents.json` ghi đè profile trên máy này.</li><li>Router: mỗi tiền tố provider một tài khoản. Tiền tố trong `shares` hết usage cùng CLI, nên backup trên tiền tố đó bị bỏ qua.</li></ul> |
 | `account_limits_parallelism_and_risk_lowers_rank` | <ul><li>`account_max` bắt hai worker cùng tài khoản chạy lần lượt.</li><li>Tài khoản at risk xếp sau trong pool.</li></ul> |
-| `suggest_shrinks_benchmarks_toward_history` | <ul><li>Prior benchmark co về lịch sử: model mạnh mà hay báo "done" sai mất vị trí lead.</li><li>Lỗi quota không tính; mỗi tài khoản một worker.</li></ul> |
+| `suggest_shrinks_benchmarks_toward_history` | <ul><li>Prior benchmark co về lịch sử: model mạnh mà hay báo "done" sai mất vị trí lead; model có code trượt check ẩn của bench mất vị trí reviewer.</li><li>Lỗi quota không tính; mỗi tài khoản một worker.</li></ul> |
 | `pool_plan_ranks_pretests_and_backs_up` | <ul><li>`pool plan` xếp hạng và pre-test. Preset `precise` dùng bài khó, `pool test` mặc định dùng bài dễ.</li><li>Model báo "done" mà kiểm tra trượt bị ghi `verify` và xếp sau.</li><li>Lưu backup riêng cho từng worker.</li><li>Trong run, backup đó thật sự nhận task khi worker chính hết usage.</li></ul> |
 | `merge_conflict_is_resolved_by_the_worker` | <ul><li>Hai task sửa cùng một file.</li><li>Worker đến sau nhận dấu xung đột, tự gộp, rồi được tích hợp.</li></ul> |
 | `unattended_runs_never_stop_for_hiccups_or_hunches` | <ul><li>Run `--yes`: lỗi "Malformed function call … Retries remaining" của lead và 503 của worker được thử lại (lớp `transient`).</li><li>Blocker còn lại sau 2 vòng review plan thành cảnh báo; review cuối còn blocker (hết lượt amend) mà verify qua thì xong, kèm cảnh báo.</li><li>Run có người trực: lỗi lạ của lead vẫn hỏi bạn; cột "stopped because" của bench đọc đúng câu hỏi.</li><li>`verify` của team chạy lại ở review cuối dù task mang nó đã thất bại; trượt thì review cuối thất bại, không hỏi ai.</li></ul> |
+| `examiner_tests_the_goal_not_the_workers_reading` | <ul><li>Chế độ solo có examiner: task `EXAM` chạy trước worker; test vào verify của T1; worker đọc sai mục tiêu bị trả lại, worker sửa test bị từ chối (`scope`, "read-only"); prompt của worker có mục test chấp nhận.</li><li>Hai task song song: test qua ngay trên code gốc thì examiner bị hỏi lại; test được commit ở review cuối, sau T1 và T2, và không vào verify của từng task.</li><li>Examiner thiếu `verify` thì team bị từ chối.</li></ul> |
 | `plan_review_user_approval_and_amendment` | <ul><li>Reviewer chặn → lead sửa plan bằng session cũ.</li><li>Bạn duyệt.</li><li>Review cuối chặn → amend → REVIEW2.</li><li>Lệnh verify mới trong bản amend dừng task trước lời gọi worker và hỏi bạn (lệnh đã duyệt trong plan thì không).</li></ul> |
 | `budget_gate_then_stop` | <ul><li>Chạm ngân sách → cổng BUDGET.</li><li>`stop` huỷ run; task còn lại không chạy.</li></ul> |
 | `skill_architect_installs_and_places` | <ul><li>Cài skill, quét ra script đáng xem.</li><li>Đặt đúng worktree của task, không commit skill.</li><li>Repo ngoài danh sách thành đề xuất và được `approve`.</li></ul> |
@@ -629,8 +630,8 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
 | `github_action_runs_and_opens_a_pull_request` | <ul><li>`action/run.py` với team từ file, run tự duyệt, output và tóm tắt của job.</li><li>Nhánh `orctram/<run>` được đẩy lên một remote bare, `gh` giả nhận đúng tham số tạo PR (Windows dừng trước bước PR).</li><li>Input đi vào script qua biến môi trường, không chèn vào dòng lệnh shell.</li></ul> |
 | `modes_solo_auto_and_evidence_for_blockers` | <ul><li>`solo`: không gọi lead hay reviewer, 1 task cho worker `solo` với `verify` của bạn, không cần duyệt; thiếu `verify` thì hỏi bạn.</li><li>`auto`: lead trả 1 task nên bỏ review plan, skill architect và lời gọi reviewer cuối; prompt của lead có lời dặn và lệnh kiểm tra của dự án.</li><li>`auto` với plan 2 task phụ thuộc nhau: gộp thành 1 task, verify theo thứ tự phụ thuộc, không gọi reviewer.</li><li>Blocker không trích được mục tiêu (không có evidence, hay chỉ trích acceptance của lead) thành góp ý: không chặn, không amend.</li></ul> |
 | `report_estimates_cost_at_list_price` | CLI không báo chi phí thì `report.md` ước tính theo giá trong DB model, đánh dấu `~`. |
-| `bench_repeats_modes_and_team_files` | `--repeat 2` với năm nhánh (agent một mình, đội, đội ở chế độ solo, một file team một worker, `--engine-solo`): trung vị, số lời gọi (1 ở chế độ solo, 5 ở chế độ team), $ ước tính, mỗi lần chạy một nhánh riêng. |
-| `benchmark_tasks_are_sound` | Check ẩn của mọi việc chuẩn trượt trên `seed/` và qua với lời giải mẫu; `run_suite.py` chạy được việc 01 với agent giả; `--check` giữ dấu `\` trên Windows. |
+| `bench_repeats_modes_and_team_files` | `--repeat 2` với sáu nhánh (agent một mình, đội, đội ở chế độ solo, một file team một worker, `--engine-solo`, `--examiner`); kết quả check ẩn vào `history.db` theo model đã viết code: trung vị, số lời gọi (1 ở chế độ solo, 5 ở chế độ team), $ ước tính, mỗi lần chạy một nhánh riêng. |
+| `benchmark_tasks_are_sound` | Check ẩn của cả năm việc chuẩn trượt trên `seed/` và qua với lời giải mẫu; bảng gộp có khoảng Wilson và `--pool`; `run_suite.py` chạy được việc 01 với agent giả; `--check` giữ dấu `\` trên Windows. |
 | `bench_solo_versus_team` | Agent làm một mình viết sai `add()` và không trả handoff hợp lệ, kể cả ở lượt repair (như agy bị từ chối lệnh): báo cáo ghi `no valid handoff`, cộng token cả hai lượt, vẫn chấm check; cả đội qua check. Báo cáo có số lời gọi, câu hỏi, nhánh kết quả, cột "stopped because"; không còn worktree thừa; thiếu `--check` thì từ chối; `--engine-solo` khi team không có `verify` thì từ chối. |
 | `doctor` | Máy, dự án, team, DB, engine; agent của team chưa cài hoặc token remote quá ngắn thì mã thoát 1; không in secret. |
 | `db_schema_versions` | DB trước khi có phiên bản lên version 1 và có đủ bảng; migration chạy đúng một lần; DB của bản Orctram mới hơn bị từ chối. |
@@ -707,6 +708,17 @@ Chạy bằng `python tests/test_e2e.py [lọc-tên]`.
   - bench: cột "stopped because", nhánh `--engine-solo`; đính chính bản tổng hợp (chế độ solo không gọi lead).
 - Việc của bạn: `python benchmarks/run_suite.py --team <team.json> --repeat 3 --mode auto --mode solo --engine-solo` với agent thật.
 - Câu hỏi sẽ trả lời: `engine solo` (cùng model với agent một mình) có hơn agent một mình không, tức vòng verify của engine đáng bao nhiêu; đội và `auto` có còn trượt vì dừng lại không.
+
+**P6: theo bench thật lần ba (2026-10-06 chiều, [benchmarks/summary-2026-10-06.md](benchmarks/summary-2026-10-06.md))**
+- Kết quả: P5 bỏ được mọi lần dừng (60 run, 0 câu hỏi). Về chất lượng, việc 01–03 chạm trần (14/15 ô đạt 3/3); đội tốn 3–14 lần token so với một agent. Vòng verify của engine không bắt được lỗi hiểu sai đặc tả, vì test do chính worker viết. Gộp hai đợt ở việc 03: các nhánh dùng worker gemini-flash 6/6, các nhánh gemini-pro tự viết code 6/9 (chưa có ý nghĩa thống kê): model quan trọng hơn cách điều phối.
+- Đã làm:
+  - examiner (`team.json` `"examiner"`): test chấp nhận viết từ mục tiêu trước khi worker làm, phải trượt trên code gốc, chạy bằng lệnh `verify` của dự án, worker không sửa được; nhánh bench `--examiner`;
+  - việc chuẩn `04-spec-traps` (5 quy tắc dễ đọc sai) và `05-wide-parallel` (6 module độc lập); `run_suite` có bảng gộp với khoảng Wilson và `--pool` để gộp nhiều đợt;
+  - kết quả check ẩn của bench vào `history.db` theo model đã viết code; `models suggest` tính `checks_fail` là sai;
+  - phân loại lỗi: `auth` trước `transient` (agy bọc lỗi đăng nhập trong "Eligibility check failed"); thêm "request failed", "no text events", lỗi kết nối vào `transient`; một ngân sách thời gian chung cho lời gọi và lượt repair;
+  - `init` gợi ý `mode: solo` + `examiner` cho việc nhỏ và vừa.
+- Việc của bạn: `python benchmarks/run_suite.py --team <team.json> --repeat 3 --mode auto --mode solo --engine-solo --examiner` (thêm `--tasks 04 05` nếu quota ít); gộp với đợt trước bằng `--pool`; push `result.json` và `report.md` của mỗi bench (xoá đường dẫn có tên người dùng).
+- Câu hỏi sẽ trả lời: examiner có bắt được lỗi đọc sai ở 04 và 03 không, và tốn thêm bao nhiêu; đội có nhanh hơn một agent ở 05 không.
 
 **Sửa sau đợt review 2026-10-04**
 - Lớp lỗi chỉ lấy từ lỗi của CLI và stderr (§6).
