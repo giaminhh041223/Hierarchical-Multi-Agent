@@ -545,6 +545,54 @@ def test_unattended_runs_never_stop_for_hiccups_or_hunches():
     assert "nobody to ask" in r3.events("failed", "REVIEW")[0][1]
 
 
+def test_examiner_tests_the_goal_not_the_workers_reading():
+    """team "examiner": acceptance tests from the goal alone, written before any work, red on the base tree. One task: they join
+    its verify, so a worker that misreads the goal (returns the discount instead of the price) is sent back, and its edit of
+    the tests is refused. Parallel tasks: the tests are committed and run at the final review. Tests that pass before any
+    work check nothing: the examiner is asked again."""
+    accept = ("import unittest\nfrom app import price\n\nclass Goal(unittest.TestCase):\n"
+              "    def test_price_after_discount(self):\n        self.assertEqual(price(100, 10), 90)\n")
+    wrong, right = "def price(total, pct):\n    return total * pct / 100\n", "def price(total, pct):\n    return total - total * pct / 100\n"
+    unit = ["python", "-m", "unittest"]
+    sc = {"plan": [], "exam": [{"path": "test_accept.py", "content": accept}], "exam_cmd": unit + ["-q", "test_accept"],
+          "steps": {"worker:T1": [{"write": {"app.py": wrong, "test_accept.py": accept.replace("90", "10")}},
+                                  {"write": {"app.py": wrong, "test_accept.py": accept}}, {"write": {"app.py": right}}]}}
+    r = Repo(sc, mode="solo", solo="w1", verify=[unit], examiner=True)
+    assert r.run() == 0, r.out
+    assert r.status() == {"PLAN": "done", "EXAM": "done", "T1": "done", "REVIEW": "done"}, r.status()
+    assert r.outcomes("T1") == ["scope", "verify", "integrated"], r.outcomes("T1")
+    assert r.show("test_accept.py") == accept.strip() and "total - total" in r.show("app.py")
+    assert json.loads(r.q("SELECT spec FROM tasks WHERE id='T1'")[0][0])["verify"] == [unit, sc["exam_cmd"]]
+    assert "read-only" in r.q("SELECT failure FROM attempts WHERE task='T1' AND outcome='scope'")[0][0]
+    log = (Path(f"{r.scenario}.state") / "calls.log").read_text(encoding="utf-8")
+    assert log.index("examiner EXAM") < log.index("worker T1"), "the tests come first"
+    prompt = (Path(r.q("SELECT dir FROM attempts WHERE task='T1' ORDER BY id")[0][0]) / "prompt.md").read_text(encoding="utf-8")
+    assert "## Acceptance tests (written from the goal by the examiner; read-only)\n- test_accept.py" in prompt, prompt[-600:]
+
+    accept2 = accept.replace("from app import price", "from app import price\nfrom fee import fee") + \
+        "\n    def test_fee(self):\n        self.assertEqual(fee(3), 6)\n"
+    trivial = {"reply": {"files": [{"path": "test_accept.py", "content": "import unittest\nclass T(unittest.TestCase):\n    def test(self): pass\n"}],
+                         "command": unit + ["-q", "test_accept"], "summary": "nothing"}}
+    sc = {"plan": [task("T1", "w1", ["app.py"], [["python", "-c", "import app"], unit]), task("T2", "w2", ["fee.py"], [["python", "-c", "import fee"]])],
+          "exam": [{"path": "test_accept.py", "content": accept2}], "exam_cmd": unit + ["-q", "test_accept"],
+          "steps": {"examiner:EXAM": [trivial, {}], "worker:T1": [{"write": {"app.py": right}}],
+                    "worker:T2": [{"write": {"fee.py": "def fee(n):\n    return 2 * n\n"}}]}}
+    r2 = Repo(sc, verify=[unit], examiner={"agent": "mock", "model": "mock-fast"})
+    assert r2.run() == 0, r2.out
+    assert r2.calls("examiner", "EXAM") == 2 and set(r2.status().values()) == {"done"}, (r2.status(), r2.out)
+    assert unit + ["-q", "test_accept"] not in json.loads(r2.q("SELECT spec FROM tasks WHERE id='T1'")[0][0])["verify"], "parallel parts: final review only"
+    assert r2.show("test_accept.py") == accept2.strip() and r2.events("exam", "EXAM"), r2.out
+    order = r2.git("log", "--format=%s", r2.main).splitlines()
+    assert order[0] == "EXAM: acceptance tests from the goal" and len(order) == 4, order  # committed at the final review, after T1 and T2
+    from orch.engine import validate_team
+    team = json.loads((r2.repo / ".orch" / "team.json").read_text(encoding="utf-8"))
+    try:
+        validate_team({**team, "verify": []})
+        raise AssertionError("an examiner without project checks must be refused")
+    except ValueError as e:
+        assert "verify" in str(e)
+
+
 def test_budget_gate_then_stop():
     r = Repo(two_tasks(), budget_tokens=1000)
     assert r.run() == 3, r.out
@@ -1079,20 +1127,22 @@ def test_bench_repeats_modes_and_team_files():
     other["workers"] = {"w1": other["workers"]["w1"]}  # a one-worker team: the plan's T2 goes to w1 too
     (r.tmp / "one.json").write_text(json.dumps(other), encoding="utf-8")
     sc["plan"] = [dict(t, assignee="w1") for t in sc["plan"]]
+    sc["exam"], sc["exam_cmd"] = [{"path": "ACCEPT.md", "content": "add(2, 3) == 5\n"}], check[0]  # red before any work: no app.py yet
     r.scenario.write_text(json.dumps(sc), encoding="utf-8")
-    assert r.orch("bench", "demo goal", "--check", 'python -c "import app; assert app.add(2, 3) == 5"', "--solo", "mock/mock-fast", "--repeat", "2", "--mode", "solo", "--team-file", str(r.tmp / "one.json"), "--engine-solo") == 0, r.out
+    assert r.orch("bench", "demo goal", "--check", 'python -c "import app; assert app.add(2, 3) == 5"', "--solo", "mock/mock-fast", "--repeat", "2", "--mode", "solo", "--team-file", str(r.tmp / "one.json"), "--engine-solo", "--examiner") == 0, r.out
     report = r.show_file(".orch/bench/*/report.md")
     summary = report.split("## Summary: medians of 2 runs per arm")[1].split("## Every run")[0]
     rows = [l for l in summary.splitlines() if l.startswith("| ") and not l.startswith("| arm") and not l.startswith("|---")]
     assert [l.split(" | ")[0][2:] for l in rows] == ["solo mock/mock-fast", "team (lead mock, 2 worker(s), mode team)", "team mode solo", "team one.json",
-                                                     "engine solo mock/mock-fast"], rows
+                                                     "engine solo mock/mock-fast", "engine solo mock/mock-fast + examiner mock/mock-strong"], rows
     assert all("| 2/2 | 1/1 |" in l for l in rows), rows
     solo, full, light = rows[0], rows[1], rows[2]
     assert "| ~0.0012 | 1 | 0 |" in solo, solo  # 1,000 in x $1 + 100 out x $2 per Mtok (one call, no repair needed)
     assert "| 1 | 0 |" in light and "| 5 | 0 |" in full, (light, full)  # solo mode: the worker only; team: plan, review, T1, T2, review
     every = report.split("## Every run")[1]
-    assert sum(l.startswith("| 1 |") for l in every.splitlines()) == 5 and sum(l.startswith("| 2 |") for l in every.splitlines()) == 5, every
-    assert len({l.split("`")[-2] for l in every.splitlines() if l.startswith("| ") and "`orch/" in l}) == 10, "every run has its own branch"
+    assert sum(l.startswith("| 1 |") for l in every.splitlines()) == 6 and sum(l.startswith("| 2 |") for l in every.splitlines()) == 6, every
+    assert len({l.split("`")[-2] for l in every.splitlines() if l.startswith("| ") and "`orch/" in l}) == 12, "every run has its own branch"
+    assert "| 2 | 0 |" in rows[5], rows[5]  # the examiner, then the worker
     assert "| 1 | 0 |" in rows[4], rows[4]  # engine solo: one worker call, the solo agent's own model, no planner, no reviewer
     assert not [w for w in r.git("worktree", "list").splitlines()[1:] if "bench-" in w]
 

@@ -1,0 +1,4 @@
+{"type":"object","additionalProperties":false,"required":["files","command","summary"],
+ "properties":{"files":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["path","content"],
+   "properties":{"path":{"type":"string"},"content":{"type":"string"}}}},
+  "command":{"type":"array","items":{"type":"string"}},"summary":{"type":"string"}}}

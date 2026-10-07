@@ -11,14 +11,14 @@ from .core import ACTIVE, HOME, ROOT, TERMINAL, EngineLock, contract, extract_js
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 HOOKS = HOME / "no-hooks"  # never created: engine commits run no git hooks
-RESERVED = re.compile(r"^(PLAN|SKILLS|AMEND\d*|REVIEW\d*|BUDGET\d*)$", re.I)
+RESERVED = re.compile(r"^(PLAN|SKILLS|EXAM|AMEND\d*|REVIEW\d*|BUDGET\d*)$", re.I)
 TASK_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,15}$")
 YES = {"y", "yes", "ok", "okay", "approve", "approved", "accept", "lgtm", "go", "có", "ok luôn", "đồng ý", "duyệt"}
 HARD_CAP = 6  # attempts per task before the user is asked
 TEAM_DEFAULTS = {"max_parallel": 4, "timeout": 1800, "verify_timeout": 600, "budget_tokens": 0, "max_amend": 1,
                  "skills": True, "auto_approve": False, "wait_reset": 600, "cooldown": 3600, "account_max": {},
                  "verify_allow": None, "verify_env": [], "mcp": False, "embeddings": None,
-                 "mode": "team", "solo": None, "verify": [], "transient_wait": 30, "auto_merge": 4}
+                 "mode": "team", "solo": None, "verify": [], "transient_wait": 30, "auto_merge": 4, "examiner": False}
 MODES = ("team", "auto", "solo")  # team: always plan + review; auto: the lead sizes the plan, one task = light; solo: one task, no planner
 
 RULES = {
@@ -43,6 +43,10 @@ Authority: you may retry, reassign, cancel and re-plan. Only the user may provid
     "reviewer": """Role: reviewer (read-only). Find what would make the result wrong, unsafe or unverifiable: missing requirements, wrong dependencies, overlapping scopes between parallel tasks, verify commands that would pass on broken work, security problems.
 - blocker = must be fixed before proceeding; advisory = optional. Be specific and brief; no style nitpicks.
 - A blocker needs evidence: the sentence of the goal it breaks, quoted word for word (the engine checks the quote against the goal). Without such a quote the engine counts it as advisory. You cannot run commands: the engine runs every verify command and the project checks itself.""",
+    "examiner": """Role: examiner (read-only: the engine writes the files you return). Before any code is written, turn the goal into acceptance tests, from the goal alone.
+- Test what the goal states, word for word: every rule, number and example it gives, through the interface it names (module, function, command). Nothing it does not state, no internals, no style.
+- The tests must fail on the repository as it is now and pass once the goal is met. Deterministic, fast, no network, standard tooling of the project.
+- Whoever implements the goal cannot change your tests: when the goal is ambiguous, test only what is certain.""",
     "skill_architect": """Role: skill architect. Pick at most 3 skills from the curated index that clearly help specific tasks (e.g. a document-format skill for a task that edits .docx). None is better than marginal ones. You may propose one non-curated GitHub repository URL when it is clearly valuable; the user must approve it before it is installed.""",
 }
 
@@ -344,6 +348,11 @@ def validate_team(team):
     verify = team.get("verify") or []
     if not isinstance(verify, list) or any(not isinstance(v, list) or not v or not all(isinstance(x, str) for x in v) for v in verify):
         raise ValueError('verify: the project\'s checks as argv arrays, e.g. [["python", "-m", "pytest", "-q"]]')
+    ex = team.get("examiner")
+    if isinstance(ex, dict) and (ex.get("agent") not in cat or not ex.get("model")):
+        raise ValueError(f"examiner: true (the reviewer's agent) or {{\"agent\": one of {sorted(cat)}, \"model\": ...}}")
+    if ex and not verify:
+        raise ValueError('examiner: its tests run through the project\'s checks, so set "verify" too, e.g. [["python", "-m", "pytest", "-q"]]')
     if team.get("solo") is not None and team["solo"] not in workers:
         raise ValueError(f"solo: one of the workers ({', '.join(workers)})")
     return {**TEAM_DEFAULTS, **team}
@@ -687,7 +696,7 @@ class Engine:
                 per[ac] = per.get(ac, 0) + 1
                 running += 1
             if self.ws.update(tid, _expect="todo", status="running"):
-                fn = {"plan": self.job_plan, "skills": self.job_skills, "work": self.job_work, "review": self.job_review}[t["kind"]]
+                fn = {"plan": self.job_plan, "skills": self.job_skills, "exam": self.job_exam, "work": self.job_work, "review": self.job_review}[t["kind"]]
                 self.start(tid, fn, {**t, "status": "running"})
 
     def budget_gate(self):
@@ -1009,8 +1018,12 @@ class Engine:
             with self.ws.tx():
                 if (version and self.latest_plan()["version"] != version) or not self.ws.update("PLAN", _expect=expect, status="done", question=None):
                     raise _Abort
+                exam = ["EXAM"] if self.team["examiner"] else []  # acceptance tests first: the work is checked against them
+                if exam:
+                    self.ws.add_task("EXAM", "exam", "Acceptance tests from the goal", assignee="examiner")
                 for p in plan["tasks"]:
-                    self.ws.add_task(p["id"], "work", p["title"], {k: p[k] for k in ("acceptance", "scope_paths", "verify")}, p["assignee"], p["deps"])
+                    self.ws.add_task(p["id"], "work", p["title"], {k: p[k] for k in ("acceptance", "scope_paths", "verify")}, p["assignee"],
+                                     p["deps"] + exam)
                 if self.team["skills"] and not self.light(len(plan["tasks"])):  # a one-task light run skips the extra agent call
                     self.ws.add_task("SKILLS", "skills", "Pick and install skills for this plan", assignee="skill_architect")
                 self.ws.add_task("REVIEW", "review", "Final review of the integrated result", assignee="reviewer", deps=[p["id"] for p in plan["tasks"]])
@@ -1029,6 +1042,104 @@ class Engine:
         if self.ws.q("SELECT 1 FROM skills WHERE run=? AND status='proposed' AND curated=1", self.run):
             return self.to_user("SKILLS", f"{summary}. Reply 'yes' to install them (team skills=propose), or 'no' to work without them.", "running")
         self.set("SKILLS", "done", summary, "running")
+
+    def examiner(self):
+        ex = self.team["examiner"]
+        return ex if isinstance(ex, dict) else self.team["reviewer"]
+
+    def exam(self):
+        """The accepted acceptance tests: {files: [paths], command: argv or None, committed: in the integration branch}."""
+        return json.loads(self.rmeta("exam") or '{"files": [], "command": null, "committed": false}')
+
+    def check_exam(self, ex):
+        tracked, errs = set(git(self.main_wt, "ls-files").splitlines()), []
+        if not ex["files"] or len(ex["files"]) > 10:
+            errs.append("files: 1 to 10 new test files")
+        for f in ex["files"]:
+            path = f["path"] = norm_scope(f["path"])
+            if e := scope_error(path):
+                errs.append(f"{path!r} {e}")
+            elif path in tracked:
+                errs.append(f"{path} already exists: write new test files only")
+            elif path.endswith(".py"):
+                try:
+                    compile(f["content"], path, "exec")
+                except SyntaxError as e:
+                    errs.append(f"{path} is not valid Python: {e.msg} (line {e.lineno})")
+        if sum(len(f["content"]) for f in ex["files"]) > 200_000:
+            errs.append("the test files are too large (over 200 KB)")
+        if not ex["command"] or not any(ex["command"][:len(v)] == v for v in self.team["verify"]):
+            errs.append(f"command must be one of the project checks followed by arguments: {self.team['verify']}")
+        elif e := compile_error(ex["command"]):
+            errs.append(f"command is not valid Python: {e}")
+        return errs
+
+    def exam_files(self, files, keep):
+        """Write the test files into the integration worktree; keep=False removes them again."""
+        for f in files:
+            dest = self.main_wt / f["path"]
+            if keep:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(f["content"], encoding="utf-8", newline="\n")
+            else:
+                dest.unlink(missing_ok=True)
+
+    def exam_commit(self):
+        """The acceptance tests into the integration branch (once): before the work when one task does it all, at the final
+        review otherwise (parallel tasks each finish only a part of the goal, so the tests fail until all are in)."""
+        ex = self.exam()
+        if ex["files"] and not ex["committed"]:
+            with self.integrate_lock:
+                self.exam_files(self.ws.task("EXAM")["handoff"]["files"], True)
+                git(self.main_wt, "add", "--", *ex["files"])
+                git(self.main_wt, "-c", "user.name=orch/examiner", "commit", "-q", "--no-verify", "-m", "EXAM: acceptance tests from the goal")
+                ex["committed"] = True
+                self.rmeta("exam", json.dumps(ex))
+                self.ws.event("exam", f"acceptance tests committed: {', '.join(ex['files'])}", "EXAM")
+        return ex
+
+    def job_exam(self, t):
+        """Acceptance tests from the goal alone, by an agent that writes no code. The real bench (2026-10-06): a worker's own
+        tests shared its misreading of the goal, so the engine's verify passed wrong code. The tests must fail before any work
+        (else they check nothing); they run through a project check, so no model-written command runs. ponytail: the examiner
+        can misread the goal too; a worker that disagrees replies blocked and the lead decides."""
+        tid, feedback = t["id"], ""
+        for _ in (1, 2):
+            try:
+                ex, _, _ = self.ask("examiner", self.examiner(), self.packet_exam(feedback), "exam", tid, "exam", self.main_wt, check=self.check_exam)
+            except Fail as f:
+                return self.exam_done(tid, None, f"the examiner could not run ({f.cls}): {f.detail[:200]}")
+            with self.integrate_lock:
+                self.exam_files(ex["files"], True)
+                try:
+                    passes, rep = self.verify([ex["command"]], self.main_wt, self.rdir / "attempts" / f"{tid}-red")
+                finally:
+                    self.exam_files(ex["files"], False)
+            if not passes:
+                return self.exam_done(tid, ex, f"{len(ex['files'])} test file(s); they fail before any work, as they must")
+            feedback = ("Your tests PASS on the repository as it is, before any work: they check nothing the goal adds. Test the "
+                        f"behaviour the goal asks for.\n{rep[-1500:]}")
+        self.exam_done(tid, None, "the tests passed before any work, twice: going on without them")
+
+    def exam_done(self, tid, ex, why):
+        """EXAM always ends done (the work waits on it); without accepted tests the run simply goes on without them."""
+        self.ws.update(tid, handoff=ex)  # exam_commit reads the files from here
+        if ex:
+            work = [x for x in self.ws.tasks() if x["kind"] == "work"]
+            self.rmeta("exam", json.dumps({"files": [f["path"] for f in ex["files"]], "command": ex["command"], "committed": False}))
+            if len(work) == 1:  # one task does the whole goal: it gets the tests now, as part of its verify
+                self.exam_commit()
+                self.approve([ex["command"]])  # a project check plus arguments: the user's own command
+                self.ws.update(work[0]["id"], spec={**work[0]["spec"], "verify": work[0]["spec"]["verify"] + [ex["command"]]})
+        else:
+            self.ws.event("warn", why, tid)
+        return self.set(tid, "done", why, "running")
+
+    def packet_exam(self, feedback):
+        return self.join(self.header("examiner", "EXAM"), self.rules("common", "examiner"), contract("exam"), "---",
+                         f"## Goal\n{self.goal}", f"## Repository files\n{self.repo_map()}",
+                         "## Project checks (your command = one of these + arguments)\n" + "\n".join(f"- {json.dumps(v)}" for v in self.team["verify"]),
+                         feedback and f"## Fix this\n{feedback}")
 
     def job_work(self, t):
         tid, w = t["id"], self.team["workers"].get(t["assignee"])
@@ -1092,6 +1203,10 @@ class Engine:
                                       "survive, remove every marker, rerun verify. Do not run git.")
             # --no-renames: a rename must show its out-of-scope source path too
             changed = [p for p in git(path, "diff", "--name-only", "--no-renames", "-z", tip, "HEAD").split("\0") if p]
+            if locked := [p for p in changed if p in self.exam()["files"] and self.exam()["committed"]]:
+                self.ws.event("scope", f"changed the examiner's acceptance tests: {locked}", tid)
+                return self.route(tid, "scope", f"You changed the examiner's acceptance tests {locked}: they are read-only. Revert them; "
+                                                "if a test contradicts the goal, reply blocked and quote the goal sentence it contradicts.")
             bad = [p for p in changed if not in_scope(p, spec.get("scope_paths", []))]
             if bad:
                 self.ws.event("scope", f"outside {spec.get('scope_paths')}: {bad[:10]}", tid)
@@ -1185,14 +1300,16 @@ class Engine:
         """Final review of the combined tree: rerun every verify command, then the reviewer reads the diff."""
         tid = t["id"]
         work = [x for x in self.ws.tasks() if x["kind"] == "work" and x["status"] == "done"]
-        problems, seen = [], set()
-        for x in [*work, {"id": None, "spec": {"verify": self.team["verify"]}}]:  # then the project's own checks (team.json verify)
-            cmds = [c for c in x["spec"].get("verify", []) if json.dumps(c) not in seen]
+        problems, seen, ex = [], set(), self.exam_commit()
+        checks = [(x["id"], x["spec"].get("verify", []), "verify fails on the combined tree") for x in work]
+        checks += [(None, self.team["verify"], "a project check (team.json verify) fails on the combined tree"),
+                   (None, [ex["command"]] if ex["command"] else [], "the examiner's acceptance tests fail on the combined tree")]
+        for i, (task_id, cmds, message) in enumerate(checks):
+            cmds = [c for c in cmds if json.dumps(c) not in seen]
             seen |= {json.dumps(c) for c in cmds}
-            ok, rep = self.verify(cmds, self.main_wt, self.rdir / "attempts" / f"{tid}-verify-{x['id'] or 'project'}")
+            ok, rep = self.verify(cmds, self.main_wt, self.rdir / "attempts" / f"{tid}-verify-{task_id or ('project', 'exam')[i - len(work)]}")
             if not ok:
-                problems.append({"task_id": x["id"], "severity": "blocker", "evidence": rep[-1500:],
-                                 "message": "verify fails on the combined tree" if x["id"] else "a project check (team.json verify) fails on the combined tree"})
+                problems.append({"task_id": task_id, "severity": "blocker", "evidence": rep[-1500:], "message": message})
         if not problems and self.light(sum(x["kind"] == "work" for x in self.ws.tasks())):
             self.ws.update(tid, handoff={"verdict": "approve", "issues": []})
             self.ws.event("review", "final: verify passes on the integrated tree (light run: no reviewer call)", tid)
@@ -1293,7 +1410,7 @@ class Engine:
             return (f"{head}\n{t['note'] or 'Continue the task.'}\n\nFix it in this worktree, run the verify commands, "
                     "then reply with ONLY the handoff JSON (same output contract as before).")
         deps = []
-        for d in filter(None, map(self.ws.task, t["deps"])):
+        for d in (x for x in map(self.ws.task, t["deps"]) if x and x["kind"] == "work"):  # EXAM has its own section
             h = d["handoff"] or {}
             deps.append(f"- {d['id']} ({d['title']}): {h.get('summary', '')[:600]}\n  files: {', '.join(h.get('files', [])[:20])}"
                         + (f"\n  facts: {'; '.join(h.get('facts', [])[:8])}" if h.get("facts") else ""))
@@ -1303,6 +1420,9 @@ class Engine:
                          f"\nScope (the only paths you may change): {', '.join(spec.get('scope_paths', []))}\n"
                          "Verify (run by the engine from the repo root after your handoff; run them yourself first):\n" +
                          "\n".join(f"- {json.dumps(v)}" for v in spec.get("verify", [])),
+                         self.exam()["committed"] and "## Acceptance tests (written from the goal by the examiner; read-only)\n" +
+                         "\n".join(f"- {f}" for f in self.exam()["files"]) + f"\nRun: {json.dumps(self.exam()['command'])}" +
+                         ("" if self.exam()["command"] in spec.get("verify", []) else " (the final review runs them on the combined result)"),
                          deps and "## Inputs from finished dependencies\n" + "\n".join(deps),
                          self.kg_text(" ".join([t["title"], *spec.get("acceptance", [])])),
                          t["note"] and f"## Notes for this attempt\n{t['note']}")

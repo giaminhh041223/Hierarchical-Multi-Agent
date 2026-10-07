@@ -437,6 +437,9 @@ CONTRACT_HINT = {
                "task_id = the task concerned, or null. evidence = for a blocker, the sentence of the goal it breaks, quoted word "
                "for word (the engine checks the quote against the goal); null for advisories. A blocker whose evidence quotes "
                "no sentence of the goal counts as advisory.",
+    "exam": "files = NEW test files only ({path, content}; path relative to the repo root, e.g. tests/acceptance/test_goal.py), "
+            "whole file contents. command = the argv that runs exactly these tests: one of the project checks followed by "
+            "arguments only (e.g. the test file path). summary = which goal sentences the tests check.",
     "triage": "action: retry (same worker; concrete instructions in note) | reassign (assignee = another worker) | ask_user "
               "(only for decisions you may not take: secrets, goal/scope changes, money; put it in question) | fail | "
               "cancel (the task is unnecessary). assignee and question are null unless needed.",

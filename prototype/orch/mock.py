@@ -1,5 +1,5 @@
 """Scripted stand-in for an agent CLI (zero-cost tests). Speaks agy's JSON; behaviour comes from the ORCH_MOCK scenario file:
-{"plan": [tasks], "amend": [tasks], "steps": {"<role>:<task>[@<model>]": [step, ...]}} - call n of a role/task uses step n, the last
+{"plan": [tasks], "amend": [tasks], "exam": [{path, content}], "exam_cmd": argv, "steps": {"<role>:<task>[@<model>]": [step, ...]}} - call n of a role/task uses step n, the last
 repeats; a key with @model wins for that model.
 step: {"write": {path: text}, "delete": [path], "sleep": s, "exit": code, "stderr": text, "raw": reply text, "reply": {fields},
 "mcp": [tool, arguments] = call a tool on the orch MCP server named in the call's config; its text becomes the reply summary}"""
@@ -18,6 +18,8 @@ def default(role, task, sc):
         return {"verdict": "approve", "issues": []}
     if role == "skill_architect":
         return {"skills": []}
+    if role == "examiner":
+        return {"files": sc.get("exam", []), "command": sc.get("exam_cmd", []), "summary": "mock acceptance tests"}
     return {"status": "done", "summary": f"mock work for {task}", "files": [], "decisions": [], "facts": [], "question": None}
 
 

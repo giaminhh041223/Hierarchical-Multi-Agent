@@ -208,7 +208,7 @@ def cmd_pool(a):
 def cmd_bench(a):
     from . import bench
     report = bench.bench(ws_of(a), a.goal, a.check, a.solo, a.timeout, repeat=a.repeat, modes=a.mode, team_files=a.team_file,
-                         engine_solo=a.engine_solo)
+                         engine_solo=a.engine_solo, examiner=a.examiner)
     print("\n" + report.read_text(encoding="utf-8") + f"\n-> {report}")
 
 
@@ -282,6 +282,8 @@ def main(argv=None):
     s.add_argument("--team-file", action="append", default=[], help="also this team JSON as an arm (repeatable)")
     s.add_argument("--engine-solo", action="store_true", help="also mode solo with the solo agent/model as its only worker: "
                    "the engine's verify loop without a model change (needs team.json verify)")
+    s.add_argument("--examiner", action="store_true", help="also engine solo with acceptance tests written from the goal first by the "
+                   "team's reviewer (needs team.json verify)")
     sub.add_parser("doctor", help="check this machine (and the project, with --ws) before a run: local checks only, nothing is sent")
     s = sub.add_parser("remote", help="remote worker: run = serve the agent CLIs of this machine to an engine (over ssh -R)")
     s.add_argument("action", choices=["run", "proxy"])

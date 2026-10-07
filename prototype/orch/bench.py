@@ -4,7 +4,9 @@
 - team: a normal run of the workspace team, plan auto-approved (like `run --yes`), engine verify and merge;
 - optional more team arms: the workspace team in another mode (--mode auto / solo) or other team files (--team-file);
 - engine solo (--engine-solo): mode solo with the solo agent/model as the only worker, i.e. the solo agent inside the engine's
-  verify-and-retry loop: it tells the engine's share of a win from a model change.
+  verify-and-retry loop: it tells the engine's share of a win from a model change;
+- engine solo + examiner (--examiner): the same, with acceptance tests written from the goal by the team's reviewer before
+  the work (team "examiner").
 Every result is judged by the same checks the user gives (e.g. the project's test command), never by the agents' own verify
 commands, and compared on checks passed, tokens, dollars, wall time, agent calls and questions for the user. --repeat runs
 each arm N times, interleaved, and the summary gives medians: agents vary from run to run."""
@@ -123,7 +125,8 @@ def money(usd, est):
     return "" if usd is None else f"{'~' if est else ''}{usd:.4f}"
 
 
-def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600, repeat=1, modes=(), team_files=(), engine_solo=False):
+def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600, repeat=1, modes=(), team_files=(), engine_solo=False,
+          examiner=False):
     if not checks:
         raise ValueError("give at least one --check command: every result is judged by it, not by the agents' own verify")
     if not 1 <= int(repeat) <= 20:
@@ -138,11 +141,14 @@ def bench(ws, goal, checks, solo_who=None, timeout=1800, check_timeout=600, repe
     arms += [(f"team mode {m}", {**tm, "mode": m}) for m in modes if m != tm["mode"]]
     for f in team_files:
         arms.append((f"team {Path(f).name}", validate_team(json.loads(Path(f).read_text(encoding="utf-8")))))
+    if (engine_solo or examiner) and not tm["verify"]:
+        raise ValueError('--engine-solo / --examiner run mode solo, which takes its checks from team.json "verify": set it first')
+    solo_team = {**tm, "mode": "solo", "solo": "solo", "workers": {"solo": {"agent": who[0], "model": who[1]}}}
     if engine_solo:  # the solo agent's own model as the only worker: the engine's verify loop is then the only difference
-        if not tm["verify"]:
-            raise ValueError('--engine-solo runs mode solo, which takes its checks from team.json "verify": set it first')
-        arms.append((f"engine solo {who[0]}/{who[1]}", validate_team({**tm, "mode": "solo", "solo": "solo",
-                                                                      "workers": {"solo": {"agent": who[0], "model": who[1]}}})))
+        arms.append((f"engine solo {who[0]}/{who[1]}", validate_team({**solo_team, "examiner": False})))
+    if examiner:  # and acceptance tests from the goal first, by the reviewer: do they catch a misread goal?
+        rev = tm["reviewer"]
+        arms.append((f"engine solo {who[0]}/{who[1]} + examiner {rev['agent']}/{rev['model']}", validate_team({**solo_team, "examiner": True})))
     if not git_ok(ws.project, "rev-parse", "--verify", "HEAD"):
         raise ValueError("bench needs a git repository with at least one commit")
     ensure_excluded(ws.project)
