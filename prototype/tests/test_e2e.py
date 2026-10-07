@@ -577,9 +577,11 @@ def test_examiner_tests_the_goal_not_the_workers_reading():
         "\n    def test_fee(self):\n        self.assertEqual(fee(3), 6)\n"
     trivial = {"reply": {"files": [{"path": "test_accept.py", "content": "import unittest\nclass T(unittest.TestCase):\n    def test(self): pass\n"}],
                          "command": unit + ["-q", "test_accept"], "summary": "nothing"}}
-    sc = {"plan": [task("T1", "w1", ["app.py"], [["python", "-c", "import app"], unit]), task("T2", "w2", ["fee.py"], [["python", "-c", "import fee"]])],
+    own = "import unittest\nfrom app import price\n\nclass Own(unittest.TestCase):\n    def test(self):\n        self.assertEqual(price(10, 0), 10)\n"
+    sc = {"plan": [task("T1", "w1", ["app.py", "test_app.py"], [["python", "-c", "import app"], unit]), task("T2", "w2", ["fee.py"], [["python", "-c", "import fee"]])],
           "exam": [{"path": "test_accept.py", "content": accept2}], "exam_cmd": unit + ["-q", "test_accept"],
-          "steps": {"examiner:EXAM": [trivial, {}], "worker:T1": [{"write": {"app.py": right}}],
+          # its own test: python 3.12+ `-m unittest` fails when it finds none, and the acceptance tests come only at the final review
+          "steps": {"examiner:EXAM": [trivial, {}], "worker:T1": [{"write": {"app.py": right, "test_app.py": own}}],
                     "worker:T2": [{"write": {"fee.py": "def fee(n):\n    return 2 * n\n"}}]}}
     r2 = Repo(sc, verify=[unit], examiner={"agent": "mock", "model": "mock-fast"})
     assert r2.run() == 0, r2.out
