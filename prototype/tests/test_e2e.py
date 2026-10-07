@@ -1152,7 +1152,7 @@ def test_benchmark_tasks_are_sound():
     run_suite.py drives `bench` over a task (mock agents); --check paths keep their backslashes on Windows."""
     from orch import bench
     tasks = sorted(p for p in (ROOT / "benchmarks" / "tasks").iterdir() if p.is_dir())
-    assert [t.name[:2] for t in tasks] == ["01", "02", "03"], tasks
+    assert [t.name[:2] for t in tasks] == ["01", "02", "03", "04", "05"], tasks
     for t in tasks:
         assert (t / "goal.md").read_text(encoding="utf-8").strip() and list((t / "checks").glob("*.py")), t
         for c in sorted((t / "checks").glob("*.py")):
@@ -1184,6 +1184,11 @@ def test_benchmark_tasks_are_sound():
     summary = next((tmp / "home" / "bench-suite").glob("*/summary.md")).read_text(encoding="utf-8")
     rows = [l for l in summary.splitlines() if l.startswith("| 1 |")]
     assert "## 01-small-slugify" in summary and len(rows) == 2 and all("| 1/1 |" in l for l in rows), summary
+    assert "| 01-small-slugify | solo mock/mock-fast | 1/1 | 21%-100% |" in summary, summary[-800:]  # Wilson: one run says little
+    suite = next((tmp / "home" / "bench-suite").glob("*"))
+    p = subprocess.run([sys.executable, str(ROOT / "benchmarks" / "run_suite.py"), "--pool", str(suite), str(suite)], cwd=ROOT, env=env,
+                       capture_output=True, encoding="utf-8", errors="replace", timeout=60)
+    assert p.returncode == 0 and "| 01-small-slugify | solo mock/mock-fast | 2/2 | 34%-100% |" in p.stdout, p.stdout + p.stderr
     shutil.rmtree(tmp, ignore_errors=True)
 
 
